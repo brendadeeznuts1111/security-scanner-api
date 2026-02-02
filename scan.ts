@@ -252,7 +252,7 @@ const NOTABLE = new Set([
   "@modelcontextprotocol/sdk",
 ]);
 
-const PROJECTS_ROOT = process.env.BUN_PLATFORM_HOME ?? "/Users/nolarose/Projects";
+const PROJECTS_ROOT = Bun.env.BUN_PLATFORM_HOME ?? "/Users/nolarose/Projects";
 
 // ── Default metadata for --fix ─────────────────────────────────────────
 const DEFAULTS = {
@@ -517,7 +517,7 @@ export async function scanProject(dir: string): Promise<ProjectInfo> {
       const isEnvLinked = content.includes("${FW_REGISTRY_TOKEN?}");
       base.resilient = isEnvLinked;
       if (isEnvLinked) {
-        base.authReady = !!process.env.FW_REGISTRY_TOKEN;
+        base.authReady = !!Bun.env.FW_REGISTRY_TOKEN;
       } else {
         base.authReady = content.includes("_authToken");
       }
@@ -682,7 +682,7 @@ function inspectProject(p: ProjectInfo) {
   line("Lock File",    p.lock);
   line("Bunfig",       p.bunfig ? c.green("yes") : c.dim("no"));
   line("Workspace",    p.workspace ? c.green("yes") : c.dim("no"));
-  const envReg = process.env.BUN_CONFIG_REGISTRY;
+  const envReg = Bun.env.BUN_CONFIG_REGISTRY;
   if (envReg) {
     const envDisplay = envReg.replace(/^https?:\/\//, "");
     line("Registry",     `${envDisplay} ${c.dim("(BUN_CONFIG_REGISTRY override)")}`);
@@ -774,7 +774,7 @@ function renderTable(projects: ProjectInfo[], detail: boolean) {
       "Repo Host": p.repoHost,
       Env:       p.envFiles.length ? p.envFiles.join(", ") : "-",
       "Env Refs": p.bunfigEnvRefs.length ? p.bunfigEnvRefs.join(", ") : "-",
-      Color:     process.env.FORCE_COLOR ? "forced" : process.env.NO_COLOR === "1" ? "off" : "auto",
+      Color:     Bun.env.FORCE_COLOR ? "forced" : Bun.env.NO_COLOR === "1" ? "off" : "auto",
       Overrides: p.overrides.length + p.resolutions.length || "-",
       "Key Deps": p.keyDeps.join(", ") || "-",
     };
@@ -903,7 +903,7 @@ async function renderAudit(projects: ProjectInfo[]) {
   console.log();
   const PAD = 42;
   for (const { key, desc, offLabel, recommend } of BUN_ENV_VARS) {
-    const val = process.env[key];
+    const val = Bun.env[key];
     if (offLabel) {
       const flag = classifyEnvFlag(val, offLabel);
       const display = flag.state === "inactive" ? c.green(flag.label)
@@ -974,7 +974,7 @@ async function renderAudit(projects: ProjectInfo[]) {
   console.log();
   console.log(c.bold("  Lifecycle security:"));
   console.log();
-  const envOverride = isFeatureFlagActive(process.env.BUN_FEATURE_FLAG_DISABLE_IGNORE_SCRIPTS);
+  const envOverride = isFeatureFlagActive(Bun.env.BUN_FEATURE_FLAG_DISABLE_IGNORE_SCRIPTS);
 
   // Scan node_modules for actual lifecycle scripts per hook
   const HOOKS = ["preinstall", "postinstall", "preuninstall", "prepare", "preprepare", "postprepare", "prepublishOnly"] as const;
@@ -1136,8 +1136,8 @@ async function renderAudit(projects: ProjectInfo[]) {
   }
 
   // Global bunfig.toml detection
-  const home = process.env.HOME ?? process.env.USERPROFILE ?? "";
-  const xdg = process.env.XDG_CONFIG_HOME;
+  const home = Bun.env.HOME ?? Bun.env.USERPROFILE ?? "";
+  const xdg = Bun.env.XDG_CONFIG_HOME;
   const globalBunfigPath = xdg ? `${xdg}/.bunfig.toml` : `${home}/.bunfig.toml`;
   const globalBunfigFile = Bun.file(globalBunfigPath);
   const hasGlobalBunfig = await globalBunfigFile.exists();
@@ -2467,7 +2467,7 @@ async function infoPackage(pkg: string, projects: ProjectInfo[], jsonOut: boolea
 async function main() {
   // Windows + mise function wrapper: if mise is active but MISE_SHELL isn't set,
   // the PowerShell function wrapper may be mangling argv before bun sees it
-  if (shouldWarnMise(process.platform, process.env.MISE_SHELL)) {
+  if (shouldWarnMise(process.platform, Bun.env.MISE_SHELL)) {
     console.log(c.dim("  Hint: On Windows, use 'mise.exe' for stable argument parsing."));
     console.log();
   }
