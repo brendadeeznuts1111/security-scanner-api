@@ -2734,7 +2734,7 @@ ${c.bold("  Other:")}
 
   const elapsed = ((Bun.nanoseconds() - t0) / 1e6).toFixed(1);
   console.log();
-  console.log(c.bold(c.cyan(`  Project Scanner — ${projects.length} projects scanned in ${elapsed}ms ${c.dim(`(bun ${Bun.version})`)}`)));
+  console.log(c.bold(c.cyan(`  Project Scanner — ${projects.length} projects scanned in ${elapsed}ms (bun ${Bun.version} ${Bun.revision.slice(0, 9)})`)));
   console.log();
 
   renderTable(projects, !!flags.detail);
