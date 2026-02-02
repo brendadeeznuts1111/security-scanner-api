@@ -32,6 +32,7 @@ const { values: flags, positionals } = parseArgs({
     "fix-scopes": { type: "string" },
     "fix-npmrc":  { type: "string" },
     "fix-trusted": { type: "boolean", default: false },
+    "fix-env-docs": { type: "boolean", default: false },
     "no-ipc":     { type: "boolean", default: false },
     patch:        { type: "boolean", default: false },
     minor:        { type: "boolean", default: false },
@@ -43,6 +44,10 @@ const { values: flags, positionals } = parseArgs({
     global:       { type: "boolean", short: "g", default: false },
     catalog:      { type: "boolean", short: "r", default: false },
     wf:           { type: "string", multiple: true },
+    snapshot:     { type: "boolean", default: false },
+    compare:      { type: "boolean", default: false },
+    "audit-compare": { type: "string" },
+    "no-auto-snapshot": { type: "boolean", default: false },
   },
   strict: true,
 });
@@ -252,7 +257,165 @@ const NOTABLE = new Set([
   "@modelcontextprotocol/sdk",
 ]);
 
+/** Bun's built-in default trusted dependencies (bun 1.2.x).
+ *  Source: github.com/oven-sh/bun/blob/main/src/install/default-trusted-dependencies.txt */
+const BUN_DEFAULT_TRUSTED = new Set([
+  "@airbnb/node-memwatch", "@apollo/protobufjs", "@apollo/rover", "@appsignal/nodejs",
+  "@arkweid/lefthook", "@aws-amplify/cli", "@bahmutov/add-typescript-to-cypress",
+  "@bazel/concatjs", "@bazel/cypress", "@bazel/esbuild", "@bazel/hide-bazel-files",
+  "@bazel/jasmine", "@bazel/protractor", "@bazel/rollup", "@bazel/terser", "@bazel/typescript",
+  "@bufbuild/buf", "@cdktf/node-pty-prebuilt-multiarch", "@ckeditor/ckeditor5-vue",
+  "@cloudflare/wrangler", "@contrast/fn-inspect", "@cubejs-backend/cubestore",
+  "@cubejs-backend/native", "@cypress/snapshot", "@danmarshall/deckgl-typings",
+  "@datadog/mobile-react-native", "@discordjs/opus", "@eversdk/lib-node",
+  "@evilmartians/lefthook", "@ffmpeg-installer/darwin-arm64", "@ffmpeg-installer/darwin-x64",
+  "@ffmpeg-installer/linux-arm", "@ffmpeg-installer/linux-arm64", "@ffmpeg-installer/linux-ia32",
+  "@ffmpeg-installer/linux-x64", "@ffprobe-installer/darwin-arm64", "@ffprobe-installer/darwin-x64",
+  "@ffprobe-installer/linux-arm", "@ffprobe-installer/linux-arm64", "@ffprobe-installer/linux-ia32",
+  "@ffprobe-installer/linux-x64", "@fingerprintjs/fingerprintjs-pro-react", "@ghaiklor/x509",
+  "@go-task/cli", "@injectivelabs/sdk-ts", "@instana/autoprofile", "@intlify/vue-i18n-bridge",
+  "@intlify/vue-router-bridge", "@matteodisabatino/gc_info", "@memlab/cli",
+  "@microsoft.azure/autorest-core", "@microsoft/teamsfx-cli", "@microsoft/ts-command-line",
+  "@napi-rs/pinyin", "@nativescript/core", "@netlify/esbuild", "@newrelic/native-metrics",
+  "@notarize/qlc-cli", "@nx-dotnet/core", "@opensearch-project/oui",
+  "@pact-foundation/pact-node", "@paloaltonetworks/postman-code-generators", "@pdftron/pdfnet-node",
+  "@percy/core", "@pnpm/exe", "@prisma/client", "@prisma/engines", "@progress/kendo-licensing",
+  "@pulumi/aws-native", "@pulumi/awsx", "@pulumi/command", "@pulumi/kubernetes", "@railway/cli",
+  "@replayio/cypress", "@replayio/playwright", "@roots/bud-framework", "@sap/hana-client",
+  "@sap/hana-performance-tools", "@sap/hana-theme-vscode", "@scarf/scarf", "@sematext/gc-stats",
+  "@sentry/capacitor", "@sentry/profiling-node", "@serialport/bindings", "@serialport/bindings-cpp",
+  "@shopify/ngrok", "@shopify/plugin-cloudflare", "@sitespeed.io/chromedriver",
+  "@sitespeed.io/edgedriver", "@softvisio/core", "@splunk/otel", "@strapi/strapi", "@sveltejs/kit",
+  "@syncfusion/ej2-angular-base", "@taquito/taquito", "@temporalio/core-bridge",
+  "@tensorflow/tfjs-node", "@trufflesuite/bigint-buffer", "@typescript-tools/rust-implementation",
+  "@vaadin/vaadin-usage-statistics", "@vscode/ripgrep", "@vscode/sqlite3",
+  "abstract-socket", "admin-lte", "appdynamics", "appium-chromedriver", "appium-windows-driver",
+  "applicationinsights-native-metrics", "argon2", "autorest", "aws-crt",
+  "azure-functions-core-tools", "azure-streamanalytics-cicd", "backport", "bcrypt",
+  "better-sqlite3", "bigint-buffer", "blake-hash", "bs-platform", "bufferutil", "bun", "canvacord",
+  "canvas", "cbor-extract", "chromedriver", "chromium", "classic-level", "cld", "cldr-data",
+  "clevertap-react-native", "clientjs", "cmark-gfm", "compresion", "contentlayer", "contextify",
+  "cordova.plugins.diagnostic", "couchbase", "cpu-features", "cwebp-bin", "cy2", "cypress",
+  "dd-trace", "deasync", "detox", "detox-recorder", "diskusage", "dotnet-2.0.0", "dprint",
+  "drivelist", "dtrace-provider", "duckdb", "dugite", "eccrypto", "egg-bin", "egg-ci", "electron",
+  "electron-chromedriver", "electron-prebuilt", "electron-winstaller", "elm", "elm-format",
+  "esbuild", "esoftplay", "event-loop-stats", "exifreader", "farmhash", "fast-folder-size",
+  "faunadb", "ffi", "ffi-napi", "ffmpeg-static", "fibers", "fmerge", "free-email-domains",
+  "fs-xattr", "full-icu", "gatsby", "gc-stats", "gcstats.js", "geckodriver", "gentype", "ghooks",
+  "gif2webp-bin", "gifsicle", "git-commit-msg-linter", "git-validate", "git-win", "gl", "go-ios",
+  "grpc", "grpc-tools", "handbrake-js", "hasura-cli", "heapdump", "hiredis", "hnswlib-node",
+  "hugo-bin", "hummus", "ibm_db", "iconv", "iedriver", "iltorb", "incremental-json-parser",
+  "install-peers", "interruptor", "iobroker.js-controller", "iso-constants", "isolated-vm", "java",
+  "jest-preview", "jpeg-recompress-bin", "jpegtran-bin", "keccak", "kerberos", "keytar", "lefthook",
+  "leveldown", "libpg-query", "libpq", "libxmljs", "libxmljs2", "lightningcss-cli", "lint", "lmdb",
+  "lmdb-store", "local-cypress", "lz4", "lzma-native", "lzo", "macos-alias", "mbt", "memlab",
+  "microtime", "minidump", "mmmagic", "modern-syslog", "mongodb-client-encryption",
+  "mongodb-crypt-library-dummy", "mongodb-crypt-library-version", "mongodb-memory-server", "mozjpeg",
+  "ms-chromium-edge-driver", "msgpackr-extract", "msnodesqlv8", "msw", "muhammara", "netlify-cli",
+  "ngrok", "ngx-popperjs", "nice-napi", "node", "node-expat", "node-hid", "node-jq",
+  "node-libcurl", "node-mac-contacts", "node-pty", "node-rdkafka", "node-sass",
+  "node-webcrypto-ossl", "node-zopfli", "node-zopfli-es", "nodegit", "nodejieba", "nodent-runtime",
+  "nx", "odiff-bin", "oniguruma", "opencode-ai", "optipng-bin", "oracledb", "os-dns-native",
+  "parse-server", "phantomjs", "phantomjs-prebuilt", "pkcs11js", "playwright-chromium",
+  "playwright-firefox", "playwright-webkit", "pngout-bin", "pngquant-bin", "posix", "pprof",
+  "pre-commit", "pre-push", "prisma", "protoc", "protoc-gen-grpc-web", "puppeteer", "purescript",
+  "re2", "react-jsx-parser", "react-native-stylex", "react-particles", "react-tsparticles",
+  "react-vertical-timeline-component", "realm", "redis-memory-server", "ref", "ref-napi",
+  "registry-js", "robotjs", "sauce-connect-launcher", "saucectl", "secp256k1", "segfault-handler",
+  "shared-git-hooks", "sharp", "simple-git-hooks", "sleep", "slice2js", "snyk", "sockopt",
+  "sodium-native", "sonar-scanner", "spago", "spectron", "spellchecker", "sq-native", "sqlite3",
+  "sse4_crc32", "ssh2", "storage-engine", "subrequests", "subrequests-express",
+  "subrequests-json-merger", "supabase", "svf-lib", "swagger-ui", "swiftlint", "taiko", "tldjs",
+  "tree-sitter", "tree-sitter-cli", "tree-sitter-json", "tree-sitter-kotlin",
+  "tree-sitter-typescript", "tree-sitter-yaml", "truffle", "tsparticles-engine", "ttag-cli",
+  "ttf2woff2", "typemoq", "unix-dgram", "ursa-optional", "usb", "utf-8-validate",
+  "v8-profiler-next", "vue-demi", "vue-echarts", "vue-inbrowser-compiler-demi", "wd", "wdeasync",
+  "weak-napi", "webdev-toolkit", "windows-build-tools", "wix-style-react", "wordpos", "workerd",
+  "wrtc", "xxhash", "yo", "yorkie", "zeromq", "zlib-sync", "zopflipng-bin",
+]);
+
 const PROJECTS_ROOT = Bun.env.BUN_PLATFORM_HOME ?? "/Users/nolarose/Projects";
+
+// ── Xref types ────────────────────────────────────────────────────────
+type XrefEntry = { folder: string; bunDefault: string[]; explicit: string[]; blocked: string[] };
+
+interface XrefSnapshot {
+  timestamp: string;
+  projects: XrefEntry[];
+  totalBunDefault: number;
+  totalProjects: number;
+}
+
+const SNAPSHOT_DIR = `${import.meta.dir}/.audit`;
+const SNAPSHOT_PATH = `${SNAPSHOT_DIR}/xref-snapshot.json`;
+
+async function saveXrefSnapshot(data: XrefEntry[], totalProjects: number): Promise<void> {
+  const { mkdir } = await import("node:fs/promises");
+  await mkdir(SNAPSHOT_DIR, { recursive: true });
+  const snapshot: XrefSnapshot = {
+    timestamp: new Date().toISOString(),
+    projects: data,
+    totalBunDefault: data.reduce((s, x) => s + x.bunDefault.length, 0),
+    totalProjects,
+  };
+  await Bun.write(SNAPSHOT_PATH, JSON.stringify(snapshot, null, 2) + "\n");
+}
+
+async function loadXrefSnapshot(path?: string): Promise<XrefSnapshot | null> {
+  const file = Bun.file(path ?? SNAPSHOT_PATH);
+  if (!(await file.exists())) return null;
+  try {
+    return JSON.parse(await file.text()) as XrefSnapshot;
+  } catch {
+    return null;
+  }
+}
+
+const XREF_HOOKS = ["preinstall", "postinstall", "preuninstall", "prepare", "preprepare", "postprepare", "prepublishOnly"] as const;
+
+async function scanXrefData(projects: ProjectInfo[]): Promise<XrefEntry[]> {
+  const result: XrefEntry[] = [];
+  for (const p of projects) {
+    if (!p.hasPkg) continue;
+    const nmDir = `${PROJECTS_ROOT}/${p.folder}/node_modules`;
+    let entries: string[] = [];
+    try { entries = await readdir(nmDir); } catch { continue; }
+    const trusted = new Set(p.trustedDeps);
+    const xref: XrefEntry = { folder: p.folder, bunDefault: [], explicit: [], blocked: [] };
+    const seen = new Set<string>();
+    const classify = (pkgName: string, scripts: Record<string, string>) => {
+      let hasAnyHook = false;
+      for (const h of XREF_HOOKS) { if (scripts[h]) { hasAnyHook = true; break; } }
+      if (hasAnyHook && !seen.has(pkgName)) {
+        seen.add(pkgName);
+        if (BUN_DEFAULT_TRUSTED.has(pkgName)) xref.bunDefault.push(pkgName);
+        else if (trusted.has(pkgName)) xref.explicit.push(pkgName);
+        else xref.blocked.push(pkgName);
+      }
+    };
+    for (const entry of entries) {
+      if (entry.startsWith("@")) {
+        let scoped: string[] = [];
+        try { scoped = await readdir(`${nmDir}/${entry}`); } catch { continue; }
+        for (const sub of scoped) {
+          try {
+            const pkg = JSON.parse(await Bun.file(`${nmDir}/${entry}/${sub}/package.json`).text());
+            if (pkg.scripts) classify(`${entry}/${sub}`, pkg.scripts);
+          } catch { /* skip */ }
+        }
+      } else {
+        try {
+          const pkg = JSON.parse(await Bun.file(`${nmDir}/${entry}/package.json`).text());
+          if (pkg.scripts) classify(entry, pkg.scripts);
+        } catch { /* skip */ }
+      }
+    }
+    if (xref.bunDefault.length + xref.explicit.length + xref.blocked.length > 0) {
+      result.push(xref);
+    }
+  }
+  return result;
+}
 
 // ── Default metadata for --fix ─────────────────────────────────────────
 const DEFAULTS = {
@@ -775,6 +938,7 @@ function renderTable(projects: ProjectInfo[], detail: boolean) {
       Env:       p.envFiles.length ? p.envFiles.join(", ") : "-",
       "Env Refs": p.bunfigEnvRefs.length ? p.bunfigEnvRefs.join(", ") : "-",
       Color:     Bun.env.FORCE_COLOR ? "forced" : Bun.env.NO_COLOR === "1" ? "off" : "auto",
+      Trusted:   p.trustedDeps.length ? p.trustedDeps.join(", ") : "-",
       Overrides: p.overrides.length + p.resolutions.length || "-",
       "Key Deps": p.keyDeps.join(", ") || "-",
     };
@@ -981,18 +1145,24 @@ async function renderAudit(projects: ProjectInfo[]) {
   const hookTotals: Record<string, { found: number; trusted: number; blocked: number; nativeDetected: number; nativeTrusted: number }> = {};
   for (const h of HOOKS) hookTotals[h] = { found: 0, trusted: 0, blocked: 0, nativeDetected: 0, nativeTrusted: 0 };
 
+  const xrefData: XrefEntry[] = [];
+
   for (const p of withPkg) {
     const nmDir = `${PROJECTS_ROOT}/${p.folder}/node_modules`;
     let entries: string[] = [];
     try { entries = await readdir(nmDir); } catch { continue; }
 
     const trusted = new Set(p.trustedDeps);
+    const xref: XrefEntry = { folder: p.folder, bunDefault: [], explicit: [], blocked: [] };
+    const xrefSeen = new Set<string>();
 
     const classifyPkg = (pkgName: string, scripts: Record<string, string>) => {
       const scriptValues = Object.values(scripts).join(" ");
       const isNative = NATIVE_PATTERN.test(pkgName) || NATIVE_PATTERN.test(scriptValues);
+      let hasAnyHook = false;
       for (const h of HOOKS) {
         if (scripts[h]) {
+          hasAnyHook = true;
           hookTotals[h].found++;
           if (trusted.has(pkgName)) hookTotals[h].trusted++;
           else hookTotals[h].blocked++;
@@ -1001,6 +1171,12 @@ async function renderAudit(projects: ProjectInfo[]) {
             if (trusted.has(pkgName)) hookTotals[h].nativeTrusted++;
           }
         }
+      }
+      if (hasAnyHook && !xrefSeen.has(pkgName)) {
+        xrefSeen.add(pkgName);
+        if (BUN_DEFAULT_TRUSTED.has(pkgName)) xref.bunDefault.push(pkgName);
+        else if (trusted.has(pkgName)) xref.explicit.push(pkgName);
+        else xref.blocked.push(pkgName);
       }
     };
 
@@ -1024,6 +1200,7 @@ async function renderAudit(projects: ProjectInfo[]) {
         classifyPkg(entry, pkg.scripts ?? {});
       } catch {}
     }
+    xrefData.push(xref);
   }
 
   // Avg time per blocked script (conservative estimates based on typical npm postinstall behavior)
@@ -1132,6 +1309,89 @@ async function renderAudit(projects: ProjectInfo[]) {
     const trustedProjects = withPkg.filter((p) => p.trustedDeps.length > 0);
     for (const p of trustedProjects) {
       console.log(`      ${c.dim("•")} ${p.folder.padEnd(28)} ${c.dim(p.trustedDeps.join(", "))}`);
+    }
+  }
+
+  // Bun default trust cross-reference
+  const xrefWithScripts = xrefData.filter((x) => x.bunDefault.length + x.explicit.length + x.blocked.length > 0);
+  if (xrefWithScripts.length > 0) {
+    const totalBunDefault = xrefWithScripts.reduce((s, x) => s + x.bunDefault.length, 0);
+    const prevSnapshot = await loadXrefSnapshot(flags["audit-compare"] ?? undefined);
+    const prevMap = new Map<string, XrefEntry>();
+    if (prevSnapshot) {
+      for (const p of prevSnapshot.projects) prevMap.set(p.folder, p);
+    }
+    const hasDelta = prevSnapshot !== null;
+
+    const formatDelta = (cur: number, prev: number | undefined): string => {
+      if (prev === undefined) return c.cyan("new".padStart(5));
+      const diff = cur - prev;
+      if (diff > 0) return c.green(`+${diff}`.padStart(5));
+      if (diff < 0) return c.red(`${diff}`.padStart(5));
+      return c.dim("=".padStart(5));
+    };
+
+    console.log();
+    console.log(c.bold(`  Bun default trust cross-reference (${BUN_DEFAULT_TRUSTED.size} known packages):`));
+    console.log();
+    const deltaHeader = hasDelta ? `  ${"Δ Def".padStart(5)}  ${"Δ Exp".padStart(5)}  ${"Δ Blk".padStart(5)}` : "";
+    console.log(`    ${"Project".padEnd(30)} ${"Default".padStart(7)}  ${"Explicit".padStart(8)}  ${"Blocked".padStart(7)}${deltaHeader}  Packages`);
+    for (const x of xrefWithScripts) {
+      const parts: string[] = [];
+      if (x.bunDefault.length > 0) parts.push(x.bunDefault.join(", "));
+      if (x.explicit.length > 0) parts.push(x.explicit.join(", "));
+      if (x.blocked.length > 0) parts.push(c.yellow(x.blocked.join(", ")));
+      const defColor = x.bunDefault.length > 0 ? c.dim : (s: string) => s;
+      const expColor = x.explicit.length > 0 ? c.cyan : (s: string) => s;
+      let deltaCols = "";
+      if (hasDelta) {
+        const prev = prevMap.get(x.folder);
+        deltaCols = `  ${formatDelta(x.bunDefault.length, prev?.bunDefault.length)}  ${formatDelta(x.explicit.length, prev?.explicit.length)}  ${formatDelta(x.blocked.length, prev?.blocked.length)}`;
+      }
+      console.log(`    ${x.folder.padEnd(30)} ${defColor(String(x.bunDefault.length).padStart(7))}  ${expColor(String(x.explicit.length).padStart(8))}  ${(x.blocked.length > 0 ? c.yellow : (s: string) => s)(String(x.blocked.length).padStart(7))}${deltaCols}   ${parts.join(c.dim(" | "))}`);
+    }
+    console.log();
+    console.log(`  Summary: ${c.bold(String(totalBunDefault))} packages auto-trusted by Bun defaults across ${xrefData.length} projects`);
+
+    // Comparison summary block
+    if (prevSnapshot) {
+      const currentFolders = new Set(xrefWithScripts.map((x) => x.folder));
+      const prevFolders = new Set(prevSnapshot.projects.map((p) => p.folder));
+      const newProjects = xrefWithScripts.filter((x) => !prevFolders.has(x.folder));
+      const removedProjects = prevSnapshot.projects.filter((p) => !currentFolders.has(p.folder));
+      const changedProjects: string[] = [];
+      const unchangedCount = { value: 0 };
+      for (const x of xrefWithScripts) {
+        const prev = prevMap.get(x.folder);
+        if (!prev) continue;
+        const diffs: string[] = [];
+        const dDef = x.bunDefault.length - prev.bunDefault.length;
+        const dExp = x.explicit.length - prev.explicit.length;
+        const dBlk = x.blocked.length - prev.blocked.length;
+        if (dDef !== 0) diffs.push(`default ${dDef > 0 ? "+" : ""}${dDef}`);
+        if (dExp !== 0) diffs.push(`explicit ${dExp > 0 ? "+" : ""}${dExp}`);
+        if (dBlk !== 0) diffs.push(`blocked ${dBlk > 0 ? "+" : ""}${dBlk}`);
+        if (diffs.length > 0) changedProjects.push(`${x.folder} (${diffs.join(", ")})`);
+        else unchangedCount.value++;
+      }
+      console.log();
+      console.log(c.bold(`  Cross-reference delta (vs ${prevSnapshot.timestamp}):`));
+      console.log(`    ${"New projects:".padEnd(18)} ${c.cyan(String(newProjects.length))}${newProjects.length > 0 ? "   " + newProjects.map((x) => x.folder).join(", ") : ""}`);
+      console.log(`    ${"Removed:".padEnd(18)} ${removedProjects.length > 0 ? c.red(String(removedProjects.length)) : c.dim(String(removedProjects.length))}${removedProjects.length > 0 ? "   " + removedProjects.map((p) => p.folder).join(", ") : ""}`);
+      console.log(`    ${"Changed:".padEnd(18)} ${changedProjects.length > 0 ? c.yellow(String(changedProjects.length)) : c.dim(String(changedProjects.length))}${changedProjects.length > 0 ? "   " + changedProjects.join(", ") : ""}`);
+      console.log(`    ${"Unchanged:".padEnd(18)} ${c.dim(String(unchangedCount.value))}`);
+    }
+
+    // Save snapshot (unless --compare or --no-auto-snapshot)
+    if (!flags.compare && !flags["no-auto-snapshot"]) {
+      await saveXrefSnapshot(xrefWithScripts, withPkg.length);
+    }
+
+    // --snapshot early return: save and exit after xref section
+    if (flags.snapshot) {
+      console.log();
+      console.log(`  Snapshot saved to .audit/xref-snapshot.json (${xrefWithScripts.length} projects)`);
+      return;
     }
   }
 
@@ -2492,6 +2752,7 @@ ${c.bold("  Modes:")}
     ${c.cyan("--fix-scopes")} <url> @s.. [--dry-run] Inject [install.scopes] into bunfig.toml
     ${c.cyan("--fix-npmrc")} <url> @s.. [--dry-run] Rewrite .npmrc with scoped template
     ${c.cyan("--fix-trusted")} [--dry-run]          Auto-detect native deps → trustedDependencies
+    ${c.cyan("--fix-env-docs")}                     Inject audit recommendations into .env.template
     ${c.cyan("--why")} <pkg> [--top] [--depth N]    bun why across all projects
     ${c.cyan("--outdated")} [-r] [--wf] [-p]        bun outdated across all projects
     ${c.cyan("--update")} [--dry-run]               bun update across all projects
@@ -2611,6 +2872,60 @@ ${c.bold("  Other:")}
     return;
   }
 
+  // ── Snapshot-only mode (no full audit) ─────────────────────────
+  if (flags.snapshot && !flags.audit) {
+    const xrefResult = await scanXrefData(projects);
+    const withPkg = projects.filter((p) => p.hasPkg);
+    await saveXrefSnapshot(xrefResult, withPkg.length);
+    console.log(`  Snapshot saved to .audit/xref-snapshot.json (${xrefResult.length} projects)`);
+    return;
+  }
+
+  // ── Compare-only mode (no full audit) ──────────────────────────
+  if (flags.compare && !flags.audit) {
+    const snapshotPath = flags["audit-compare"] ?? undefined;
+    const prevSnapshot = await loadXrefSnapshot(snapshotPath);
+    if (!prevSnapshot) {
+      const label = snapshotPath ?? ".audit/xref-snapshot.json";
+      console.log(`  No snapshot found at ${label} — run --audit or --snapshot first.`);
+      process.exit(1);
+    }
+    const cmpXrefData = await scanXrefData(projects);
+
+    const prevMap = new Map<string, XrefEntry>();
+    for (const p of prevSnapshot.projects) prevMap.set(p.folder, p);
+    const currentFolders = new Set(cmpXrefData.map((x) => x.folder));
+    const prevFolders = new Set(prevSnapshot.projects.map((p) => p.folder));
+    const newProjects = cmpXrefData.filter((x) => !prevFolders.has(x.folder));
+    const removedProjects = prevSnapshot.projects.filter((p) => !currentFolders.has(p.folder));
+    const changedProjects: string[] = [];
+    let unchangedCount = 0;
+    for (const x of cmpXrefData) {
+      const prev = prevMap.get(x.folder);
+      if (!prev) continue;
+      const diffs: string[] = [];
+      const dDef = x.bunDefault.length - prev.bunDefault.length;
+      const dExp = x.explicit.length - prev.explicit.length;
+      const dBlk = x.blocked.length - prev.blocked.length;
+      if (dDef !== 0) diffs.push(`default ${dDef > 0 ? "+" : ""}${dDef}`);
+      if (dExp !== 0) diffs.push(`explicit ${dExp > 0 ? "+" : ""}${dExp}`);
+      if (dBlk !== 0) diffs.push(`blocked ${dBlk > 0 ? "+" : ""}${dBlk}`);
+      if (diffs.length > 0) changedProjects.push(`${x.folder} (${diffs.join(", ")})`);
+      else unchangedCount++;
+    }
+
+    console.log();
+    console.log(c.bold(`  Cross-reference delta (vs ${prevSnapshot.timestamp}):`));
+    console.log(`    ${"New projects:".padEnd(18)} ${c.cyan(String(newProjects.length))}${newProjects.length > 0 ? "   " + newProjects.map((x) => x.folder).join(", ") : ""}`);
+    console.log(`    ${"Removed:".padEnd(18)} ${removedProjects.length > 0 ? c.red(String(removedProjects.length)) : c.dim(String(removedProjects.length))}${removedProjects.length > 0 ? "   " + removedProjects.map((p) => p.folder).join(", ") : ""}`);
+    console.log(`    ${"Changed:".padEnd(18)} ${changedProjects.length > 0 ? c.yellow(String(changedProjects.length)) : c.dim(String(changedProjects.length))}${changedProjects.length > 0 ? "   " + changedProjects.join(", ") : ""}`);
+    console.log(`    ${"Unchanged:".padEnd(18)} ${c.dim(String(unchangedCount))}`);
+    console.log();
+    const hasDrift = newProjects.length > 0 || removedProjects.length > 0 || changedProjects.length > 0;
+    if (hasDrift) process.exit(1);
+    return;
+  }
+
   // ── Audit mode ──────────────────────────────────────────────────
   if (flags.audit) {
     await renderAudit(projects);
@@ -2632,6 +2947,30 @@ ${c.bold("  Other:")}
   // ── Fix trusted mode ──────────────────────────────────────────
   if (flags["fix-trusted"]) {
     await fixTrusted(projects, !!flags["dry-run"]);
+    return;
+  }
+
+  // ── Fix env docs mode ────────────────────────────────────────
+  if (flags["fix-env-docs"]) {
+    const templatePath = `${PROJECTS_ROOT}/scanner/.env.template`;
+    const file = Bun.file(templatePath);
+    let content = (await file.exists()) ? await file.text() : "";
+    const recommendation = [
+      "# Recommended Bun runtime settings (for performance & consistency)",
+      "# Centralize transpiler cache — git-ignored, speeds up repeated scans/builds",
+      "# BUN_RUNTIME_TRANSPILER_CACHE_PATH=${BUN_PLATFORM_HOME}/.bun-cache",
+      "",
+      "# Disable telemetry & crash reports (privacy best practice)",
+      "# DO_NOT_TRACK=1",
+    ].join("\n");
+
+    if (!content.includes("BUN_RUNTIME_TRANSPILER_CACHE_PATH")) {
+      content += "\n\n" + recommendation + "\n";
+      await Bun.write(templatePath, content);
+      console.log(c.green("  Updated .env.template with runtime recommendations"));
+    } else {
+      console.log(c.dim("  .env.template already contains runtime recommendations — no changes"));
+    }
     return;
   }
 
@@ -2738,6 +3077,39 @@ ${c.bold("  Other:")}
   console.log();
 
   renderTable(projects, !!flags.detail);
+
+  // ── Inline xref delta (default mode) ────────────────────────────
+  const prevSnapshot = await loadXrefSnapshot(flags["audit-compare"] ?? undefined);
+  if (prevSnapshot) {
+    const currentXref = await scanXrefData(projects);
+    const prevMap = new Map<string, XrefEntry>();
+    for (const p of prevSnapshot.projects) prevMap.set(p.folder, p);
+    const currentFolders = new Set(currentXref.map((x) => x.folder));
+    const prevFolders = new Set(prevSnapshot.projects.map((p) => p.folder));
+    const newCount = currentXref.filter((x) => !prevFolders.has(x.folder)).length;
+    const removedCount = prevSnapshot.projects.filter((p) => !currentFolders.has(p.folder)).length;
+    let changedCount = 0;
+    for (const x of currentXref) {
+      const prev = prevMap.get(x.folder);
+      if (!prev) continue;
+      if (x.bunDefault.length !== prev.bunDefault.length || x.explicit.length !== prev.explicit.length || x.blocked.length !== prev.blocked.length) changedCount++;
+    }
+    const hasDrift = newCount > 0 || removedCount > 0 || changedCount > 0;
+    if (hasDrift) {
+      const parts: string[] = [];
+      if (newCount > 0) parts.push(c.cyan(`+${newCount} new`));
+      if (removedCount > 0) parts.push(c.red(`-${removedCount} removed`));
+      if (changedCount > 0) parts.push(c.yellow(`${changedCount} changed`));
+      console.log();
+      console.log(`  ${c.dim("xref Δ")} ${parts.join(c.dim(", "))}  ${c.dim(`(vs ${prevSnapshot.timestamp.slice(0, 10)}, run --compare for details)`)}`);
+    } else {
+      console.log();
+      console.log(`  ${c.dim(`xref Δ  no drift (vs ${prevSnapshot.timestamp.slice(0, 10)})`)}`);
+    }
+    if (!flags["no-auto-snapshot"]) {
+      await saveXrefSnapshot(currentXref, projects.filter((p) => p.hasPkg).length);
+    }
+  }
 }
 
 if (import.meta.main) {
