@@ -1,5 +1,5 @@
 import { describe, test, expect } from "bun:test";
-import { isFeatureFlagActive, classifyEnvFlag, effectiveLinker, platformHelp, shouldWarnMise, parseTzFromEnv, parseEnvVar, validateThreatFeed, ThreatFeedItemSchema, semverBumpType, isVulnerable, semverCompare } from "./scan.ts";
+import { isFeatureFlagActive, classifyEnvFlag, effectiveLinker, platformHelp, shouldWarnMise, parseTzFromEnv, parseEnvVar, validateThreatFeed, ThreatFeedItemSchema, semverBumpType, isVulnerable, semverCompare, ProjectInfoSchema, XrefSnapshotSchema, XrefEntrySchema, PackageJsonSchema } from "./scan.ts";
 
 describe("isFeatureFlagActive", () => {
   test("returns true for '1'", () => {
@@ -815,5 +815,197 @@ describe("timezone subprocess (real TZ from command line)", () => {
     const localHour = parseInt(snapshot.date.split(" ")[1].slice(0, 2), 10);
     // Tokyo local hour = (utcHour + 9) % 24
     expect(localHour).toBe((utcHour + 9) % 24);
+  });
+});
+
+describe("Zod schemas", () => {
+  const defaults = {
+    folder: "test",
+    name: "test",
+    version: "-",
+    deps: 0,
+    devDeps: 0,
+    totalDeps: 0,
+    engine: "-",
+    lock: "none",
+    bunfig: false,
+    workspace: false,
+    keyDeps: [],
+    author: "-",
+    license: "-",
+    description: "-",
+    scriptsCount: 0,
+    bin: [],
+    registry: "-",
+    authReady: false,
+    hasNpmrc: false,
+    hasBinDir: false,
+    scopes: [],
+    resilient: false,
+    hasPkg: false,
+    frozenLockfile: false,
+    dryRun: false,
+    production: false,
+    exact: false,
+    installOptional: true,
+    installDev: true,
+    installAuto: "-",
+    linker: "-",
+    configVersion: -1,
+    backend: "-",
+    minimumReleaseAge: 0,
+    minimumReleaseAgeExcludes: [],
+    saveTextLockfile: false,
+    cacheDisabled: false,
+    cacheDir: "-",
+    cacheDisableManifest: false,
+    globalDir: "-",
+    globalBinDir: "-",
+    hasCa: false,
+    lockfileSave: true,
+    lockfilePrint: "-",
+    installSecurityScanner: "-",
+    linkWorkspacePackages: false,
+    noVerify: false,
+    verbose: false,
+    silent: false,
+    concurrentScripts: 0,
+    networkConcurrency: 0,
+    targetCpu: "-",
+    targetOs: "-",
+    overrides: [],
+    resolutions: [],
+    trustedDeps: [],
+    repo: "-",
+    repoSource: "-",
+    repoOwner: "-",
+    repoHost: "-",
+    envFiles: [],
+    projectTz: "UTC",
+    projectDnsTtl: "-",
+    bunfigEnvRefs: [],
+    peerDeps: [],
+    peerDepsMeta: [],
+    installPeer: true,
+    runShell: "-",
+    runBun: false,
+    runSilent: false,
+    debugEditor: "-",
+    hasTests: false,
+    nativeDeps: [],
+    workspacesList: [],
+    lockHash: "-",
+  };
+
+  test("ProjectInfoSchema validates default scanProject shape", () => {
+    expect(() => ProjectInfoSchema.parse(defaults)).not.toThrow();
+  });
+
+  test("ProjectInfoSchema rejects missing required field", () => {
+    expect(() => ProjectInfoSchema.parse({ folder: "test" })).toThrow();
+  });
+
+  test("ProjectInfoSchema rejects wrong type", () => {
+    const bad = { ...defaults, deps: "not-a-number" };
+    expect(() => ProjectInfoSchema.parse(bad)).toThrow();
+  });
+
+  test("XrefSnapshotSchema validates snapshot shape", () => {
+    const snapshot = {
+      timestamp: "2025-01-01T00:00:00.000Z",
+      date: "2025-01-01",
+      tz: "UTC",
+      tzOverride: false,
+      projects: [],
+      totalBunDefault: 0,
+      totalProjects: 0,
+    };
+    expect(() => XrefSnapshotSchema.parse(snapshot)).not.toThrow();
+  });
+
+  test("XrefSnapshotSchema rejects invalid project entry", () => {
+    const bad = {
+      timestamp: "2025-01-01T00:00:00.000Z",
+      date: "2025-01-01",
+      tz: "UTC",
+      tzOverride: false,
+      projects: [{ folder: 123 }],
+      totalBunDefault: 0,
+      totalProjects: 0,
+    };
+    expect(() => XrefSnapshotSchema.parse(bad)).toThrow();
+  });
+
+  test("PackageJsonSchema accepts minimal package.json", () => {
+    expect(() => PackageJsonSchema.parse({})).not.toThrow();
+  });
+
+  test("PackageJsonSchema accepts full package.json", () => {
+    const full = {
+      name: "test",
+      version: "1.0.0",
+      dependencies: { foo: "^1.0.0" },
+      devDependencies: { bar: "^2.0.0" },
+      scripts: { test: "bun test" },
+      workspaces: ["packages/*"],
+    };
+    expect(() => PackageJsonSchema.parse(full)).not.toThrow();
+  });
+
+  test("PackageJsonSchema passes through unknown fields", () => {
+    const withExtra = { name: "test", customField: true };
+    const result = PackageJsonSchema.parse(withExtra);
+    expect((result as Record<string, unknown>).customField).toBe(true);
+  });
+});
+
+
+describe("NO_COLOR awareness", () => {
+  test("NO_COLOR=1 suppresses ANSI escape sequences in --help output", async () => {
+    const { FORCE_COLOR: _, ...cleanEnv } = process.env;
+    const proc = Bun.spawn(["bun", "run", "scan.ts", "--help"], {
+      cwd: import.meta.dir,
+      env: { ...cleanEnv, NO_COLOR: "1" },
+      stdout: "pipe",
+      stderr: "pipe",
+    });
+    const stdout = await new Response(proc.stdout).text();
+    await proc.exited;
+    // Should not contain any ANSI escape sequences
+    expect(stdout).not.toMatch(/\x1b\[/);
+    // But should still contain meaningful output
+    expect(stdout).toContain("--help");
+  });
+
+  test("FORCE_COLOR=1 overrides NO_COLOR", async () => {
+    const proc = Bun.spawn(["bun", "run", "scan.ts", "--help"], {
+      cwd: import.meta.dir,
+      env: { ...process.env, NO_COLOR: "1", FORCE_COLOR: "1" },
+      stdout: "pipe",
+      stderr: "pipe",
+    });
+    const stdout = await new Response(proc.stdout).text();
+    await proc.exited;
+    // FORCE_COLOR should win — output should contain ANSI sequences
+    expect(stdout).toMatch(/\x1b\[/);
+  });
+});
+
+describe("DNS prefetch dry-run", () => {
+  test("--fix-dns --dry-run produces domain output without errors", async () => {
+    const proc = Bun.spawn(["bun", "run", "scan.ts", "--fix-dns", "--dry-run"], {
+      cwd: import.meta.dir,
+      env: { ...process.env, NO_COLOR: "1" },
+      stdout: "pipe",
+      stderr: "pipe",
+    });
+    const stdout = await new Response(proc.stdout).text();
+    const exitCode = await proc.exited;
+    // Should complete without error
+    expect(exitCode).toBe(0);
+    // Should mention domain count or project output
+    expect(stdout).toMatch(/domain\(s\) detected|DRY|SKIP/);
+    // Should mention dry run
+    expect(stdout).toMatch(/dry.run|Run without/i);
   });
 });

@@ -5,3 +5,7 @@ node_modules/
 CPU.*.md
 *.log
 .DS_Store
+.bun-cache/
+*.heapprofile
+*.heapsnapshot
+HEAP.*.md

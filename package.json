@@ -12,7 +12,11 @@
   "scripts": {
     "scan": "bun run scan.ts",
     "test": "bun test scan.test.ts",
-    "audit": "bun run scan.ts --audit"
+    "audit": "bun run scan.ts --audit",
+    "test:ci": "bun test --no-env-file scan.test.ts",
+    "scan:ci": "bun run --no-env-file scan.ts",
+    "profile:cpu": "bun run --smol --cpu-prof scan.ts --audit",
+    "profile:heap": "bun run --smol --heap-prof scan.ts --audit"
   },
   "keywords": [
     "bun",

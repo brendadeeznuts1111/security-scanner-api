@@ -20,4 +20,4 @@ jobs:
           bun-version: latest
 
       - name: Run tests
-        run: bun test scan.test.ts
+        run: bun test --no-env-file scan.test.ts

@@ -69,14 +69,23 @@ if (flags.tz) {
 }
 
 // ── ANSI helpers ───────────────────────────────────────────────────────
+const _useColor = (() => {
+  if (Bun.env.FORCE_COLOR) return true;
+  if (Bun.env.NO_COLOR !== undefined) return false;
+  return process.stdout.isTTY ?? false;
+})();
+
+const _wrap = (code: string) =>
+  _useColor ? (s: string) => `\x1b[${code}m${s}\x1b[0m` : (s: string) => s;
+
 const c = {
-  bold:    (s: string) => `\x1b[1m${s}\x1b[0m`,
-  cyan:    (s: string) => `\x1b[36m${s}\x1b[0m`,
-  green:   (s: string) => `\x1b[32m${s}\x1b[0m`,
-  yellow:  (s: string) => `\x1b[33m${s}\x1b[0m`,
-  dim:     (s: string) => `\x1b[2m${s}\x1b[0m`,
-  magenta: (s: string) => `\x1b[35m${s}\x1b[0m`,
-  red:     (s: string) => `\x1b[31m${s}\x1b[0m`,
+  bold:    _wrap('1'),
+  cyan:    _wrap('36'),
+  green:   _wrap('32'),
+  yellow:  _wrap('33'),
+  dim:     _wrap('2'),
+  magenta: _wrap('35'),
+  red:     _wrap('31'),
 };
 
 /** Extract the first meaningful error line from bun stderr, skipping .env diagnostics and version banners. */
@@ -114,6 +123,43 @@ export type ThreatFeedItem = z.infer<typeof ThreatFeedItemSchema>;
 export function validateThreatFeed(data: unknown): ThreatFeedItem[] {
   return ThreatFeedSchema.parse(data);
 }
+
+// ── Package.json schema (minimal — covers fields read by scanProject) ─
+export const PackageJsonSchema = z.object({
+  name: z.string().optional(),
+  version: z.string().optional(),
+  description: z.string().optional(),
+  author: z.union([z.string(), z.object({ name: z.string() })]).optional(),
+  license: z.string().optional(),
+  dependencies: z.record(z.string(), z.string()).optional(),
+  devDependencies: z.record(z.string(), z.string()).optional(),
+  peerDependencies: z.record(z.string(), z.string()).optional(),
+  peerDependenciesMeta: z.record(z.string(), z.object({ optional: z.boolean().optional() })).optional(),
+  engines: z.object({ bun: z.string().optional() }).optional(),
+  workspaces: z.union([z.array(z.string()), z.object({ packages: z.array(z.string()) })]).optional(),
+  scripts: z.record(z.string(), z.string()).optional(),
+  bin: z.union([z.string(), z.record(z.string(), z.string())]).optional(),
+  trustedDependencies: z.array(z.string()).optional(),
+  overrides: z.record(z.string(), z.any()).optional(),
+  resolutions: z.record(z.string(), z.any()).optional(),
+  repository: z.union([z.string(), z.object({ url: z.string() })]).optional(),
+  publishConfig: z.object({ registry: z.string().optional() }).optional(),
+}).passthrough();
+
+// ── Bun info response schema (minimal — covers fields read by infoPackage) ─
+const BunInfoResponseSchema = z.object({
+  name: z.string().optional(),
+  version: z.string().optional(),
+  description: z.string().optional(),
+  license: z.string().optional(),
+  homepage: z.string().optional(),
+  author: z.union([z.string(), z.object({ name: z.string().optional(), email: z.string().optional() })]).optional(),
+  repository: z.union([z.string(), z.object({ url: z.string() })]).optional(),
+  dependencies: z.record(z.string(), z.string()).optional(),
+  devDependencies: z.record(z.string(), z.string()).optional(),
+  "dist-tags": z.record(z.string(), z.string()).optional(),
+  maintainers: z.array(z.union([z.string(), z.object({ name: z.string().optional(), email: z.string().optional() })])).optional(),
+}).passthrough();
 
 // ── Feature flag helpers ──────────────────────────────────────────────
 
@@ -244,87 +290,85 @@ function parseBunOutdated(output: string): OutdatedPkg[] {
 }
 
 // ── Types ──────────────────────────────────────────────────────────────
-export interface ProjectInfo {
-  folder: string;
-  name: string;
-  version: string;
-  deps: number;
-  devDeps: number;
-  totalDeps: number;
-  engine: string;
-  lock: string;
-  bunfig: boolean;
-  workspace: boolean;
-  keyDeps: string[];
-  // detail-mode extras
-  author: string;
-  license: string;
-  description: string;
-  scriptsCount: number;
-  bin: string[];
-  registry: string;
-  authReady: boolean;
-  hasNpmrc: boolean;
-  hasBinDir: boolean;
-  scopes: string[];
-  resilient: boolean;
-  hasPkg: boolean;
-  // bunfig [install] settings
-  frozenLockfile: boolean;
-  dryRun: boolean;              // install.dryRun (default: false)
-  production: boolean;
-  exact: boolean;
-  installOptional: boolean;     // install.optional (default: true)
-  installDev: boolean;          // install.dev (default: true)
-  installAuto: string;          // install.auto: "auto" | "force" | "disable" | "fallback" | "-"
-  linker: string;               // "hoisted" | "isolated" | "-"
-  configVersion: number;        // lockfile configVersion: 0 | 1 | -1 (unknown/binary)
-  backend: string;              // "clonefile" | "hardlink" | "symlink" | "copyfile" | "-"
-  minimumReleaseAge: number;    // install.minimumReleaseAge (seconds) | 0 = not set
-  minimumReleaseAgeExcludes: string[]; // install.minimumReleaseAgeExcludes
-  saveTextLockfile: boolean;
-  cacheDisabled: boolean;
-  cacheDir: string;             // "-" = not set
-  cacheDisableManifest: boolean; // install.cache.disableManifest (default: false)
-  globalDir: string;            // install.globalDir | "-"
-  globalBinDir: string;         // install.globalBinDir | "-"
-  hasCa: boolean;               // install.ca or install.cafile configured
-  lockfileSave: boolean;        // install.lockfile.save (default: true)
-  lockfilePrint: string;        // install.lockfile.print: "yarn" | "-"
-  installSecurityScanner: string;      // install.security.scanner | "-" = not set
-  linkWorkspacePackages: boolean;
-  noVerify: boolean;            // skip integrity verification
-  verbose: boolean;             // debug logging
-  silent: boolean;              // no logging
-  concurrentScripts: number;    // 0 = not set, default cpu×2
-  networkConcurrency: number;   // 0 = not set, default 48
-  targetCpu: string;            // cross-platform override: arm64, x64, etc. | "-"
-  targetOs: string;             // cross-platform override: linux, darwin, win32, etc. | "-"
-  overrides: string[];          // package.json "overrides" keys (npm-style)
-  resolutions: string[];        // package.json "resolutions" keys (yarn-style)
-  trustedDeps: string[];         // lifecycle-script-allowed packages
-  repo: string;                  // GitHub URL (normalized) | "-"
-  repoSource: string;            // "pkg" | "git" | "-"
-  repoOwner: string;             // GitHub username or org | "-"
-  repoHost: string;              // "github.com" etc. | "-"
-  envFiles: string[];             // .env files found (.env, .env.local, .env.production, etc.)
-  projectTz: string;              // TZ value from .env files | "-"
-  projectDnsTtl: string;          // BUN_CONFIG_DNS_TIME_TO_LIVE_SECONDS from .env | "-"
-  bunfigEnvRefs: string[];        // $VAR / ${VAR} references in bunfig.toml
-  peerDeps: string[];              // peerDependencies keys
-  peerDepsMeta: string[];          // peerDependenciesMeta keys marked optional
-  installPeer: boolean;            // bunfig [install] peer = true (default: true)
-  // bunfig [run] settings
-  runShell: string;                // run.shell: "system" | "bun" | "-"
-  runBun: boolean;                 // run.bun: auto alias node → bun
-  runSilent: boolean;              // run.silent: suppress "Running..." output
-  // bunfig [debug] settings
-  debugEditor: string;             // debug.editor | "-"
-  hasTests: boolean;              // pkg.scripts.test exists
-  nativeDeps: string[];           // trustedDeps matching NATIVE_PATTERN
-  workspacesList: string[];       // pkg.workspaces array entries
-  lockHash: string;               // wyhash of lockfile content | "-"
-}
+export const ProjectInfoSchema = z.object({
+  folder: z.string(),
+  name: z.string(),
+  version: z.string(),
+  deps: z.number(),
+  devDeps: z.number(),
+  totalDeps: z.number(),
+  engine: z.string(),
+  lock: z.string(),
+  bunfig: z.boolean(),
+  workspace: z.boolean(),
+  keyDeps: z.array(z.string()),
+  author: z.string(),
+  license: z.string(),
+  description: z.string(),
+  scriptsCount: z.number(),
+  bin: z.array(z.string()),
+  registry: z.string(),
+  authReady: z.boolean(),
+  hasNpmrc: z.boolean(),
+  hasBinDir: z.boolean(),
+  scopes: z.array(z.string()),
+  resilient: z.boolean(),
+  hasPkg: z.boolean(),
+  frozenLockfile: z.boolean(),
+  dryRun: z.boolean(),
+  production: z.boolean(),
+  exact: z.boolean(),
+  installOptional: z.boolean(),
+  installDev: z.boolean(),
+  installAuto: z.string(),
+  linker: z.string(),
+  configVersion: z.number(),
+  backend: z.string(),
+  minimumReleaseAge: z.number(),
+  minimumReleaseAgeExcludes: z.array(z.string()),
+  saveTextLockfile: z.boolean(),
+  cacheDisabled: z.boolean(),
+  cacheDir: z.string(),
+  cacheDisableManifest: z.boolean(),
+  globalDir: z.string(),
+  globalBinDir: z.string(),
+  hasCa: z.boolean(),
+  lockfileSave: z.boolean(),
+  lockfilePrint: z.string(),
+  installSecurityScanner: z.string(),
+  linkWorkspacePackages: z.boolean(),
+  noVerify: z.boolean(),
+  verbose: z.boolean(),
+  silent: z.boolean(),
+  concurrentScripts: z.number(),
+  networkConcurrency: z.number(),
+  targetCpu: z.string(),
+  targetOs: z.string(),
+  overrides: z.array(z.string()),
+  resolutions: z.array(z.string()),
+  trustedDeps: z.array(z.string()),
+  repo: z.string(),
+  repoSource: z.string(),
+  repoOwner: z.string(),
+  repoHost: z.string(),
+  envFiles: z.array(z.string()),
+  projectTz: z.string(),
+  projectDnsTtl: z.string(),
+  bunfigEnvRefs: z.array(z.string()),
+  peerDeps: z.array(z.string()),
+  peerDepsMeta: z.array(z.string()),
+  installPeer: z.boolean(),
+  runShell: z.string(),
+  runBun: z.boolean(),
+  runSilent: z.boolean(),
+  debugEditor: z.string(),
+  hasTests: z.boolean(),
+  nativeDeps: z.array(z.string()),
+  workspacesList: z.array(z.string()),
+  lockHash: z.string(),
+});
+
+export type ProjectInfo = z.infer<typeof ProjectInfoSchema>;
 
 // ── Accepted install.auto values ──────────────────────────────────────
 const VALID_AUTO = new Set(["auto", "force", "disable", "fallback"]);
@@ -432,17 +476,27 @@ const BUN_DEFAULT_TRUSTED = new Set([
 const PROJECTS_ROOT = Bun.env.BUN_PLATFORM_HOME ?? "/Users/nolarose/Projects";
 
 // ── Xref types ────────────────────────────────────────────────────────
-type XrefEntry = { folder: string; bunDefault: string[]; explicit: string[]; blocked: string[]; lockHash?: string };
+export const XrefEntrySchema = z.object({
+  folder: z.string(),
+  bunDefault: z.array(z.string()),
+  explicit: z.array(z.string()),
+  blocked: z.array(z.string()),
+  lockHash: z.string().optional(),
+});
 
-interface XrefSnapshot {
-  timestamp: string;
-  date: string;
-  tz: string;
-  tzOverride: boolean;
-  projects: XrefEntry[];
-  totalBunDefault: number;
-  totalProjects: number;
-}
+export type XrefEntry = z.infer<typeof XrefEntrySchema>;
+
+export const XrefSnapshotSchema = z.object({
+  timestamp: z.string(),
+  date: z.string(),
+  tz: z.string(),
+  tzOverride: z.boolean(),
+  projects: z.array(XrefEntrySchema),
+  totalBunDefault: z.number(),
+  totalProjects: z.number(),
+});
+
+export type XrefSnapshot = z.infer<typeof XrefSnapshotSchema>;
 
 const SNAPSHOT_DIR = `${import.meta.dir}/.audit`;
 const SNAPSHOT_PATH = `${SNAPSHOT_DIR}/xref-snapshot.json`;
@@ -469,7 +523,8 @@ async function loadXrefSnapshot(path?: string): Promise<XrefSnapshot | null> {
   const file = Bun.file(path ?? SNAPSHOT_PATH);
   if (!(await file.exists())) return null;
   try {
-    return JSON.parse(await file.text()) as XrefSnapshot;
+    const raw = JSON.parse(await file.text());
+    return XrefSnapshotSchema.parse(raw);
   } catch {
     return null;
   }
@@ -629,78 +684,81 @@ export async function scanProject(dir: string): Promise<ProjectInfo> {
   };
 
   // package.json
-  let pkg: any = null;
+  let pkg: z.infer<typeof PackageJsonSchema> | null = null;
   const pkgFile = Bun.file(`${dir}/package.json`);
   if (await pkgFile.exists()) {
     try {
-      pkg = await pkgFile.json();
-      base.hasPkg = true;
-      base.name = pkg.name ?? folder;
-      base.version = pkg.version ?? "-";
+      const parsed = PackageJsonSchema.safeParse(await pkgFile.json());
+      if (parsed.success) {
+        pkg = parsed.data;
+        base.hasPkg = true;
+        base.name = pkg.name ?? folder;
+        base.version = pkg.version ?? "-";
 
-      const depsObj = pkg.dependencies ?? {};
-      const devObj = pkg.devDependencies ?? {};
-      base.deps = Object.keys(depsObj).length;
-      base.devDeps = Object.keys(devObj).length;
-      base.totalDeps = base.deps + base.devDeps;
+        const depsObj = pkg.dependencies ?? {};
+        const devObj = pkg.devDependencies ?? {};
+        base.deps = Object.keys(depsObj).length;
+        base.devDeps = Object.keys(devObj).length;
+        base.totalDeps = base.deps + base.devDeps;
 
-      base.engine = pkg.engines?.bun ?? "-";
-      base.workspace = Array.isArray(pkg.workspaces) || (typeof pkg.workspaces === "object" && pkg.workspaces !== null);
-      base.author = typeof pkg.author === "string" ? pkg.author : pkg.author?.name ?? "-";
-      base.license = pkg.license ?? "-";
-      base.description = pkg.description ?? "-";
-      base.scriptsCount = pkg.scripts ? Object.keys(pkg.scripts).length : 0;
-      base.hasTests = !!(pkg.scripts?.test);
+        base.engine = pkg.engines?.bun ?? "-";
+        base.workspace = Array.isArray(pkg.workspaces) || (typeof pkg.workspaces === "object" && pkg.workspaces !== null);
+        base.author = typeof pkg.author === "string" ? pkg.author : pkg.author?.name ?? "-";
+        base.license = pkg.license ?? "-";
+        base.description = pkg.description ?? "-";
+        base.scriptsCount = pkg.scripts ? Object.keys(pkg.scripts).length : 0;
+        base.hasTests = !!(pkg.scripts?.test);
 
-      // workspaces list
-      if (Array.isArray(pkg.workspaces)) {
-        base.workspacesList = pkg.workspaces;
-      } else if (pkg.workspaces && typeof pkg.workspaces === "object" && Array.isArray(pkg.workspaces.packages)) {
-        base.workspacesList = pkg.workspaces.packages;
-      }
+        // workspaces list
+        if (Array.isArray(pkg.workspaces)) {
+          base.workspacesList = pkg.workspaces;
+        } else if (pkg.workspaces && typeof pkg.workspaces === "object" && Array.isArray(pkg.workspaces.packages)) {
+          base.workspacesList = pkg.workspaces.packages;
+        }
 
-      // bin field: string → single name, object → keys
-      if (typeof pkg.bin === "string") {
-        base.bin = [base.name.split("/").pop()!];
-      } else if (pkg.bin && typeof pkg.bin === "object") {
-        base.bin = Object.keys(pkg.bin);
-      }
+        // bin field: string → single name, object → keys
+        if (typeof pkg.bin === "string") {
+          base.bin = [base.name.split("/").pop()!];
+        } else if (pkg.bin && typeof pkg.bin === "object") {
+          base.bin = Object.keys(pkg.bin);
+        }
 
-      const allDeps = { ...depsObj, ...devObj };
-      base.keyDeps = Object.keys(allDeps).filter((d) => NOTABLE.has(d));
+        const allDeps = { ...depsObj, ...devObj };
+        base.keyDeps = Object.keys(allDeps).filter((d) => NOTABLE.has(d));
 
-      // trustedDependencies — packages allowed to run lifecycle scripts
-      if (Array.isArray(pkg.trustedDependencies)) {
-        base.trustedDeps = pkg.trustedDependencies;
-        base.nativeDeps = base.trustedDeps.filter((name) => NATIVE_PATTERN.test(name));
-      }
+        // trustedDependencies — packages allowed to run lifecycle scripts
+        if (Array.isArray(pkg.trustedDependencies)) {
+          base.trustedDeps = pkg.trustedDependencies;
+          base.nativeDeps = base.trustedDeps.filter((name) => NATIVE_PATTERN.test(name));
+        }
 
-      // overrides (npm) / resolutions (yarn) — metadependency version pins
-      if (pkg.overrides && typeof pkg.overrides === "object") {
-        base.overrides = Object.keys(pkg.overrides);
-      }
-      if (pkg.resolutions && typeof pkg.resolutions === "object") {
-        base.resolutions = Object.keys(pkg.resolutions);
-      }
+        // overrides (npm) / resolutions (yarn) — metadependency version pins
+        if (pkg.overrides && typeof pkg.overrides === "object") {
+          base.overrides = Object.keys(pkg.overrides);
+        }
+        if (pkg.resolutions && typeof pkg.resolutions === "object") {
+          base.resolutions = Object.keys(pkg.resolutions);
+        }
 
-      // peerDependencies / peerDependenciesMeta
-      if (pkg.peerDependencies && typeof pkg.peerDependencies === "object") {
-        base.peerDeps = Object.keys(pkg.peerDependencies);
-      }
-      if (pkg.peerDependenciesMeta && typeof pkg.peerDependenciesMeta === "object") {
-        base.peerDepsMeta = Object.entries(pkg.peerDependenciesMeta)
-          .filter(([, v]: [string, any]) => v?.optional === true)
-          .map(([k]) => k);
-      }
+        // peerDependencies / peerDependenciesMeta
+        if (pkg.peerDependencies && typeof pkg.peerDependencies === "object") {
+          base.peerDeps = Object.keys(pkg.peerDependencies);
+        }
+        if (pkg.peerDependenciesMeta && typeof pkg.peerDependenciesMeta === "object") {
+          base.peerDepsMeta = Object.entries(pkg.peerDependenciesMeta)
+            .filter(([, v]) => v?.optional === true)
+            .map(([k]) => k);
+        }
 
-      // repository — string shorthand or { url } object
-      const rawRepo = typeof pkg.repository === "string" ? pkg.repository : pkg.repository?.url;
-      if (rawRepo) {
-        base.repo = normalizeGitUrl(rawRepo);
-        base.repoSource = "pkg";
-        const meta = parseRepoMeta(base.repo);
-        base.repoHost = meta.host;
-        base.repoOwner = meta.owner;
+        // repository — string shorthand or { url } object
+        const rawRepo = typeof pkg.repository === "string" ? pkg.repository : pkg.repository?.url;
+        if (rawRepo) {
+          base.repo = normalizeGitUrl(rawRepo);
+          base.repoSource = "pkg";
+          const meta = parseRepoMeta(base.repo);
+          base.repoHost = meta.host;
+          base.repoOwner = meta.owner;
+        }
       }
     } catch {
       // malformed JSON — leave defaults
@@ -931,11 +989,19 @@ export async function scanProject(dir: string): Promise<ProjectInfo> {
 
 // ── IPC worker pool for parallel project scanning ─────────────────────
 
-type IPCToWorker = { type: "scan"; id: number; dir: string } | { type: "shutdown" };
-type IPCFromWorker =
-  | { type: "ready" }
-  | { type: "result"; id: number; data: ProjectInfo }
-  | { type: "error"; id: number; error: string };
+const IPCToWorkerSchema = z.discriminatedUnion("type", [
+  z.object({ type: z.literal("scan"), id: z.number(), dir: z.string() }),
+  z.object({ type: z.literal("shutdown") }),
+]);
+
+const IPCFromWorkerSchema = z.discriminatedUnion("type", [
+  z.object({ type: z.literal("ready") }),
+  z.object({ type: z.literal("result"), id: z.number(), data: ProjectInfoSchema }),
+  z.object({ type: z.literal("error"), id: z.number(), error: z.string() }),
+]);
+
+type IPCToWorker = z.infer<typeof IPCToWorkerSchema>;
+type IPCFromWorker = z.infer<typeof IPCFromWorkerSchema>;
 
 async function scanProjectsViaIPC(dirs: string[]): Promise<ProjectInfo[]> {
   const cpuCount = availableParallelism();
@@ -985,7 +1051,8 @@ async function scanProjectsViaIPC(dirs: string[]): Promise<ProjectInfo[]> {
       if (msg.type === "ready") {
         dispatch(worker);
       } else if (msg.type === "result") {
-        results.set(msg.id, msg.data);
+        const validated = ProjectInfoSchema.parse(msg.data);
+        results.set(msg.id, validated);
         if (results.size === dirs.length) finish();
         else dispatch(worker);
       } else if (msg.type === "error") {
@@ -1011,7 +1078,7 @@ async function scanProjectsViaIPC(dirs: string[]): Promise<ProjectInfo[]> {
       const worker = Bun.spawn(["bun", workerPath], {
         stdio: ["ignore", "ignore", "ignore"],
         ipc(message) {
-          handleMessage(worker, message as IPCFromWorker);
+          handleMessage(worker, IPCFromWorkerSchema.parse(message));
         },
       });
       workers.push(worker);
@@ -1041,7 +1108,9 @@ function matchFilter(p: ProjectInfo, pattern: string): boolean {
   const negated = cleaned.startsWith("!");
   const field = negated ? cleaned.slice(1) : cleaned;
   if (BOOL_FIELDS.has(field)) {
-    const val = field === "scoped" ? p.scopes.length > 0 : !!(p as any)[field];
+    const val = field === "scoped"
+      ? p.scopes.length > 0
+      : !!(p[field as keyof ProjectInfo]);
     return negated ? !val : val;
   }
 
@@ -1228,7 +1297,7 @@ function renderTable(projects: ProjectInfo[], detail: boolean) {
 
   const headers = columnDefs.map((col) => col.header);
   if (detail) headers.push("Author", "License", "Description");
-  console.log(Bun.inspect.table(rows, headers, { colors: true }));
+  console.log(Bun.inspect.table(rows, headers, { colors: _useColor }));
 }
 
 // ── Sort comparator ────────────────────────────────────────────────────
@@ -1330,6 +1399,8 @@ async function renderAudit(projects: ProjectInfo[]) {
     { key: "BUN_CONFIG_MAX_HTTP_REQUESTS",   desc: "max concurrent HTTP requests (default 256)" },
     { key: "BUN_CONFIG_VERBOSE_FETCH",       desc: "log fetch requests (curl | true | false)", recommend: "curl" },
     { key: "BUN_CONFIG_DNS_TIME_TO_LIVE_SECONDS", desc: "DNS cache TTL in seconds (default 30)", recommend: "5" },
+    { key: "BUN_CONFIG_NETWORK_CONCURRENCY", desc: "parallel HTTP requests during install (default 48)", recommend: "256" },
+    { key: "BUN_CONFIG_CONCURRENT_SCRIPTS",  desc: "parallel lifecycle script execution (default cpu×2)", recommend: "16" },
     { key: "BUN_OPTIONS",                    desc: "prepend CLI args to every bun invocation" },
     // Caching & temp
     { key: "BUN_RUNTIME_TRANSPILER_CACHE_PATH", desc: "transpiler cache dir (\"\" or \"0\" = disabled)", recommend: "${BUN_PLATFORM_HOME}/.bun-cache" },
@@ -1379,7 +1450,7 @@ async function renderAudit(projects: ProjectInfo[]) {
     { Stat: "errors",             Value: dnsStats.errors,             Description: "failed lookups" },
     { Stat: "totalCount",         Value: dnsStats.totalCount,         Description: "total requests" },
   ];
-  console.log(Bun.inspect.table(dnsRows, { colors: true }));
+  console.log(Bun.inspect.table(dnsRows, { colors: _useColor }));
   const hitRate = dnsStats.totalCount > 0
     ? ((dnsStats.cacheHitsCompleted + dnsStats.cacheHitsInflight) / dnsStats.totalCount * 100).toFixed(0)
     : null;
@@ -2192,6 +2263,18 @@ async function fixDns(projects: ProjectInfo[], dryRun: boolean) {
         // scoped registries
         for (const m of npmrc.matchAll(/^@\w+:registry\s*=\s*(.+)$/gm)) {
           try { domains.add(new URL(m[1].trim()).hostname); } catch {}
+        }
+      } catch {}
+    }
+
+    // Extract from package.json publishConfig
+    const pkgFile = Bun.file(`${dir}/package.json`);
+    if (await pkgFile.exists()) {
+      try {
+        const pkg = await pkgFile.json();
+        const pubReg = pkg.publishConfig?.registry;
+        if (pubReg) {
+          try { domains.add(new URL(pubReg).hostname); } catch {}
         }
       } catch {}
     }
@@ -3170,11 +3253,11 @@ async function infoPackage(pkg: string, projects: ProjectInfo[], jsonOut: boolea
     process.exit(1);
   }
 
-  let meta: any;
+  let meta: z.infer<typeof BunInfoResponseSchema>;
   try {
-    meta = JSON.parse(stdout);
+    meta = BunInfoResponseSchema.parse(JSON.parse(stdout));
   } catch {
-    // Fallback: non-JSON output, just print it
+    // Fallback: non-JSON or unexpected shape, just print it
     console.log(stdout);
     return;
   }
@@ -3509,28 +3592,71 @@ ${c.bold("  Other:")}
     const templatePath = `${PROJECTS_ROOT}/scanner/.env.template`;
     const file = Bun.file(templatePath);
     let content = (await file.exists()) ? await file.text() : "";
-    const recommendation = [
-      "# Recommended Bun runtime settings (for performance & consistency)",
-      "# Centralize transpiler cache — git-ignored, speeds up repeated scans/builds",
-      "# BUN_RUNTIME_TRANSPILER_CACHE_PATH=${BUN_PLATFORM_HOME}/.bun-cache",
-      "",
-      "# Debug network requests — prints fetch/http as curl commands",
-      "# BUN_CONFIG_VERBOSE_FETCH=curl",
-      "",
-      "# Disable telemetry & crash reports (privacy best practice)",
-      "# DO_NOT_TRACK=1",
-    ].join("\n");
+    const dryRun = !!flags["dry-run"];
+    let changed = false;
 
-    if (!content.includes("BUN_RUNTIME_TRANSPILER_CACHE_PATH")) {
-      content += "\n\n" + recommendation + "\n";
+    // Promote transpiler cache from commented recommendation to active value
+    if (content.includes("# BUN_RUNTIME_TRANSPILER_CACHE_PATH=")) {
+      content = content.replace(
+        /# BUN_RUNTIME_TRANSPILER_CACHE_PATH=.*/,
+        "BUN_RUNTIME_TRANSPILER_CACHE_PATH=${BUN_PLATFORM_HOME}/.bun-cache"
+      );
+      changed = true;
+      if (dryRun) {
+        console.log(`  ${c.yellow("DRY")}  BUN_RUNTIME_TRANSPILER_CACHE_PATH=\${BUN_PLATFORM_HOME}/.bun-cache (promoted from comment)`);
+      } else {
+        console.log(`  ${c.green("FIX")}  BUN_RUNTIME_TRANSPILER_CACHE_PATH=\${BUN_PLATFORM_HOME}/.bun-cache (promoted from comment)`);
+      }
+    } else if (!content.includes("BUN_RUNTIME_TRANSPILER_CACHE_PATH")) {
+      content += "\nBUN_RUNTIME_TRANSPILER_CACHE_PATH=${BUN_PLATFORM_HOME}/.bun-cache\n";
+      changed = true;
+      if (dryRun) {
+        console.log(`  ${c.yellow("DRY")}  BUN_RUNTIME_TRANSPILER_CACHE_PATH=\${BUN_PLATFORM_HOME}/.bun-cache`);
+      } else {
+        console.log(`  ${c.green("FIX")}  BUN_RUNTIME_TRANSPILER_CACHE_PATH=\${BUN_PLATFORM_HOME}/.bun-cache`);
+      }
+    } else {
+      console.log(c.dim("  SKIP  BUN_RUNTIME_TRANSPILER_CACHE_PATH already set"));
+    }
+
+    // Add concurrency tuning vars
+    for (const [key, val, desc] of [
+      ["BUN_CONFIG_NETWORK_CONCURRENCY", "256", "parallel HTTP requests during install"],
+      ["BUN_CONFIG_CONCURRENT_SCRIPTS", "16", "parallel lifecycle script execution"],
+    ] as const) {
+      if (!content.includes(key)) {
+        content += `\n${key}=${val}\n`;
+        changed = true;
+        if (dryRun) {
+          console.log(`  ${c.yellow("DRY")}  ${key}=${val}  (${desc})`);
+        } else {
+          console.log(`  ${c.green("FIX")}  ${key}=${val}  (${desc})`);
+        }
+      } else {
+        console.log(c.dim(`  SKIP  ${key} already present`));
+      }
+    }
+
+    // Add verbose fetch and telemetry recommendations if missing
+    if (!content.includes("BUN_CONFIG_VERBOSE_FETCH")) {
+      content += "\n# Debug network requests — prints fetch/http as curl commands\n# BUN_CONFIG_VERBOSE_FETCH=curl\n";
+      changed = true;
+    }
+    if (!content.includes("DO_NOT_TRACK")) {
+      content += "\n# Disable telemetry & crash reports (privacy best practice)\n# DO_NOT_TRACK=1\n";
+      changed = true;
+    }
+
+    if (changed && !dryRun) {
       await Bun.write(templatePath, content);
       console.log(c.green("  Updated .env.template with runtime recommendations"));
+    } else if (changed && dryRun) {
+      console.log(c.dim("  Run without --dry-run to apply."));
     } else {
-      console.log(c.dim("  .env.template already contains runtime recommendations — no changes"));
+      console.log(c.dim("  .env.template already contains all runtime recommendations — no changes"));
     }
     return;
   }
-
   // ── Fix DNS mode ───────────────────────────────────────────────
   if (flags["fix-dns"]) {
     await fixDns(projects, !!flags["dry-run"]);
@@ -3706,7 +3832,7 @@ ${c.bold("  Other:")}
       "Linker Δ": "0",
       Drift: hasDrift ? "DETECTED" : "none",
     };
-    console.log(Bun.inspect.table([footer], { colors: true }));
+    console.log(Bun.inspect.table([footer], { colors: _useColor }));
 
     if (!flags["no-auto-snapshot"]) {
       await saveXrefSnapshot(currentXref, projects.filter((p) => p.hasPkg).length);
