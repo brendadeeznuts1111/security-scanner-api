@@ -2,7 +2,7 @@
 
 Multi-project scanner for Bun monorepos. Scans `$BUN_PLATFORM_HOME` for all projects and reports on dependencies, configuration, security posture, and infrastructure consistency.
 
-Built with [Bun](https://bun.sh). Based on Bun's [Security Scanner API](https://bun.com/docs/install/security-scanner-api) and the official [security-scanner-template](https://github.com/oven-sh/security-scanner-template).
+Built with [Bun](https://bun.sh). Based on Bun's [Security Scanner API](https://bun.sh/docs/install/security-scanner-api) and the official [security-scanner-template](https://github.com/oven-sh/security-scanner-template).
 
 ## Quick start
 
@@ -97,7 +97,7 @@ The scanner audits whether each project has a security scanner configured via `b
 scanner = "@acme/bun-security-scanner"
 ```
 
-See [Bun Security Scanner API docs](https://bun.com/docs/install/security-scanner-api) for the full `Bun.Security.Scanner` interface.
+See [Bun Security Scanner API docs](https://bun.sh/docs/install/security-scanner-api) for the full `Bun.Security.Scanner` interface.
 
 ### Error handling
 
@@ -119,7 +119,7 @@ const ThreatFeedItemSchema = z.object({
 
 ### Useful Bun APIs
 
-- [`Bun.hash`](https://bun.com/docs/runtime/hashing#bun-hash) — non-cryptographic hashing for package integrity checks. Accepts string, TypedArray, DataView, ArrayBuffer, or SharedArrayBuffer. Optional seed parameter (use BigInt for seeds above `Number.MAX_SAFE_INTEGER`):
+- [`Bun.hash`](https://bun.sh/docs/runtime/hashing#bun-hash) — non-cryptographic hashing for package integrity checks. Accepts string, TypedArray, DataView, ArrayBuffer, or SharedArrayBuffer. Optional seed parameter (use BigInt for seeds above `Number.MAX_SAFE_INTEGER`):
 
   ```typescript
   Bun.hash("some data here");          // 11562320457524636935n (wyhash, 64-bit)
@@ -144,7 +144,7 @@ const ThreatFeedItemSchema = z.object({
 
   The scanner uses `Bun.hash.wyhash()` for lockfile content hashing (drift detection).
 
-- [`Bun.semver`](https://bun.com/docs/api/semver) — native semver operations, no external dependencies:
+- [`Bun.semver`](https://bun.sh/docs/api/semver) — native semver operations, no external dependencies:
 
   ```typescript
   // Vulnerability range matching (used by isVulnerable)
@@ -158,8 +158,8 @@ const ThreatFeedItemSchema = z.object({
   Bun.semver.order("1.0.0", "2.0.0");  // -1
   Bun.semver.order("1.0.0", "1.0.0");  //  0
   ```
-- [`Bun.file`](https://bun.com/docs/api/file-io) — efficient file I/O for reading local threat databases
-- [`dns.getCacheStats()`](https://bun.com/docs/runtime/networking/dns) — DNS cache statistics for monitoring prefetch effectiveness
+- [`Bun.file`](https://bun.sh/docs/api/file-io) — efficient file I/O for reading local threat databases
+- [`dns.getCacheStats()`](https://bun.sh/docs/runtime/networking/dns) — DNS cache statistics for monitoring prefetch effectiveness
 
 ## What the audit covers
 
@@ -188,12 +188,28 @@ The lockHash skip optimization reuses cached entries for unchanged projects when
 
 ## Architecture
 
-| File | Purpose |
-|------|---------|
-| `scan.ts` | Main scanner (~3700 lines) — CLI, scanning, audit, fix commands |
-| `scan-columns.ts` | Column definitions for table output |
-| `scan-worker.ts` | IPC worker for parallel project scanning |
-| `scan.test.ts` | 93 tests covering utilities, Bun.semver, Zod validation, Bun.hash, TZ, DNS TTL, and subprocess verification |
+```
+scanner/
+├── scan.ts                              Main scanner — CLI, scanning, audit, fix commands
+├── scan-worker.ts                       IPC worker for parallel project scanning
+├── scan-columns.ts                      Column definitions for table output
+├── scan.test.ts                         Main test suite
+├── cli/renderers/
+│   ├── bun-api-matrix.ts                Bun API catalog (~155 entries) with doc links
+│   ├── doc-cross-reference.ts           API provenance, relationships, search keywords
+│   ├── packument-matrix.ts              npm packument metadata rendering
+│   ├── process-management.ts            Bun.spawn wrapper and process utilities
+│   ├── stream-converters.ts             Native stream converter catalog
+│   ├── stream-converters-enhanced.ts    Advanced stream processing patterns
+│   └── stream-converter-scanner.ts      Userland → native migration scanner
+├── lib/
+│   └── packument-zero-trust.ts          Zero-trust npm registry resolver
+└── benchmarks/
+    ├── bun-api-snapshot.ts              Dynamic API surface scanner with delta tracking
+    ├── bench-native.ts                  Native API replacement benchmarks
+    ├── bench-rss.ts                     RSS helper benchmarks
+    └── team-init.ts                     Team member profile initialization
+```
 
 ### Key internals
 
@@ -204,30 +220,58 @@ The lockHash skip optimization reuses cached entries for unchanged projects when
 - **Notable deps detection**: Flags frameworks and key libraries (React, Next, Elysia, Hono, Prisma, etc.)
 - **Native deps detection**: Pattern-matches `node-gyp`, `napi`, `prebuild`, `ffi-napi`, etc.
 - **Trusted deps audit**: Cross-references against Bun's built-in default trusted list
+- **Bun API catalog**: 155+ APIs cataloged with category, stability status, surface area, and doc URLs (`BUN_DOC_BASE = "https://bun.sh/docs"`)
+- **Doc cross-reference**: API provenance (which Bun version introduced each API), related API graph, search keywords, and performance annotations
+- **Stream converters**: Catalog of 11 native `Bun.readableStreamTo*` converters with spawn pipeline mappings and a migration scanner for replacing userland patterns
+- **Process management**: Ergonomic wrapper around `Bun.spawn`/`Bun.spawnSync` with stream routing, IPC config, and environment management
+- **Zero-trust packument resolver**: Schema-validated npm registry queries via `lib/packument-zero-trust.ts`
 
 ## Tests
 
 ```bash
-bun test scan.test.ts
+bun test                    # all 11 test files
+bun test scan.test.ts       # main scanner tests only
 ```
 
-93 tests across 11 describe blocks:
+404 tests, 6692 expects across 11 files:
 
-- `isFeatureFlagActive` — Bun feature flag semantics (`"1"`, `"true"` only)
-- `classifyEnvFlag` — `DISABLE_`/`SKIP_` env var classification
-- `effectiveLinker` — linker strategy resolution (bunfig > configVersion > default)
-- `platformHelp` — cross-platform CLI hints (win32/mise.exe)
-- `shouldWarnMise` — mise startup warning logic
-- `parseTzFromEnv` — TZ extraction from .env contents (quoting, comments, multi-file)
-- `parseEnvVar` — generic env var parsing (DNS TTL, DO_NOT_TRACK, etc.)
-- `Bun.semver integration` — `semverBumpType` (patch/minor/major classification), `isVulnerable` (range matching via `Bun.semver.satisfies`), `semverCompare` (ordering via `Bun.semver.order`)
-- `ThreatFeedItemSchema` — Zod validation for threat feed responses (all categories, nullable fields, invalid data rejection)
-- `Bun API integration` — all 12 hash algorithms, 5 input types (string, TypedArray, ArrayBuffer, DataView, SharedArrayBuffer), BigInt seed precision, `dns.getCacheStats()`, full ProjectInfo field coverage
-- `timezone subprocess` — real `Bun.spawn` tests verifying `--tz` flag, `getHours()` across zones, snapshot cross-timezone consistency
+| File | Coverage |
+|------|----------|
+| `scan.test.ts` | Feature flags, env classification, linker resolution, platform hints, TZ parsing, Bun.semver, Zod schemas, Bun.hash (12 algorithms), DNS cache, timezone subprocess |
+| `bun-api-matrix.test.ts` | API catalog integrity, category filtering, doc URL validation, scanner usage set |
+| `doc-cross-reference.test.ts` | Provenance data, related API graph, search keywords, perf annotations |
+| `packument-matrix.test.ts` | Byte formatting, person formatting, renderer output |
+| `stream-converter.test.ts` | Converter catalog, output types, spawn pipeline routes |
+| `stream-converters.test.ts` | Enhanced converters, migration weights, matrix entries |
+| `stream-converter-scanner.test.ts` | Detection patterns, rule matching, migration suggestions |
+| `stream-converters-shell.test.ts` | Shell-based stream conversion patterns |
+| `bun-process.test.ts` | Process management, stream config |
+| `packument-zero-trust.test.ts` | Registry resolver, schema validation |
+| `bun-native-api.test.ts` | Native API behavior and signature validation |
+
+## Code quality
+
+ESLint with `@typescript-eslint/naming-convention` enforces a 5-rule naming convention across all `*.ts` files:
+
+| Rule | Scope | Format |
+|------|-------|--------|
+| 1 | Exported `SCREAMING_SNAKE_CASE` constants | Must start with `BUN_` |
+| 2 | Exported non-SCREAMING constants | `PascalCase` or `camelCase` |
+| 3 | Non-exported constants | `UPPER_CASE`, `camelCase`, or `PascalCase` |
+| 4 | Exported classes and enums | `PascalCase` |
+| 5 | Exported functions | `camelCase` |
+
+```bash
+bun run lint                # check
+bun run lint:fix            # auto-fix
+```
+
+A husky pre-commit hook runs `bun lint` on every commit.
 
 ## References
 
-- [Bun Security Scanner API docs](https://bun.com/docs/install/security-scanner-api)
+- [Bun Security Scanner API](https://bun.sh/docs/install/security-scanner-api)
+- [Bun API Reference](https://bun.sh/docs/runtime/bun-apis)
 - [oven-sh/security-scanner-template](https://github.com/oven-sh/security-scanner-template)
 
 ## License
