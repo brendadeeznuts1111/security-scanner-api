@@ -438,9 +438,16 @@ describe("Bun API integration (scanner uses Bun.hash, Bun.file, Bun.semver, dns)
     expect(typeof fromArrayBuffer).toBe("bigint");
     expect(typeof fromDataView).toBe("bigint");
 
+    // SharedArrayBuffer
+    const shared = new SharedArrayBuffer(4);
+    new Uint8Array(shared).set(arr);
+    const fromShared = Bun.hash(shared);
+    expect(typeof fromShared).toBe("bigint");
+
     // Same binary input via different views → same hash
     expect(fromTypedArray).toBe(fromArrayBuffer);
     expect(fromArrayBuffer).toBe(fromDataView);
+    expect(fromDataView).toBe(fromShared);
 
     // String vs binary → different hash
     expect(fromString).not.toBe(fromTypedArray);
