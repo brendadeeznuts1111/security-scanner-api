@@ -1,48 +1,51 @@
 {
-  "name": "security-scanner-api",
-  "description": "Multi-project security scanner for Bun monorepos",
-  "version": "1.0.0",
-  "author": "brendadeeznuts1111",
-  "license": "MIT",
-  "type": "module",
-  "exports": {
-    "./package.json": "./package.json",
-    ".": "./scan.ts"
-  },
-  "scripts": {
-    "scan": "bun run scan.ts",
-    "test": "bun test scan.test.ts",
-    "audit": "bun run scan.ts --audit",
-    "test:ci": "bun test --no-env-file scan.test.ts",
-    "scan:ci": "bun run --no-env-file scan.ts",
-    "lint": "bunx eslint .",
-    "lint:fix": "bunx eslint . --fix",
-    "bench:init": "bun run benchmarks/team-init.ts",
-    "profile:cpu": "bun run --smol --cpu-prof --cpu-prof-dir .audit --cpu-prof-name cpu-profile scan.ts --audit",
-    "profile:cpu:md": "bun run --smol --cpu-prof --cpu-prof-md --cpu-prof-dir .audit --cpu-prof-name cpu-profile scan.ts --audit",
-    "profile:heap": "bun run --smol --heap-prof --heap-prof-dir .audit --heap-prof-name heap-profile scan.ts --audit",
-    "profile:heap:md": "bun run --smol --heap-prof-md --heap-prof-dir .audit --heap-prof-name heap-profile scan.ts --audit",
-    "prepare": "husky"
-  },
-  "keywords": [
-    "bun",
-    "security",
-    "scanner",
-    "monorepo",
-    "audit"
-  ],
-  "repository": {
-    "type": "git",
-    "url": "git+https://github.com/brendadeeznuts1111/security-scanner-api.git"
-  },
-  "devDependencies": {
-    "@types/bun": "latest",
-    "eslint": "^9.39.2",
-    "husky": "^9.1.7",
-    "typescript": "^5.9.2",
-    "typescript-eslint": "^8.54.0"
-  },
-  "dependencies": {
-    "zod": "^4.3.6"
-  }
+	"name": "security-scanner-api",
+	"description": "Multi-project security scanner for Bun monorepos",
+	"version": "1.0.0",
+	"author": "brendadeeznuts1111",
+	"license": "MIT",
+	"type": "module",
+	"exports": {
+		"./package.json": "./package.json",
+		".": "./scan.ts"
+	},
+	"scripts": {
+		"scan": "bun run scan.ts",
+		"test": "bun test scan.test.ts",
+		"audit": "bun run scan.ts --audit",
+		"test:ci": "bun test --no-env-file scan.test.ts",
+		"scan:ci": "bun run --no-env-file scan.ts",
+		"format": "prettier --write .",
+		"format:check": "prettier --check .",
+		"lint": "bunx eslint .",
+		"lint:fix": "bunx eslint . --fix",
+		"bench:init": "bun run benchmarks/team-init.ts",
+		"profile:cpu": "bun run --smol --cpu-prof --cpu-prof-dir .audit --cpu-prof-name cpu-profile scan.ts --audit",
+		"profile:cpu:md": "bun run --smol --cpu-prof --cpu-prof-md --cpu-prof-dir .audit --cpu-prof-name cpu-profile scan.ts --audit",
+		"profile:heap": "bun run --smol --heap-prof --heap-prof-dir .audit --heap-prof-name heap-profile scan.ts --audit",
+		"profile:heap:md": "bun run --smol --heap-prof-md --heap-prof-dir .audit --heap-prof-name heap-profile scan.ts --audit",
+		"prepare": "husky"
+	},
+	"keywords": [
+		"bun",
+		"security",
+		"scanner",
+		"monorepo",
+		"audit"
+	],
+	"repository": {
+		"type": "git",
+		"url": "git+https://github.com/brendadeeznuts1111/security-scanner-api.git"
+	},
+	"devDependencies": {
+		"@types/bun": "latest",
+		"eslint": "^9.39.2",
+		"husky": "^9.1.7",
+		"prettier": "^3.8.1",
+		"typescript": "^5.9.2",
+		"typescript-eslint": "^8.54.0"
+	},
+	"dependencies": {
+		"zod": "^4.3.6"
+	}
 }

@@ -2,17 +2,17 @@
 
 ## Matrices
 
-| Matrix | Path | Description |
-|--------|------|-------------|
+| Matrix           | Path                              | Description                                                     |
+| ---------------- | --------------------------------- | --------------------------------------------------------------- |
 | Packument Matrix | cli/renderers/packument-matrix.ts | npm packument metadata — identity, distribution, deps, security |
-| Bun API Matrix | cli/renderers/bun-api-matrix.ts | Official Bun API catalog with doc links and scanner usage |
+| Bun API Matrix   | cli/renderers/bun-api-matrix.ts   | Official Bun API catalog with doc links and scanner usage       |
 
 ## Documentation
 
-| Document | Description |
-|----------|-------------|
-| README.md | Project overview, CLI modes, filters, architecture |
-| CONTRIBUTING.md | Setup, code style, commit conventions |
+| Document        | Description                                        |
+| --------------- | -------------------------------------------------- |
+| README.md       | Project overview, CLI modes, filters, architecture |
+| CONTRIBUTING.md | Setup, code style, commit conventions              |
 
 ## See Also
 
