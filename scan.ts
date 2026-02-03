@@ -157,12 +157,12 @@ export const PackageJsonSchema = z.object({
 // Covers the standard npm registry packument fields returned by `bun info`.
 // See: https://bun.com/docs/pm/cli/install#npm-registry-metadata
 
-const NpmPersonSchema = z.union([
+export const NpmPersonSchema = z.union([
   z.string(),
   z.object({ name: z.string().optional(), email: z.string().optional(), url: z.string().optional() }),
 ]);
 
-const NpmDistSchema = z.object({
+export const NpmDistSchema = z.object({
   shasum: z.string().optional(),
   tarball: z.string().optional(),
   fileCount: z.number().optional(),
@@ -228,6 +228,8 @@ export const BunInfoResponseSchema = z.object({
 }).passthrough();
 
 export type NpmPackument = z.infer<typeof BunInfoResponseSchema>;
+export type NpmPerson = z.infer<typeof NpmPersonSchema>;
+export type NpmDist = z.infer<typeof NpmDistSchema>;
 
 // ── Feature flag helpers ──────────────────────────────────────────────
 
@@ -576,7 +578,8 @@ const BUN_DEFAULT_TRUSTED = new Set([
 const PROJECTS_ROOT = Bun.env.BUN_PLATFORM_HOME ?? "/Users/nolarose/Projects";
 
 // ── Keychain (Bun.secrets) ────────────────────────────────────────────
-const KEYCHAIN_SERVICE = "bun-scanner";
+const KEYCHAIN_SERVICE = "dev.bun.scanner";
+const KEYCHAIN_SERVICE_LEGACY = "bun-scanner";
 const KEYCHAIN_TOKEN_NAMES = ["FW_REGISTRY_TOKEN", "REGISTRY_TOKEN"] as const;
 const _keychainLoadedTokens = new Set<string>();
 
@@ -604,9 +607,9 @@ function classifyKeychainError(err: unknown): KeychainErr {
 }
 
 // -- security CLI fallback (macOS) -----------------------------------------
-async function securityGet(name: string): Promise<KeychainResult<string | null>> {
+async function securityGet(name: string, service = KEYCHAIN_SERVICE): Promise<KeychainResult<string | null>> {
   try {
-    const proc = Bun.spawn(["security", "find-generic-password", "-s", KEYCHAIN_SERVICE, "-a", name, "-w"], {
+    const proc = Bun.spawn(["security", "find-generic-password", "-s", service, "-a", name, "-w"], {
       stdout: "pipe", stderr: "pipe",
     });
     const exitCode = await proc.exited;
@@ -623,14 +626,14 @@ async function securityGet(name: string): Promise<KeychainResult<string | null>>
   }
 }
 
-async function securitySet(name: string, value: string): Promise<KeychainResult<void>> {
+async function securitySet(name: string, value: string, service = KEYCHAIN_SERVICE): Promise<KeychainResult<void>> {
   try {
     // delete first so add doesn't fail with "duplicate item"
-    const del = Bun.spawn(["security", "delete-generic-password", "-s", KEYCHAIN_SERVICE, "-a", name], {
+    const del = Bun.spawn(["security", "delete-generic-password", "-s", service, "-a", name], {
       stdout: "ignore", stderr: "ignore",
     });
     await del.exited;
-    const proc = Bun.spawn(["security", "add-generic-password", "-s", KEYCHAIN_SERVICE, "-a", name, "-w", value, "-U"], {
+    const proc = Bun.spawn(["security", "add-generic-password", "-s", service, "-a", name, "-w", value, "-U"], {
       stdout: "pipe", stderr: "pipe",
     });
     const exitCode = await proc.exited;
@@ -644,9 +647,9 @@ async function securitySet(name: string, value: string): Promise<KeychainResult<
   }
 }
 
-async function securityDelete(name: string): Promise<KeychainResult<boolean>> {
+async function securityDelete(name: string, service = KEYCHAIN_SERVICE): Promise<KeychainResult<boolean>> {
   try {
-    const proc = Bun.spawn(["security", "delete-generic-password", "-s", KEYCHAIN_SERVICE, "-a", name], {
+    const proc = Bun.spawn(["security", "delete-generic-password", "-s", service, "-a", name], {
       stdout: "pipe", stderr: "pipe",
     });
     const exitCode = await proc.exited;
@@ -709,7 +712,24 @@ function tokenSource(name: string): "env" | "keychain" | "not set" {
   return "not set";
 }
 
+async function migrateKeychainService(): Promise<void> {
+  if (process.platform !== "darwin") return;
+  for (const name of KEYCHAIN_TOKEN_NAMES) {
+    const legacy = await securityGet(name, KEYCHAIN_SERVICE_LEGACY);
+    if (!legacy.ok || !legacy.value) continue;
+    const current = await securityGet(name, KEYCHAIN_SERVICE);
+    if (current.ok && current.value) {
+      // already exists under new service — just clean up legacy
+      await securityDelete(name, KEYCHAIN_SERVICE_LEGACY);
+      continue;
+    }
+    const stored = await securitySet(name, legacy.value, KEYCHAIN_SERVICE);
+    if (stored.ok) await securityDelete(name, KEYCHAIN_SERVICE_LEGACY);
+  }
+}
+
 async function autoLoadKeychainTokens(): Promise<void> {
+  await migrateKeychainService();
   for (const name of KEYCHAIN_TOKEN_NAMES) {
     if (Bun.env[name]) continue;
     const result = await keychainGet(name);
@@ -3738,7 +3758,7 @@ ${c.bold("  Other:")}
         NO_API:         "upgrade Bun to a version with keychain support, or export the token as an env var instead",
         ACCESS_DENIED:  "unlock your keychain or grant terminal access in System Settings → Privacy → Security",
         NOT_FOUND:      "unexpected; the item should have been created",
-        OS_ERROR:       "check Console.app for keychain errors, or try: security add-generic-password -a $USER -s bun-scanner -w",
+        OS_ERROR:       "check Console.app for keychain errors, or try: security add-generic-password -a $USER -s dev.bun.scanner -w",
       };
       console.error(`${c.red("error:")} failed to store ${c.cyan(name)}: ${result.reason}`);
       console.error(`  ${c.dim("hint:")} ${hints[result.code]}`);
