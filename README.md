@@ -79,6 +79,26 @@ bun run scan.ts --fix-dns-ttl --dry-run  # preview changes
 bun run scan.ts --fix-dns-ttl            # apply
 ```
 
+## Advisory levels
+
+Bun's security scanner API uses two advisory levels to control installation behavior:
+
+| Level | Behavior | Examples |
+|-------|----------|----------|
+| **Fatal** (`fatal`) | Installation stops immediately | malware, token stealers, backdoors, critical vulnerabilities |
+| **Warning** (`warn`) | User prompted in TTY, auto-cancelled in non-TTY | protestware, adware, deprecated packages |
+
+All advisories are displayed to the user regardless of level. If the `scan` function throws, installation is cancelled as a defensive precaution.
+
+The scanner audits whether each project has a security scanner configured via `bunfig.toml`:
+
+```toml
+[install]
+security-scanner = "@acme/bun"
+```
+
+See [Bun Security Scanner API docs](https://bun.com/docs/install/security-scanner-api) for the full `Bun.Security.Scanner` interface.
+
 ## What the audit covers
 
 - **Metadata**: author, license, description, engines.bun, repository
