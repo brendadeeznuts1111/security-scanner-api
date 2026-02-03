@@ -1,0 +1,32 @@
+{
+  "name": "security-scanner-api",
+  "description": "Multi-project security scanner for Bun monorepos",
+  "version": "1.0.0",
+  "author": "brendadeeznuts1111",
+  "license": "MIT",
+  "type": "module",
+  "exports": {
+    "./package.json": "./package.json",
+    ".": "./scan.ts"
+  },
+  "scripts": {
+    "scan": "bun run scan.ts",
+    "test": "bun test scan.test.ts",
+    "audit": "bun run scan.ts --audit"
+  },
+  "keywords": [
+    "bun",
+    "security",
+    "scanner",
+    "monorepo",
+    "audit"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/brendadeeznuts1111/security-scanner-api.git"
+  },
+  "devDependencies": {
+    "@types/bun": "latest",
+    "typescript": "^5.9.2"
+  }
+}
