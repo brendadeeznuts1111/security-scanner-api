@@ -96,44 +96,70 @@ for (const def of API_DEFS) {
 // Sort by call count descending
 results.sort((a, b) => b.calls - a.calls);
 
-// ── Bun.spawn option analysis ───────────────────────────────────────
-// Ref: https://bun.sh/docs/api/spawn#spawn-options
+// ── Bun.spawn full surface analysis ─────────────────────────────────
+// Ref: https://bun.sh/docs/api/spawn
+// Type ref: SpawnOptions.OptionsObject, Subprocess, SyncSubprocess
 
-type SpawnOptionKey = "cwd" | "env" | "stdout" | "stderr" | "stdin" | "stdio" | "ipc" | "onExit";
+// All SpawnOptions.OptionsObject keys from Bun type definitions
+const SPAWN_OPTION_KEYS = [
+  "cwd", "env", "stdio", "stdin", "stdout", "stderr",
+  "onExit", "ipc", "serialization",
+  "windowsHide", "windowsVerbatimArguments", "argv0",
+  "signal", "timeout", "killSignal", "maxBuffer", "terminal",
+] as const;
+type SpawnOptionKey = (typeof SPAWN_OPTION_KEYS)[number];
+
+// All Subprocess instance members from Bun type definitions
+const SUBPROCESS_MEMBERS = [
+  // properties
+  "pid", "exited", "exitCode", "signalCode", "killed", "stdin", "stdout", "stderr", "readable", "terminal",
+  // methods
+  "kill", "ref", "unref", "send", "disconnect", "resourceUsage",
+] as const;
+type SubprocessMember = (typeof SUBPROCESS_MEMBERS)[number];
+
+// SyncSubprocess members
+const SYNC_SUBPROCESS_MEMBERS = [
+  "stdout", "stderr", "exitCode", "success", "resourceUsage", "signalCode", "exitedDueToTimeout", "pid",
+] as const;
 
 interface SpawnSite {
   line: number;
   cmd: string;
-  options: Record<SpawnOptionKey, string | boolean>;
+  sync: boolean;
+  options: Partial<Record<SpawnOptionKey, string>>;
+  subprocessAccess: Partial<Record<SubprocessMember, number[]>>;
 }
 
-function analyzeSpawnSites(): { sites: SpawnSite[]; optionUsage: Record<string, number> } {
+function analyzeSpawnSites() {
   const sites: SpawnSite[] = [];
   const optionUsage: Record<string, number> = {};
-  const spawnRe = /Bun\.spawn(?:Sync)?\s*\(/g;
-  const optionKeys: SpawnOptionKey[] = ["cwd", "env", "stdout", "stderr", "stdin", "stdio", "ipc", "onExit"];
+  const memberUsage: Record<string, number> = {};
+  const spawnRe = /Bun\.spawn(Sync)?\s*\(/g;
 
   for (let i = 0; i < lines.length; i++) {
     spawnRe.lastIndex = 0;
-    if (!spawnRe.test(lines[i])) continue;
+    const spawnMatch = spawnRe.exec(lines[i]);
+    if (!spawnMatch) continue;
 
-    // Gather context: the spawn call + next several lines to capture the options object
-    const context = lines.slice(i, Math.min(i + 8, lines.length)).join("\n");
+    const isSync = !!spawnMatch[1];
 
-    // Extract command array (first arg)
-    const cmdMatch = context.match(/Bun\.spawn(?:Sync)?\s*\(\s*\[([^\]]*)\]/);
-    const cmd = cmdMatch ? cmdMatch[1].replace(/"/g, "").replace(/,\s*/g, " ").trim() : "unknown";
+    // Gather context: spawn call + surrounding lines for options and subprocess access
+    const optContext = lines.slice(i, Math.min(i + 10, lines.length)).join("\n");
+    // Look ahead further for subprocess member access (proc.exited, proc.kill, etc.)
+    const accessContext = lines.slice(i, Math.min(i + 20, lines.length)).join("\n");
 
-    // Detect which options are present
-    // Handles both `key: value` and shorthand method syntax `key(args) {`
-    const opts: Record<SpawnOptionKey, string | boolean> = {} as any;
-    for (const key of optionKeys) {
-      // key: value or key = value
-      const kvRe = new RegExp(`\\b${key}\\s*[:=]\\s*([^,}\\n]+)`);
-      // shorthand method: key(args) {
-      const methodRe = new RegExp(`\\b${key}\\s*\\(`);
-      const kvMatch = context.match(kvRe);
-      const methodMatch = context.match(methodRe);
+    // Extract command array
+    const cmdMatch = optContext.match(/Bun\.spawn(?:Sync)?\s*\(\s*\[([^\]]*)\]/);
+    const cmd = cmdMatch ? cmdMatch[1].replace(/"/g, "").replace(/,\s*/g, " ").trim() : "dynamic";
+
+    // Detect spawn options (key: value and shorthand method syntax)
+    const opts: Partial<Record<SpawnOptionKey, string>> = {};
+    for (const key of SPAWN_OPTION_KEYS) {
+      const kvRe = new RegExp(`\\b${key}\\s*:\\s*([^,}\\n]+)`);
+      const methodRe = new RegExp(`\\b${key}\\s*\\([^)]*\\)\\s*\\{`);
+      const kvMatch = optContext.match(kvRe);
+      const methodMatch = optContext.match(methodRe);
       if (kvMatch) {
         opts[key] = kvMatch[1].trim().replace(/,\s*$/, "");
         optionUsage[key] = (optionUsage[key] ?? 0) + 1;
@@ -143,10 +169,57 @@ function analyzeSpawnSites(): { sites: SpawnSite[]; optionUsage: Record<string, 
       }
     }
 
-    sites.push({ line: i + 1, cmd, options: opts });
+    // Detect subprocess member access (proc.exited, proc.kill(), proc.pid, etc.)
+    const members = isSync ? SYNC_SUBPROCESS_MEMBERS : SUBPROCESS_MEMBERS;
+    const subprocessAccess: Partial<Record<SubprocessMember, number[]>> = {};
+    // Find the variable name assigned to the spawn result
+    const varMatch = lines[i].match(/(?:const|let|var)\s+(\w+)\s*=/);
+    if (varMatch) {
+      const varName = varMatch[1];
+      for (const member of members) {
+        const memberLines: number[] = [];
+        // Search from spawn line forward for varName.member access
+        for (let j = i; j < Math.min(i + 30, lines.length); j++) {
+          const memberRe = new RegExp(`\\b${varName}\\.${member}\\b`);
+          if (memberRe.test(lines[j])) {
+            memberLines.push(j + 1);
+          }
+        }
+        if (memberLines.length > 0) {
+          subprocessAccess[member as SubprocessMember] = memberLines;
+          memberUsage[member] = (memberUsage[member] ?? 0) + memberLines.length;
+        }
+      }
+    }
+
+    sites.push({ line: i + 1, cmd, sync: isSync, options: opts, subprocessAccess });
   }
 
-  return { sites, optionUsage };
+  // Build full surface coverage
+  const optionCoverage: Record<string, { used: boolean; sites: number }> = {};
+  for (const key of SPAWN_OPTION_KEYS) {
+    optionCoverage[key] = { used: (optionUsage[key] ?? 0) > 0, sites: optionUsage[key] ?? 0 };
+  }
+  const memberCoverage: Record<string, { used: boolean; sites: number }> = {};
+  for (const member of SUBPROCESS_MEMBERS) {
+    memberCoverage[member] = { used: (memberUsage[member] ?? 0) > 0, sites: memberUsage[member] ?? 0 };
+  }
+
+  return {
+    sites,
+    optionUsage,
+    memberUsage,
+    optionCoverage,
+    memberCoverage,
+    totals: {
+      spawn_sites: sites.filter((s) => !s.sync).length,
+      spawnSync_sites: sites.filter((s) => s.sync).length,
+      options_used: Object.keys(optionUsage).length,
+      options_available: SPAWN_OPTION_KEYS.length,
+      members_used: Object.keys(memberUsage).length,
+      members_available: SUBPROCESS_MEMBERS.length,
+    },
+  };
 }
 
 const spawnAnalysis = analyzeSpawnSites();
@@ -203,9 +276,11 @@ const snapshot = {
   },
   apis: results,
   spawn: {
-    doc: "https://bun.sh/docs/api/spawn#spawn-options",
-    total_sites: spawnAnalysis.sites.length,
-    option_usage: spawnAnalysis.optionUsage,
+    doc: "https://bun.sh/docs/api/spawn",
+    type_ref: "https://bun.sh/docs/runtime/child-process#reference",
+    totals: spawnAnalysis.totals,
+    option_coverage: spawnAnalysis.optionCoverage,
+    member_coverage: spawnAnalysis.memberCoverage,
     sites: spawnAnalysis.sites,
   },
   summary: {

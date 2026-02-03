@@ -1,5 +1,5 @@
 {
-  "generated": "2026-02-03T14:13:35.845Z",
+  "generated": "2026-02-03T14:20:34.679Z",
   "file": "scan.ts",
   "fileSizeBytes": 198029,
   "fileLines": 4360,
@@ -370,150 +370,442 @@
     }
   ],
   "spawn": {
-    "doc": "https://bun.sh/docs/api/spawn#spawn-options",
-    "total_sites": 16,
-    "option_usage": {
-      "stdout": 15,
-      "stderr": 15,
-      "cwd": 8,
-      "stdio": 1,
-      "ipc": 1
+    "doc": "https://bun.sh/docs/api/spawn",
+    "type_ref": "https://bun.sh/docs/runtime/child-process#reference",
+    "totals": {
+      "spawn_sites": 15,
+      "spawnSync_sites": 1,
+      "options_used": 5,
+      "options_available": 17,
+      "members_used": 4,
+      "members_available": 16
+    },
+    "option_coverage": {
+      "cwd": {
+        "used": true,
+        "sites": 8
+      },
+      "env": {
+        "used": false,
+        "sites": 0
+      },
+      "stdio": {
+        "used": true,
+        "sites": 1
+      },
+      "stdin": {
+        "used": false,
+        "sites": 0
+      },
+      "stdout": {
+        "used": true,
+        "sites": 15
+      },
+      "stderr": {
+        "used": true,
+        "sites": 15
+      },
+      "onExit": {
+        "used": false,
+        "sites": 0
+      },
+      "ipc": {
+        "used": true,
+        "sites": 1
+      },
+      "serialization": {
+        "used": false,
+        "sites": 0
+      },
+      "windowsHide": {
+        "used": false,
+        "sites": 0
+      },
+      "windowsVerbatimArguments": {
+        "used": false,
+        "sites": 0
+      },
+      "argv0": {
+        "used": false,
+        "sites": 0
+      },
+      "signal": {
+        "used": false,
+        "sites": 0
+      },
+      "timeout": {
+        "used": false,
+        "sites": 0
+      },
+      "killSignal": {
+        "used": false,
+        "sites": 0
+      },
+      "maxBuffer": {
+        "used": false,
+        "sites": 0
+      },
+      "terminal": {
+        "used": false,
+        "sites": 0
+      }
+    },
+    "member_coverage": {
+      "pid": {
+        "used": false,
+        "sites": 0
+      },
+      "exited": {
+        "used": true,
+        "sites": 19
+      },
+      "exitCode": {
+        "used": false,
+        "sites": 0
+      },
+      "signalCode": {
+        "used": false,
+        "sites": 0
+      },
+      "killed": {
+        "used": false,
+        "sites": 0
+      },
+      "stdin": {
+        "used": false,
+        "sites": 0
+      },
+      "stdout": {
+        "used": true,
+        "sites": 10
+      },
+      "stderr": {
+        "used": true,
+        "sites": 12
+      },
+      "readable": {
+        "used": false,
+        "sites": 0
+      },
+      "terminal": {
+        "used": false,
+        "sites": 0
+      },
+      "kill": {
+        "used": false,
+        "sites": 0
+      },
+      "ref": {
+        "used": false,
+        "sites": 0
+      },
+      "unref": {
+        "used": false,
+        "sites": 0
+      },
+      "send": {
+        "used": false,
+        "sites": 0
+      },
+      "disconnect": {
+        "used": false,
+        "sites": 0
+      },
+      "resourceUsage": {
+        "used": false,
+        "sites": 0
+      }
     },
     "sites": [
       {
         "line": 657,
         "cmd": "security find-generic-password -s service -a name -w",
+        "sync": false,
         "options": {
           "stdout": "\"pipe\"",
           "stderr": "\"pipe\""
+        },
+        "subprocessAccess": {
+          "exited": [
+            660,
+            684
+          ],
+          "stdout": [
+            667
+          ],
+          "stderr": [
+            662,
+            686
+          ]
         }
       },
       {
         "line": 677,
         "cmd": "security delete-generic-password -s service -a name",
+        "sync": false,
         "options": {
           "stdout": "\"ignore\"",
           "stderr": "\"ignore\""
+        },
+        "subprocessAccess": {
+          "exited": [
+            680
+          ]
         }
       },
       {
         "line": 681,
         "cmd": "security add-generic-password -s service -a name -w value -U -j `stored:${new Date().toISOString()}`",
+        "sync": false,
         "options": {
           "stdout": "\"pipe\"",
           "stderr": "\"pipe\""
+        },
+        "subprocessAccess": {
+          "exited": [
+            684,
+            700
+          ],
+          "stderr": [
+            686,
+            702
+          ]
         }
       },
       {
         "line": 697,
         "cmd": "security delete-generic-password -s service -a name",
+        "sync": false,
         "options": {
           "stdout": "\"pipe\"",
           "stderr": "\"pipe\""
+        },
+        "subprocessAccess": {
+          "exited": [
+            700,
+            719
+          ],
+          "stdout": [
+            720
+          ],
+          "stderr": [
+            702
+          ]
         }
       },
       {
         "line": 716,
         "cmd": "security find-generic-password -s service -a name",
+        "sync": false,
         "options": {
           "stdout": "\"pipe\"",
           "stderr": "\"pipe\""
+        },
+        "subprocessAccess": {
+          "exited": [
+            719
+          ],
+          "stdout": [
+            720
+          ]
         }
       },
       {
         "line": 1112,
         "cmd": "git remote get-url origin",
+        "sync": true,
         "options": {
           "cwd": "dir",
           "stdout": "\"pipe\"",
           "stderr": "\"ignore\""
+        },
+        "subprocessAccess": {
+          "stdout": [
+            1114
+          ],
+          "success": [
+            1113
+          ]
         }
       },
       {
         "line": 1419,
         "cmd": "bun workerPath",
+        "sync": false,
         "options": {
           "stdio": "[\"ignore\"",
           "ipc": "function"
-        }
+        },
+        "subprocessAccess": {}
       },
       {
         "line": 2506,
         "cmd": "bun install",
+        "sync": false,
         "options": {
           "cwd": "dir",
           "stdout": "\"pipe\"",
           "stderr": "\"pipe\""
+        },
+        "subprocessAccess": {
+          "exited": [
+            2507
+          ],
+          "stderr": [
+            2511
+          ]
         }
       },
       {
         "line": 3115,
-        "cmd": "unknown",
+        "cmd": "dynamic",
+        "sync": false,
         "options": {
           "cwd": "dir",
           "stdout": "\"pipe\"",
           "stderr": "\"pipe\""
+        },
+        "subprocessAccess": {
+          "exited": [
+            3116
+          ],
+          "stdout": [
+            3117
+          ]
         }
       },
       {
         "line": 3229,
-        "cmd": "unknown",
+        "cmd": "dynamic",
+        "sync": false,
         "options": {
           "cwd": "dir",
           "stdout": "\"pipe\"",
           "stderr": "\"pipe\""
+        },
+        "subprocessAccess": {
+          "exited": [
+            3230
+          ],
+          "stdout": [
+            3231
+          ]
         }
       },
       {
         "line": 3356,
         "cmd": "bun outdated",
+        "sync": false,
         "options": {
           "cwd": "dir",
           "stdout": "\"pipe\"",
           "stderr": "\"pipe\""
+        },
+        "subprocessAccess": {
+          "exited": [
+            3357
+          ],
+          "stdout": [
+            3358
+          ]
         }
       },
       {
         "line": 3501,
-        "cmd": "unknown",
+        "cmd": "dynamic",
+        "sync": false,
         "options": {
           "cwd": "dir",
           "stdout": "\"inherit\"",
           "stderr": "\"pipe\""
+        },
+        "subprocessAccess": {
+          "exited": [
+            3502,
+            3530
+          ],
+          "stderr": [
+            3504
+          ]
         }
       },
       {
         "line": 3529,
-        "cmd": "unknown",
+        "cmd": "dynamic",
+        "sync": false,
         "options": {
           "cwd": "dir",
           "stdout": "\"inherit\"",
           "stderr": "\"pipe\""
+        },
+        "subprocessAccess": {
+          "exited": [
+            3530
+          ],
+          "stderr": [
+            3543
+          ]
         }
       },
       {
         "line": 3582,
         "cmd": "bun install --frozen-lockfile",
+        "sync": false,
         "options": {
           "cwd": "dir",
           "stdout": "\"pipe\"",
           "stderr": "\"pipe\""
+        },
+        "subprocessAccess": {
+          "exited": [
+            3583
+          ],
+          "stderr": [
+            3584
+          ]
         }
       },
       {
         "line": 3627,
-        "cmd": "unknown",
+        "cmd": "dynamic",
+        "sync": false,
         "options": {
           "stdout": "\"pipe\"",
           "stderr": "\"pipe\""
+        },
+        "subprocessAccess": {
+          "exited": [
+            3628,
+            3640
+          ],
+          "stdout": [
+            3629,
+            3641
+          ],
+          "stderr": [
+            3630,
+            3642
+          ]
         }
       },
       {
         "line": 3639,
         "cmd": "bun info pkg --json",
+        "sync": false,
         "options": {
           "stdout": "\"pipe\"",
           "stderr": "\"pipe\""
+        },
+        "subprocessAccess": {
+          "exited": [
+            3640
+          ],
+          "stdout": [
+            3641
+          ],
+          "stderr": [
+            3642
+          ]
         }
       }
     ]
