@@ -11,6 +11,7 @@ export default tseslint.config(
       ".bun/**",
       "coverage/**",
       "**/*.test.ts",
+      "benchmarks/**",
     ],
     languageOptions: {
       parser: tseslint.parser,

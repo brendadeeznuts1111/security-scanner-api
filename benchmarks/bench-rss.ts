@@ -8,77 +8,15 @@
  */
 
 import { escapeXml, decodeXmlEntities, generateRssXml, parseRssFeed } from "../scan.ts";
+import {
+  ITERATIONS, bench, fmt, opsPerSec, throughput,
+  useColor, S, o, R, B, D,
+  sectionHeader, checkPass,
+  loadMemberProfile, renderSummary,
+} from "./bench-core.ts";
 
-const ITERATIONS = 10_000;
-const WARMUP = 500;
-
-// ── Harness ─────────────────────────────────────────────────────────
-
-function bench(_label: string, fn: () => void): { mean_ns: number; min_ns: number; max_ns: number } {
-  for (let i = 0; i < WARMUP; i++) fn();
-
-  let min = Number.POSITIVE_INFINITY;
-  let max = 0;
-  let total = 0;
-
-  for (let i = 0; i < ITERATIONS; i++) {
-    const start = Bun.nanoseconds();
-    fn();
-    const elapsed = Bun.nanoseconds() - start;
-    total += elapsed;
-    if (elapsed < min) min = elapsed;
-    if (elapsed > max) max = elapsed;
-  }
-
-  return { mean_ns: total / ITERATIONS, min_ns: min, max_ns: max };
-}
-
-const fmt = (ns: number) =>
-  ns < 1_000 ? `${ns.toFixed(1)} ns` : ns < 1_000_000 ? `${(ns / 1_000).toFixed(2)} µs` : `${(ns / 1_000_000).toFixed(2)} ms`;
-
-const opsPerSec = (mean_ns: number) => {
-  const ops = 1_000_000_000 / mean_ns;
-  if (ops >= 1_000_000) return `${(ops / 1_000_000).toFixed(2)}M`;
-  if (ops >= 1_000) return `${(ops / 1_000).toFixed(1)}K`;
-  return `${ops.toFixed(0)}`;
-};
-
-const throughput = (mean_ns: number, bytes: number) => {
-  const bytesPerSec = (bytes / mean_ns) * 1_000_000_000;
-  if (bytesPerSec >= 1_073_741_824) return `${(bytesPerSec / 1_073_741_824).toFixed(2)} GB/s`;
-  if (bytesPerSec >= 1_048_576) return `${(bytesPerSec / 1_048_576).toFixed(1)} MB/s`;
-  if (bytesPerSec >= 1_024) return `${(bytesPerSec / 1_024).toFixed(1)} KB/s`;
-  return `${bytesPerSec.toFixed(0)} B/s`;
-};
-
-// ── ANSI styles ─────────────────────────────────────────────────────
-
-const S = {
-  reset:  "\x1b[0m",
-  bold:   "\x1b[1m",
-  dim:    "\x1b[2m",
-  red:    "\x1b[31m",
-  green:  "\x1b[32m",
-  yellow: "\x1b[33m",
-  cyan:   "\x1b[36m",
-} as const;
-
-const useColor = Bun.enableANSIColors && !!process.stdout.isTTY;
-const o = (s: string) => useColor ? s : "";
-const R = o(S.reset);
-const B = o(S.bold);
-const D = o(S.dim);
-
-function sectionHeader(title: string, ref?: string) {
-  console.log(`\n${B}═══ ${title} ═══${R}`);
-  if (ref) console.log(`${D}   ref: ${ref}${R}\n`);
-  else console.log();
-}
-
-function checkPass(label: string, ok: boolean, detail?: string) {
-  const icon = ok ? `${o(S.green)}pass${R}` : `${o(S.red)}FAIL${R}`;
-  console.log(`  ${label}: ${icon}${detail ? ` ${D}(${detail})${R}` : ""}`);
-}
+// ── Total runtime tracking ───────────────────────────────────────────
+const t0 = Bun.nanoseconds();
 
 // ── Test data ───────────────────────────────────────────────────────
 
@@ -385,57 +323,7 @@ sectionHeader("8. round-trip: generateRssXml → parseRssFeed", "Full cycle: gen
   console.log(Bun.inspect.table(rows, ["Items", "Bytes", "Gen (mean)", "Parse (mean)", "Total (mean)", "ops/s", "Per item"], { colors: useColor }));
 }
 
-// ── Load team member profile ─────────────────────────────────────────
-
-interface MemberProfile {
-  name: string;
-  timezone: string;
-  notes: string;
-  machine: { os: string; arch: string; cpu: string; cores: number; memory_gb: number; bun_version: string };
-}
-interface BenchRC { team: Record<string, MemberProfile> }
-
-let memberKey: string | null = null;
-let memberProfile: MemberProfile | null = null;
-
-{
-  const benchrcPath = `${import.meta.dir}/../.benchrc.json`;
-  const benchrcFile = Bun.file(benchrcPath);
-  if (await benchrcFile.exists()) {
-    try {
-      const rc = (await benchrcFile.json()) as BenchRC;
-      const user = Bun.env.USER ?? "";
-      if (rc.team?.[user]) {
-        memberKey = user;
-        memberProfile = rc.team[user];
-      }
-    } catch {}
-  }
-}
-
 // ── Summary ─────────────────────────────────────────────────────────
 
-sectionHeader("SUMMARY");
-
-const summaryRows: { Field: string; Value: string }[] = [
-  { Field: "Iterations", Value: String(ITERATIONS) },
-  { Field: "Warmup", Value: String(WARMUP) },
-  { Field: "Bun version", Value: Bun.version },
-  { Field: "Platform", Value: `${process.platform} ${process.arch}` },
-  { Field: "Timestamp", Value: new Date().toISOString() },
-  { Field: "Timezone", Value: Intl.DateTimeFormat().resolvedOptions().timeZone },
-];
-
-if (memberProfile) {
-  summaryRows.push(
-    { Field: "Member", Value: `${memberKey} (${memberProfile.name})` },
-    { Field: "Machine", Value: `${memberProfile.machine.cpu}, ${memberProfile.machine.cores} cores, ${memberProfile.machine.memory_gb} GB` },
-    { Field: "Timezone (member)", Value: memberProfile.timezone },
-    { Field: "Notes", Value: memberProfile.notes || "(none)" },
-  );
-} else {
-  summaryRows.push({ Field: "Member", Value: "(unknown — run: bun run benchmarks/team-init.ts)" });
-}
-
-// @ts-expect-error Bun.inspect.table accepts options as third arg
-console.log(Bun.inspect.table(summaryRows, ["Field", "Value"], { colors: useColor }));
+const { key: memberKey, profile: memberProfile } = await loadMemberProfile();
+renderSummary({ t0, memberKey, memberProfile });

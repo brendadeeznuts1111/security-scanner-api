@@ -3,7 +3,6 @@
  *
  * Tests the 3 patterns replaced in scan.ts against their userland equivalents,
  * plus Bun.wrapAnsi performance across input sizes and option variants.
- * Uses Bun.nanoseconds() for timing per https://bun.sh/docs/api/utils#bun-nanoseconds
  *
  * Run: bun run benchmarks/bench-native.ts
  *
@@ -12,114 +11,15 @@
  *   - proc.stdout.text(): https://bun.sh/docs/api/spawn#reading-stdout
  *   - Bun.fileURLToPath: https://bun.sh/docs/api/utils#bun-fileurltopath
  *   - Bun.wrapAnsi: https://bun.sh/docs/api/utils#bun-wrapansi
- *   - Bun.color: https://bun.sh/docs/api/utils#bun-color
- *   - Bun.enableANSIColors: https://bun.sh/docs/api/utils#bun-enableansicolors
- *   - Bun.stringWidth: https://bun.sh/docs/api/utils#bun-stringwidth
- *   - Bun.inspect.table: https://bun.sh/docs/api/utils#bun-inspect-table
  *   - Bun.deepEquals: https://bun.sh/docs/api/utils#bun-deepequals
- *   - Bun.nanoseconds: https://bun.sh/docs/api/utils#bun-nanoseconds
  */
 
-const ITERATIONS = 10_000;
-const WARMUP = 500;
-
-// ── Harness ─────────────────────────────────────────────────────────
-
-function bench(label: string, fn: () => void): { mean_ns: number; min_ns: number; max_ns: number } {
-  for (let i = 0; i < WARMUP; i++) fn();
-
-  let min = Number.POSITIVE_INFINITY;
-  let max = 0;
-  let total = 0;
-
-  for (let i = 0; i < ITERATIONS; i++) {
-    const start = Bun.nanoseconds();
-    fn();
-    const elapsed = Bun.nanoseconds() - start;
-    total += elapsed;
-    if (elapsed < min) min = elapsed;
-    if (elapsed > max) max = elapsed;
-  }
-
-  return { mean_ns: total / ITERATIONS, min_ns: min, max_ns: max };
-}
-
-async function benchAsync(
-  label: string,
-  fn: () => Promise<void>,
-  iters = ITERATIONS,
-): Promise<{ mean_ns: number; min_ns: number; max_ns: number }> {
-  for (let i = 0; i < Math.min(WARMUP, iters); i++) await fn();
-
-  let min = Number.POSITIVE_INFINITY;
-  let max = 0;
-  let total = 0;
-
-  for (let i = 0; i < iters; i++) {
-    const start = Bun.nanoseconds();
-    await fn();
-    const elapsed = Bun.nanoseconds() - start;
-    total += elapsed;
-    if (elapsed < min) min = elapsed;
-    if (elapsed > max) max = elapsed;
-  }
-
-  return { mean_ns: total / iters, min_ns: min, max_ns: max };
-}
-
-const fmt = (ns: number) =>
-  ns < 1_000 ? `${ns.toFixed(1)} ns` : ns < 1_000_000 ? `${(ns / 1_000).toFixed(2)} µs` : `${(ns / 1_000_000).toFixed(2)} ms`;
-
-// ── ANSI styles ─────────────────────────────────────────────────────
-
-const S = {
-  reset:  "\x1b[0m",
-  bold:   "\x1b[1m",
-  dim:    "\x1b[2m",
-  red:    Bun.color("red", "ansi-16m") ?? "",
-  green:  Bun.color("green", "ansi-16m") ?? "",
-};
-
-const useColor = Bun.enableANSIColors && !!process.stdout.isTTY;
-const o = (s: string) => useColor ? s : "";
-const R = o(S.reset);
-const B = o(S.bold);
-const D = o(S.dim);
-
-// ── Layout helpers (ANSI-width-aware) ───────────────────────────────
-
-const vw = (s: string): number => Bun.stringWidth(s);
-
-// ── Section header ──────────────────────────────────────────────────
-
-function sectionHeader(title: string, ref?: string) {
-  console.log(`\n${B}═══ ${title} ═══${R}`);
-  if (ref) console.log(`${D}   ref: ${ref}${R}\n`);
-  else console.log();
-}
-
-// ── Ratio coloring (HSL via Bun.color) ───────────────────────────────
-// Maps speedup ratio to HSL hue: 0.5x → red (0°), 1.0x → yellow (60°), 1.5x+ → green (120°)
-
-function ratioColor(ratio: number): string {
-  const clamped = Math.max(0.5, Math.min(ratio, 1.5));
-  const hue = Math.round(((clamped - 0.5) / 1.0) * 120);
-  return o(Bun.color(`hsl(${hue}, 90%, 55%)`, "ansi-16m") ?? "");
-}
-
-function report(label: string, old: ReturnType<typeof bench>, neo: ReturnType<typeof bench>) {
-  const ratio = old.mean_ns / neo.mean_ns;
-  const diff = old.mean_ns - neo.mean_ns;
-  const rows = [
-    { " ": `old (${label})`, Mean: fmt(old.mean_ns), Min: fmt(old.min_ns), Max: fmt(old.max_ns) },
-    { " ": `new (${label})`, Mean: fmt(neo.mean_ns), Min: fmt(neo.min_ns), Max: fmt(neo.max_ns) },
-  ];
-  // @ts-expect-error Bun.inspect.table accepts options as third arg
-  console.log(Bun.inspect.table(rows, [" ", "Mean", "Min", "Max"], { colors: useColor }));
-  const deltaColor = diff > 0 ? o(S.green) : diff < 0 ? o(S.red) : "";
-  const rc = ratioColor(ratio);
-  console.log(`  ${deltaColor}Δ: ${diff > 0 ? "+" : ""}${fmt(diff)}/op  ${rc}ratio: ${ratio.toFixed(2)}x${R}  ${ratio > 1 ? "(new is faster)" : ratio < 1 ? "(old is faster)" : "(equal)"}${R}`);
-}
+import {
+  ITERATIONS, bench, benchAsync, fmt,
+  useColor, S, o, R, B, D, vw,
+  sectionHeader, report,
+  loadMemberProfile, renderSummary,
+} from "./bench-core.ts";
 
 // ── Total runtime tracking ───────────────────────────────────────────
 const t0 = Bun.nanoseconds();
@@ -361,60 +261,7 @@ for (const [name, opts] of optCases) {
 // @ts-expect-error Bun.inspect.table accepts options as third arg
 console.log(Bun.inspect.table(optRows, ["Option", "Mean", "Min"], { colors: useColor }));
 
-// ── Load team member profile ─────────────────────────────────────────
-
-interface MemberProfile {
-  name: string;
-  timezone: string;
-  notes: string;
-  machine: { os: string; arch: string; cpu: string; cores: number; memory_gb: number; bun_version: string };
-}
-interface BenchRC { team: Record<string, MemberProfile> }
-
-let memberKey: string | null = null;
-let memberProfile: MemberProfile | null = null;
-
-{
-  const benchrcPath = `${import.meta.dir}/../.benchrc.json`;
-  const benchrcFile = Bun.file(benchrcPath);
-  if (await benchrcFile.exists()) {
-    try {
-      const rc = (await benchrcFile.json()) as BenchRC;
-      const user = Bun.env.USER ?? "";
-      if (rc.team?.[user]) {
-        memberKey = user;
-        memberProfile = rc.team[user];
-      }
-    } catch {}
-  }
-}
-
 // ── Summary ─────────────────────────────────────────────────────────
 
-sectionHeader("SUMMARY");
-
-const totalRuntime = (Bun.nanoseconds() - t0) / 1_000_000;
-
-const summaryRows: { Field: string; Value: string }[] = [
-  { Field: "Total runtime", Value: `${totalRuntime.toFixed(0)} ms` },
-  { Field: "Iterations", Value: `${ITERATIONS} (sync), 5000 (stream), 100 (subprocess)` },
-  { Field: "Warmup", Value: `${WARMUP}` },
-  { Field: "Bun version", Value: Bun.version },
-  { Field: "Platform", Value: `${process.platform} ${process.arch}` },
-  { Field: "Timestamp", Value: new Date().toISOString() },
-  { Field: "Timezone", Value: Intl.DateTimeFormat().resolvedOptions().timeZone },
-];
-
-if (memberProfile) {
-  summaryRows.push(
-    { Field: "Member", Value: `${memberKey} (${memberProfile.name})` },
-    { Field: "Machine", Value: `${memberProfile.machine.cpu}, ${memberProfile.machine.cores} cores, ${memberProfile.machine.memory_gb} GB` },
-    { Field: "Timezone (member)", Value: memberProfile.timezone },
-    { Field: "Notes", Value: memberProfile.notes || "(none)" },
-  );
-} else {
-  summaryRows.push({ Field: "Member", Value: "(unknown — run: bun run benchmarks/team-init.ts)" });
-}
-
-// @ts-expect-error Bun.inspect.table accepts options as third arg
-console.log(Bun.inspect.table(summaryRows, ["Field", "Value"], { colors: useColor }));
+const { key: memberKey, profile: memberProfile } = await loadMemberProfile();
+renderSummary({ t0, iterLabel: `${ITERATIONS} (sync), 5000 (stream), 100 (subprocess)`, memberKey, memberProfile });
