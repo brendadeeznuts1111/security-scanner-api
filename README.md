@@ -119,9 +119,34 @@ const ThreatFeedItemSchema = z.object({
 
 ### Useful Bun APIs
 
+- [`Bun.hash`](https://bun.com/docs/runtime/hashing#bun-hash) — non-cryptographic hashing for package integrity checks. Accepts string, TypedArray, DataView, ArrayBuffer, or SharedArrayBuffer. Optional seed parameter (use BigInt for seeds above `Number.MAX_SAFE_INTEGER`):
+
+  ```typescript
+  Bun.hash("some data here");          // 11562320457524636935n (wyhash, 64-bit)
+  Bun.hash("some data here", 1234);    // 15724820720172937558n (seeded)
+
+  const arr = new Uint8Array([1, 2, 3, 4]);
+  Bun.hash(arr);                       // TypedArray
+  Bun.hash(arr.buffer);                // ArrayBuffer
+  Bun.hash(new DataView(arr.buffer));  // DataView
+  ```
+
+  12 algorithms available, all with the same `(data, seed)` API:
+
+  | 64-bit (bigint) | 32-bit (number) |
+  |-----------------|-----------------|
+  | `Bun.hash.wyhash()` | `Bun.hash.crc32()` |
+  | `Bun.hash.cityHash64()` | `Bun.hash.adler32()` |
+  | `Bun.hash.xxHash64()` | `Bun.hash.cityHash32()` |
+  | `Bun.hash.xxHash3()` | `Bun.hash.xxHash32()` |
+  | `Bun.hash.murmur64v2()` | `Bun.hash.murmur32v3()` |
+  | `Bun.hash.rapidhash()` | `Bun.hash.murmur32v2()` |
+
+  The scanner uses `Bun.hash.wyhash()` for lockfile content hashing (drift detection).
+
 - [`Bun.semver.satisfies()`](https://bun.com/docs/api/semver) — check if package versions match vulnerability ranges, no external dependencies needed
-- [`Bun.hash`](https://bun.com/docs/api/hashing#bun-hash) — fast hashing for package integrity checks
 - [`Bun.file`](https://bun.com/docs/api/file-io) — efficient file I/O for reading local threat databases
+- [`dns.getCacheStats()`](https://bun.com/docs/runtime/networking/dns) — DNS cache statistics for monitoring prefetch effectiveness
 
 ## What the audit covers
 
@@ -153,7 +178,7 @@ The lockHash skip optimization reuses cached entries for unchanged projects when
 | `scan.ts` | Main scanner (~3500 lines) — CLI, scanning, audit, fix commands |
 | `scan-columns.ts` | Column definitions for table output |
 | `scan-worker.ts` | IPC worker for parallel project scanning |
-| `scan.test.ts` | 59 tests covering utilities, TZ parsing, DNS TTL, and subprocess TZ verification |
+| `scan.test.ts` | 84 tests covering utilities, Zod validation, Bun.hash, TZ, DNS TTL, and subprocess verification |
 
 ### Key internals
 
@@ -170,7 +195,7 @@ The lockHash skip optimization reuses cached entries for unchanged projects when
 bun test scan.test.ts
 ```
 
-59 tests across 8 describe blocks:
+84 tests across 10 describe blocks:
 
 - `isFeatureFlagActive` — Bun feature flag semantics (`"1"`, `"true"` only)
 - `classifyEnvFlag` — `DISABLE_`/`SKIP_` env var classification
@@ -179,6 +204,8 @@ bun test scan.test.ts
 - `shouldWarnMise` — mise startup warning logic
 - `parseTzFromEnv` — TZ extraction from .env contents (quoting, comments, multi-file)
 - `parseEnvVar` — generic env var parsing (DNS TTL, DO_NOT_TRACK, etc.)
+- `ThreatFeedItemSchema` — Zod validation for threat feed responses (all categories, nullable fields, invalid data rejection)
+- `Bun API integration` — all 12 hash algorithms, 5 input types (string, TypedArray, ArrayBuffer, DataView, SharedArrayBuffer), BigInt seed precision, `Bun.semver.satisfies()`, `dns.getCacheStats()`, full ProjectInfo field coverage
 - `timezone subprocess` — real `Bun.spawn` tests verifying `--tz` flag, `getHours()` across zones, snapshot cross-timezone consistency
 
 ## References
