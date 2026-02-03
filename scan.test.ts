@@ -1,5 +1,5 @@
 import { describe, test, expect } from "bun:test";
-import { isFeatureFlagActive, classifyEnvFlag, effectiveLinker, platformHelp, shouldWarnMise, parseTzFromEnv, parseEnvVar } from "./scan.ts";
+import { isFeatureFlagActive, classifyEnvFlag, effectiveLinker, platformHelp, shouldWarnMise, parseTzFromEnv, parseEnvVar, validateThreatFeed, ThreatFeedItemSchema } from "./scan.ts";
 
 describe("isFeatureFlagActive", () => {
   test("returns true for '1'", () => {
@@ -332,6 +332,72 @@ describe("parseEnvVar", () => {
   test("parseTzFromEnv delegates to parseEnvVar", () => {
     expect(parseTzFromEnv(["TZ=America/Chicago"])).toBe("America/Chicago");
     expect(parseEnvVar(["TZ=America/Chicago"], "TZ")).toBe("America/Chicago");
+  });
+});
+
+describe("ThreatFeedItemSchema (Zod validation)", () => {
+  test("validates a valid threat feed item", () => {
+    const item = {
+      package: "event-stream",
+      version: "3.3.6",
+      url: "https://blog.npmjs.org/post/180565383195/details-about-the-event-stream-incident",
+      description: "event-stream is a malicious package",
+      categories: ["malware"],
+    };
+    expect(() => ThreatFeedItemSchema.parse(item)).not.toThrow();
+  });
+
+  test("validates item with nullable url and description", () => {
+    const item = {
+      package: "bad-pkg",
+      version: "1.0.0",
+      url: null,
+      description: null,
+      categories: ["backdoor"],
+    };
+    expect(() => ThreatFeedItemSchema.parse(item)).not.toThrow();
+  });
+
+  test("validates all category types", () => {
+    for (const cat of ["backdoor", "botnet", "malware", "protestware", "adware"]) {
+      const item = { package: "x", version: "1.0.0", url: null, description: null, categories: [cat] };
+      expect(() => ThreatFeedItemSchema.parse(item)).not.toThrow();
+    }
+  });
+
+  test("rejects invalid category", () => {
+    const item = { package: "x", version: "1.0.0", url: null, description: null, categories: ["unknown"] };
+    expect(() => ThreatFeedItemSchema.parse(item)).toThrow();
+  });
+
+  test("rejects missing package field", () => {
+    const item = { version: "1.0.0", url: null, description: null, categories: [] };
+    expect(() => ThreatFeedItemSchema.parse(item)).toThrow();
+  });
+
+  test("rejects non-string version", () => {
+    const item = { package: "x", version: 123, url: null, description: null, categories: [] };
+    expect(() => ThreatFeedItemSchema.parse(item)).toThrow();
+  });
+
+  test("validateThreatFeed parses valid array", () => {
+    const feed = [
+      { package: "event-stream", version: "3.3.6", url: null, description: "malicious", categories: ["malware"] },
+      { package: "flatmap-stream", version: "0.1.1", url: null, description: "backdoor", categories: ["backdoor", "botnet"] },
+    ];
+    const result = validateThreatFeed(feed);
+    expect(result).toHaveLength(2);
+    expect(result[0].package).toBe("event-stream");
+    expect(result[1].categories).toContain("backdoor");
+  });
+
+  test("validateThreatFeed accepts empty array (no threats)", () => {
+    expect(validateThreatFeed([])).toEqual([]);
+  });
+
+  test("validateThreatFeed throws on invalid data", () => {
+    expect(() => validateThreatFeed("not an array")).toThrow();
+    expect(() => validateThreatFeed([{ bad: "data" }])).toThrow();
   });
 });
 

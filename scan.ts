@@ -4,6 +4,7 @@ import { parseArgs } from "node:util";
 import { readdir, appendFile } from "node:fs/promises";
 import { availableParallelism } from "node:os";
 import { dns } from "bun";
+import { z } from "zod";
 import { SCANNER_COLUMNS } from "./scan-columns";
 
 // ── CLI flags ──────────────────────────────────────────────────────────
@@ -90,6 +91,28 @@ function extractBunError(stderr: string, fallback: string): string {
     return clean;
   }
   return fallback;
+}
+
+// ── Threat feed validation (Bun Security Scanner API) ────────────────
+// Schema for validating threat intelligence feed responses.
+// See: https://bun.com/docs/install/security-scanner-api
+// See: https://github.com/oven-sh/security-scanner-template#validation
+
+export const ThreatFeedItemSchema = z.object({
+  package: z.string(),
+  version: z.string(),
+  url: z.string().nullable(),
+  description: z.string().nullable(),
+  categories: z.array(z.enum(["backdoor", "botnet", "malware", "protestware", "adware"])),
+});
+
+export const ThreatFeedSchema = z.array(ThreatFeedItemSchema);
+
+export type ThreatFeedItem = z.infer<typeof ThreatFeedItemSchema>;
+
+/** Validate a threat feed response. Throws on invalid data — installation should be cancelled. */
+export function validateThreatFeed(data: unknown): ThreatFeedItem[] {
+  return ThreatFeedSchema.parse(data);
 }
 
 // ── Feature flag helpers ──────────────────────────────────────────────
