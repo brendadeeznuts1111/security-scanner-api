@@ -88,6 +88,10 @@ const c = {
   red:     _wrap('31'),
 };
 
+/** Pad a string (possibly containing ANSI codes) to a target display width. */
+const _padEnd   = (s: string, w: number) => s + ' '.repeat(Math.max(0, w - Bun.stringWidth(s)));
+const _padStart = (s: string, w: number) => ' '.repeat(Math.max(0, w - Bun.stringWidth(s))) + s;
+
 /** Extract the first meaningful error line from bun stderr, skipping .env diagnostics and version banners. */
 function extractBunError(stderr: string, fallback: string): string {
   for (const line of stderr.trim().split("\n")) {
@@ -1712,10 +1716,10 @@ async function renderAudit(projects: ProjectInfo[]) {
 
   // Default posture row
   if (envOverride) {
-    console.log(`    ${c.cyan("default".padEnd(16))} ${c.dim("-").padStart(5)}  ${c.dim("-").padStart(5)}  ${c.dim("-").padStart(5)}  ${c.dim("-").padStart(6)}  ${c.dim("-").padStart(7)}  ${c.red("High")}  ${c.red("OPEN").padEnd(22)}  ${c.dim("-").padStart(6)}  ${c.dim("-")}  ${c.dim("OVERRIDE")}`);
+    console.log(`    ${c.cyan("default".padEnd(16))} ${_padStart(c.dim("-"), 5)}  ${_padStart(c.dim("-"), 5)}  ${_padStart(c.dim("-"), 5)}  ${_padStart(c.dim("-"), 6)}  ${_padStart(c.dim("-"), 7)}  ${c.red("High")}  ${_padEnd(c.red("OPEN"), 22)}  ${_padStart(c.dim("-"), 6)}  ${c.dim("-")}  ${c.dim("OVERRIDE")}`);
     console.log(`    ${" ".repeat(16)} ${c.red("-> WARNING: DISABLE_IGNORE_SCRIPTS is set — all lifecycle scripts run globally")}`);
   } else {
-    console.log(`    ${c.cyan("default".padEnd(16))} ${c.dim("-").padStart(5)}  ${c.dim("-").padStart(5)}  ${c.dim("-").padStart(5)}  ${"100%".padStart(6)}  ${c.dim("-").padStart(7)}  ${c.dim("Min")}  ${c.green("Blocked").padEnd(22)}  ${c.dim("-").padStart(6)}  ${c.dim("-")}  ${c.dim("Bun Runtime")}`);
+    console.log(`    ${c.cyan("default".padEnd(16))} ${_padStart(c.dim("-"), 5)}  ${_padStart(c.dim("-"), 5)}  ${_padStart(c.dim("-"), 5)}  ${"100%".padStart(6)}  ${_padStart(c.dim("-"), 7)}  ${c.dim("Min")}  ${_padEnd(c.green("Blocked"), 22)}  ${_padStart(c.dim("-"), 6)}  ${c.dim("-")}  ${c.dim("Bun Runtime")}`);
     console.log(`    ${" ".repeat(16)} ${c.dim("-> Default-secure: all lifecycle scripts blocked unless in trustedDependencies")}`);
   }
 
