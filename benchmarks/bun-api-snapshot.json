@@ -1,0 +1,474 @@
+{
+  "generated": "2026-02-03T14:06:19.026Z",
+  "file": "scan.ts",
+  "fileSizeBytes": 198029,
+  "fileLines": 4360,
+  "runtime": {
+    "name": "bun",
+    "version": "1.3.9",
+    "revision": "eba4da23e69977dee763e296779d913e09e73251",
+    "platform": "darwin arm64",
+    "available_apis": 104,
+    "used_apis": 23,
+    "coverage": "22.1%"
+  },
+  "apis": [
+    {
+      "api": "Bun.file",
+      "doc": "https://bun.sh/docs/api/file-io#reading-files-bun-file",
+      "since": "1.0.0",
+      "lines": [
+        863,
+        921,
+        1028,
+        1128,
+        1134,
+        1144,
+        1145,
+        1150,
+        1160,
+        1166,
+        1308,
+        1836,
+        2046,
+        2249,
+        2455,
+        2551,
+        2592,
+        2627,
+        2644,
+        2660,
+        2689,
+        2742,
+        2837,
+        2892,
+        2912,
+        2968,
+        3047,
+        3071,
+        3735,
+        4084,
+        4175
+      ],
+      "calls": 31,
+      "unicode": "full",
+      "note": "Lazy file reference; .text() returns UTF-8; .json() parses; .exists() checks"
+    },
+    {
+      "api": "Bun.spawn",
+      "doc": "https://bun.sh/docs/api/spawn",
+      "since": "1.0.0",
+      "lines": [
+        657,
+        677,
+        681,
+        697,
+        716,
+        1355,
+        1381,
+        1390,
+        1419,
+        2506,
+        3115,
+        3229,
+        3356,
+        3501,
+        3529,
+        3582,
+        3627,
+        3639
+      ],
+      "calls": 18,
+      "unicode": "passthrough",
+      "note": "Async subprocess; stdout→pipe (ReadableStream), stderr→inherit (undefined)"
+    },
+    {
+      "api": "Bun.write",
+      "doc": "https://bun.sh/docs/api/file-io#writing-files-bun-write",
+      "since": "1.0.0",
+      "lines": [
+        859,
+        2467,
+        2502,
+        2564,
+        2606,
+        2702,
+        2772,
+        2782,
+        2847,
+        2850,
+        2902,
+        2958,
+        2978,
+        2988,
+        3073,
+        4142,
+        4179
+      ],
+      "calls": 17,
+      "unicode": "full",
+      "note": "Atomic file write; accepts string (UTF-8) or Uint8Array"
+    },
+    {
+      "api": "Bun.env",
+      "doc": "https://bun.sh/docs/runtime/env",
+      "since": "1.0.0",
+      "lines": [
+        76,
+        77,
+        579,
+        787,
+        810,
+        1317,
+        1495,
+        1790,
+        1993,
+        2246,
+        2247,
+        3758,
+        3882,
+        4345
+      ],
+      "calls": 14,
+      "unicode": "passthrough",
+      "note": "Environment variable access; returns string|undefined"
+    },
+    {
+      "api": "proc.stderr.text()",
+      "doc": "https://bun.sh/docs/api/spawn#reading-stdout",
+      "since": "1.0.0",
+      "lines": [
+        662,
+        686,
+        702,
+        2511,
+        3504,
+        3543,
+        3584,
+        3630,
+        3642
+      ],
+      "calls": 9,
+      "unicode": "full",
+      "note": "Requires stderr:'pipe'; defaults to inherit (undefined) if not set"
+    },
+    {
+      "api": "Bun.nanoseconds",
+      "doc": "https://bun.sh/docs/runtime/utils#bun-nanoseconds",
+      "since": "1.0.0",
+      "lines": [
+        3874,
+        3881,
+        3885,
+        3895,
+        3922,
+        4283
+      ],
+      "calls": 6,
+      "unicode": "n/a",
+      "note": "High-precision timer; nanoseconds since process start"
+    },
+    {
+      "api": "proc.stdout.text()",
+      "doc": "https://bun.sh/docs/api/spawn#reading-stdout",
+      "since": "1.0.0",
+      "lines": [
+        667,
+        720,
+        3117,
+        3231,
+        3629,
+        3641
+      ],
+      "calls": 6,
+      "unicode": "full",
+      "note": "Bun body-mixin on ReadableStream; decodes UTF-8"
+    },
+    {
+      "api": "Bun.version",
+      "doc": "https://bun.sh/docs/runtime/configuration#version",
+      "since": "1.0.0",
+      "lines": [
+        636,
+        2531,
+        4288
+      ],
+      "calls": 3,
+      "unicode": "n/a",
+      "note": "Semver string of running Bun"
+    },
+    {
+      "api": "Bun.inspect.table",
+      "doc": "https://bun.sh/docs/runtime/utils#bun-inspect-table",
+      "since": "1.0.0",
+      "lines": [
+        1665,
+        1821,
+        4325
+      ],
+      "calls": 3,
+      "unicode": "full",
+      "note": "Formatted table output with ANSI colors; uses Bun.stringWidth for alignment"
+    },
+    {
+      "api": "Bun.stringWidth",
+      "doc": "https://bun.sh/docs/runtime/utils#bun-stringwidth",
+      "since": "1.0.0",
+      "lines": [
+        95,
+        96
+      ],
+      "calls": 2,
+      "unicode": "full",
+      "note": "ICU-aware display width; handles CJK double-width, emoji, combining marks"
+    },
+    {
+      "api": "Bun.semver.order",
+      "doc": "https://bun.sh/docs/runtime/utils#bun-semver",
+      "since": "1.0.0",
+      "lines": [
+        320,
+        338
+      ],
+      "calls": 2,
+      "unicode": "n/a",
+      "note": "Semver comparison; returns -1|0|1"
+    },
+    {
+      "api": "Bun.hash.*",
+      "doc": "https://bun.sh/docs/api/hashing#bun-hash",
+      "since": "1.0.0",
+      "lines": [
+        1151,
+        1161
+      ],
+      "calls": 2,
+      "unicode": "binary",
+      "note": "Fast non-crypto hash; input treated as raw bytes"
+    },
+    {
+      "api": "import.meta.dir",
+      "doc": "https://bun.sh/docs/api/import-meta",
+      "since": "1.0.0",
+      "lines": [
+        842,
+        4346
+      ],
+      "calls": 2,
+      "unicode": "full",
+      "note": "Directory of current file; handles unicode paths"
+    },
+    {
+      "api": "Bun.argv",
+      "doc": "https://bun.sh/docs/runtime/configuration#argv",
+      "since": "1.0.0",
+      "lines": [
+        13
+      ],
+      "calls": 1,
+      "unicode": "passthrough",
+      "note": "CLI arg parsing; passes raw strings"
+    },
+    {
+      "api": "Bun.semver.satisfies",
+      "doc": "https://bun.sh/docs/runtime/utils#bun-semver",
+      "since": "1.0.0",
+      "lines": [
+        333
+      ],
+      "calls": 1,
+      "unicode": "n/a",
+      "note": "Semver range matching; ASCII-only input"
+    },
+    {
+      "api": "Bun.stripANSI",
+      "doc": "https://bun.sh/docs/runtime/utils#bun-stripansi",
+      "since": "1.0.0",
+      "lines": [
+        342
+      ],
+      "calls": 1,
+      "unicode": "full",
+      "note": "Zig+SIMD ANSI stripping; handles all CSI sequences"
+    },
+    {
+      "api": "Bun.revision",
+      "doc": "https://bun.sh/docs/runtime/configuration#revision",
+      "since": "1.0.0",
+      "lines": [
+        4288
+      ],
+      "calls": 1,
+      "unicode": "n/a",
+      "note": "Git SHA of running Bun build"
+    },
+    {
+      "api": "Bun.spawnSync",
+      "doc": "https://bun.sh/docs/api/spawn#blocking-api-bun-spawnsync",
+      "since": "1.0.0",
+      "lines": [
+        1112
+      ],
+      "calls": 1,
+      "unicode": "passthrough",
+      "note": "Sync subprocess; returns Buffer for stdout/stderr"
+    },
+    {
+      "api": "Bun.fileURLToPath",
+      "doc": "https://bun.sh/docs/runtime/utils#bun-fileurltopath",
+      "since": "1.0.0",
+      "lines": [
+        1350
+      ],
+      "calls": 1,
+      "unicode": "full",
+      "note": "Decodes %20, %C3%AB, CJK percent-encoding; URL.pathname does NOT decode"
+    },
+    {
+      "api": "Bun.Glob",
+      "doc": "https://bun.sh/docs/api/glob",
+      "since": "1.0.0",
+      "lines": [
+        1467
+      ],
+      "calls": 1,
+      "unicode": "full",
+      "note": "Native glob matching; handles unicode filenames"
+    },
+    {
+      "api": "Bun.openInEditor",
+      "doc": "https://bun.sh/docs/runtime/utils#bun-openineditor",
+      "since": "1.0.0",
+      "lines": [
+        2347
+      ],
+      "calls": 1,
+      "unicode": "full",
+      "note": "Opens file in configured editor"
+    },
+    {
+      "api": "import.meta.url",
+      "doc": "https://bun.sh/docs/api/import-meta",
+      "since": "1.0.0",
+      "lines": [
+        1350
+      ],
+      "calls": 1,
+      "unicode": "full",
+      "note": "file:// URL of current file"
+    },
+    {
+      "api": "import.meta.main",
+      "doc": "https://bun.sh/docs/api/import-meta",
+      "since": "1.0.0",
+      "lines": [
+        4354
+      ],
+      "calls": 1,
+      "unicode": "n/a",
+      "note": "true if file is direct entry point"
+    }
+  ],
+  "summary": {
+    "unique_apis": 23,
+    "total_call_sites": 125,
+    "unicode": {
+      "full": 12,
+      "passthrough": 4,
+      "binary": 1,
+      "n/a": 6
+    },
+    "min_bun_version": "1.0.0",
+    "legacy_patterns": {
+      "new Response(proc.*)": 0,
+      "URL(...).pathname (file)": 0,
+      "manual stripAnsi regex": 0
+    }
+  },
+  "unused_bun_apis": [
+    "$",
+    "Archive",
+    "ArrayBufferSink",
+    "CSRF",
+    "Cookie",
+    "CookieMap",
+    "CryptoHasher",
+    "FFI",
+    "FileSystemRouter",
+    "JSON5",
+    "JSONC",
+    "JSONL",
+    "MD4",
+    "MD5",
+    "RedisClient",
+    "S3Client",
+    "SHA1",
+    "SHA224",
+    "SHA256",
+    "SHA384",
+    "SHA512",
+    "SHA512_256",
+    "SQL",
+    "TOML",
+    "Terminal",
+    "Transpiler",
+    "YAML",
+    "allocUnsafe",
+    "build",
+    "color",
+    "concatArrayBuffers",
+    "connect",
+    "deepEquals",
+    "deepMatch",
+    "deflateSync",
+    "dns",
+    "embeddedFiles",
+    "enableANSIColors",
+    "escapeHTML",
+    "fetch",
+    "gc",
+    "generateHeapSnapshot",
+    "gunzipSync",
+    "gzipSync",
+    "indexOfLine",
+    "inflateSync",
+    "isMainThread",
+    "listen",
+    "markdown",
+    "mmap",
+    "password",
+    "pathToFileURL",
+    "peek",
+    "plugin",
+    "postgres",
+    "randomUUIDv5",
+    "randomUUIDv7",
+    "readableStreamToArray",
+    "readableStreamToArrayBuffer",
+    "readableStreamToBlob",
+    "readableStreamToBytes",
+    "readableStreamToFormData",
+    "readableStreamToJSON",
+    "readableStreamToText",
+    "redis",
+    "resolve",
+    "resolveSync",
+    "s3",
+    "secrets",
+    "serve",
+    "sha",
+    "shrink",
+    "sleep",
+    "sleepSync",
+    "sql",
+    "stdin",
+    "udpSocket",
+    "unsafe",
+    "which",
+    "wrapAnsi",
+    "zstdCompress",
+    "zstdCompressSync",
+    "zstdDecompress",
+    "zstdDecompressSync"
+  ]
+}
