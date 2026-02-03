@@ -144,7 +144,20 @@ const ThreatFeedItemSchema = z.object({
 
   The scanner uses `Bun.hash.wyhash()` for lockfile content hashing (drift detection).
 
-- [`Bun.semver.satisfies()`](https://bun.com/docs/api/semver) — check if package versions match vulnerability ranges, no external dependencies needed
+- [`Bun.semver`](https://bun.com/docs/api/semver) — native semver operations, no external dependencies:
+
+  ```typescript
+  // Vulnerability range matching (used by isVulnerable)
+  Bun.semver.satisfies("3.3.6", ">=3.3.6 <4.0.0"); // true — event-stream incident
+  Bun.semver.satisfies("4.0.0", ">=3.3.6 <4.0.0"); // false
+  Bun.semver.satisfies("1.3.0", "^1.2.0");          // true
+  Bun.semver.satisfies("1.3.0", "~1.2.0");          // false
+
+  // Version ordering (used by semverCompare, --update --patch/--minor)
+  Bun.semver.order("2.0.0", "1.0.0");  //  1
+  Bun.semver.order("1.0.0", "2.0.0");  // -1
+  Bun.semver.order("1.0.0", "1.0.0");  //  0
+  ```
 - [`Bun.file`](https://bun.com/docs/api/file-io) — efficient file I/O for reading local threat databases
 - [`dns.getCacheStats()`](https://bun.com/docs/runtime/networking/dns) — DNS cache statistics for monitoring prefetch effectiveness
 
@@ -178,12 +191,13 @@ The lockHash skip optimization reuses cached entries for unchanged projects when
 | `scan.ts` | Main scanner (~3500 lines) — CLI, scanning, audit, fix commands |
 | `scan-columns.ts` | Column definitions for table output |
 | `scan-worker.ts` | IPC worker for parallel project scanning |
-| `scan.test.ts` | 84 tests covering utilities, Zod validation, Bun.hash, TZ, DNS TTL, and subprocess verification |
+| `scan.test.ts` | 93 tests covering utilities, Bun.semver, Zod validation, Bun.hash, TZ, DNS TTL, and subprocess verification |
 
 ### Key internals
 
 - **IPC worker pool**: Uses `availableParallelism()` workers via `Bun.spawn` for concurrent project scanning, with `Promise.all` fallback (`--no-ipc`)
 - **lockHash**: `Bun.hash.wyhash()` of lockfile content for content-based drift detection
+- **Bun.semver**: `isVulnerable()` for threat feed range matching, `semverCompare()` for version ordering, `semverBumpType()` for `--update --patch/--minor` filtering
 - **`.env` parsing**: Reads `.env`, `.env.local`, `.env.production`, etc. with last-file-wins semantics matching Bun's load order
 - **Notable deps detection**: Flags frameworks and key libraries (React, Next, Elysia, Hono, Prisma, etc.)
 - **Native deps detection**: Pattern-matches `node-gyp`, `napi`, `prebuild`, `ffi-napi`, etc.
@@ -195,7 +209,7 @@ The lockHash skip optimization reuses cached entries for unchanged projects when
 bun test scan.test.ts
 ```
 
-84 tests across 10 describe blocks:
+93 tests across 11 describe blocks:
 
 - `isFeatureFlagActive` — Bun feature flag semantics (`"1"`, `"true"` only)
 - `classifyEnvFlag` — `DISABLE_`/`SKIP_` env var classification
@@ -204,8 +218,9 @@ bun test scan.test.ts
 - `shouldWarnMise` — mise startup warning logic
 - `parseTzFromEnv` — TZ extraction from .env contents (quoting, comments, multi-file)
 - `parseEnvVar` — generic env var parsing (DNS TTL, DO_NOT_TRACK, etc.)
+- `Bun.semver integration` — `semverBumpType` (patch/minor/major classification), `isVulnerable` (range matching via `Bun.semver.satisfies`), `semverCompare` (ordering via `Bun.semver.order`)
 - `ThreatFeedItemSchema` — Zod validation for threat feed responses (all categories, nullable fields, invalid data rejection)
-- `Bun API integration` — all 12 hash algorithms, 5 input types (string, TypedArray, ArrayBuffer, DataView, SharedArrayBuffer), BigInt seed precision, `Bun.semver.satisfies()`, `dns.getCacheStats()`, full ProjectInfo field coverage
+- `Bun API integration` — all 12 hash algorithms, 5 input types (string, TypedArray, ArrayBuffer, DataView, SharedArrayBuffer), BigInt seed precision, `dns.getCacheStats()`, full ProjectInfo field coverage
 - `timezone subprocess` — real `Bun.spawn` tests verifying `--tz` flag, `getHours()` across zones, snapshot cross-timezone consistency
 
 ## References
