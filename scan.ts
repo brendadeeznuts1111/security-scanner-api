@@ -1,8 +1,10 @@
 #!/usr/bin/env bun
 
 import { parseArgs } from "node:util";
-import { readdir } from "node:fs/promises";
+import { readdir, appendFile } from "node:fs/promises";
 import { availableParallelism } from "node:os";
+import { dns } from "bun";
+import { SCANNER_COLUMNS } from "./scan-columns";
 
 // ── CLI flags ──────────────────────────────────────────────────────────
 const { values: flags, positionals } = parseArgs({
@@ -33,6 +35,7 @@ const { values: flags, positionals } = parseArgs({
     "fix-npmrc":  { type: "string" },
     "fix-trusted": { type: "boolean", default: false },
     "fix-env-docs": { type: "boolean", default: false },
+    "fix-dns":    { type: "boolean", default: false },
     "no-ipc":     { type: "boolean", default: false },
     patch:        { type: "boolean", default: false },
     minor:        { type: "boolean", default: false },
@@ -241,6 +244,9 @@ export interface ProjectInfo {
   repoHost: string;              // "github.com" etc. | "-"
   envFiles: string[];             // .env files found (.env, .env.local, .env.production, etc.)
   bunfigEnvRefs: string[];        // $VAR / ${VAR} references in bunfig.toml
+  hasTests: boolean;              // pkg.scripts.test exists
+  nativeDeps: string[];           // trustedDeps matching NATIVE_PATTERN
+  workspacesList: string[];       // pkg.workspaces array entries
 }
 
 // ── Accepted bun install --cpu / --os values ──────────────────────────
@@ -256,6 +262,9 @@ const NOTABLE = new Set([
   "bun-types", "@anthropic-ai/sdk", "openai", "discord.js",
   "@modelcontextprotocol/sdk",
 ]);
+
+// ── Native dependency detection pattern ───────────────────────────────
+const NATIVE_PATTERN = /napi|prebuild|node-gyp|node-pre-gyp|ffi-napi|binding\.gyp|cmake-js|cargo-cp-artifact/i;
 
 /** Bun's built-in default trusted dependencies (bun 1.2.x).
  *  Source: github.com/oven-sh/bun/blob/main/src/install/default-trusted-dependencies.txt */
@@ -481,6 +490,9 @@ export async function scanProject(dir: string): Promise<ProjectInfo> {
     repoHost: "-",
     envFiles: [],
     bunfigEnvRefs: [],
+    hasTests: false,
+    nativeDeps: [],
+    workspacesList: [],
   };
 
   // package.json
@@ -504,6 +516,14 @@ export async function scanProject(dir: string): Promise<ProjectInfo> {
       base.license = pkg.license ?? "-";
       base.description = pkg.description ?? "-";
       base.scriptsCount = pkg.scripts ? Object.keys(pkg.scripts).length : 0;
+      base.hasTests = !!(pkg.scripts?.test);
+
+      // workspaces list
+      if (Array.isArray(pkg.workspaces)) {
+        base.workspacesList = pkg.workspaces;
+      } else if (pkg.workspaces && typeof pkg.workspaces === "object" && Array.isArray(pkg.workspaces.packages)) {
+        base.workspacesList = pkg.workspaces.packages;
+      }
 
       // bin field: string → single name, object → keys
       if (typeof pkg.bin === "string") {
@@ -518,6 +538,7 @@ export async function scanProject(dir: string): Promise<ProjectInfo> {
       // trustedDependencies — packages allowed to run lifecycle scripts
       if (Array.isArray(pkg.trustedDependencies)) {
         base.trustedDeps = pkg.trustedDependencies;
+        base.nativeDeps = base.trustedDeps.filter((name) => NATIVE_PATTERN.test(name));
       }
 
       // overrides (npm) / resolutions (yarn) — metadependency version pins
@@ -916,46 +937,46 @@ function inspectProject(p: ProjectInfo) {
 
 // ── Table rendering ────────────────────────────────────────────────────
 function renderTable(projects: ProjectInfo[], detail: boolean) {
-  const rows = projects.map((p) => {
-    const base: Record<string, string | number | boolean> = {
-      Path:      p.folder,
-      Name:      p.name,
-      Version:   p.version,
-      Deps:      p.totalDeps || "-",
-      Engine:    p.engine,
-      Lock:      p.lock,
-      Registry:  p.registry !== "-" ? p.registry : "-",
-      Scopes:    p.scopes.length ? p.scopes.join(", ") : "-",
-      Auth:      p.authReady ? "YES" : "-",
-      Bunfig:    p.bunfig ? "yes" : "-",
-      Linker:    (() => { const eff = effectiveLinker(p); return eff.source === "bunfig" ? eff.strategy : `${eff.strategy} (default)`; })(),
-      Workspace: p.workspace ? "yes" : "-",
-      Bin:       p.bin.length ? p.bin.join(", ") : "-",
-      Repo:      p.repo !== "-" ? p.repo : "-",
-      "Repo Src": p.repoSource,
-      "Repo Owner": p.repoOwner,
-      "Repo Host": p.repoHost,
-      Env:       p.envFiles.length ? p.envFiles.join(", ") : "-",
-      "Env Refs": p.bunfigEnvRefs.length ? p.bunfigEnvRefs.join(", ") : "-",
-      Color:     Bun.env.FORCE_COLOR ? "forced" : Bun.env.NO_COLOR === "1" ? "off" : "auto",
-      Trusted:   p.trustedDeps.length ? p.trustedDeps.join(", ") : "-",
-      Overrides: p.overrides.length + p.resolutions.length || "-",
-      "Key Deps": p.keyDeps.join(", ") || "-",
-    };
+  const columnDefs = SCANNER_COLUMNS.PROJECT_SCAN;
 
+  const columnValueMap: Record<string, (p: ProjectInfo, idx: number) => string | number> = {
+    idx:           (_p, i) => i,
+    folder:        (p) => p.folder,
+    name:          (p) => p.name,
+    version:       (p) => p.version,
+    configVersion: (p) => p.configVersion,
+    bunVersion:    (p) => p.engine,
+    lockfile:      (p) => p.lock,
+    registry:      (p) => p.registry !== "-" ? p.registry : "-",
+    workspaces:    (p) => p.workspacesList.length ? p.workspacesList.join(", ") : "-",
+    hasTests:      (p) => p.hasTests ? "yes" : "-",
+    workspace:     (p) => p.workspace ? "yes" : "-",
+    linker:        (p) => { const eff = effectiveLinker(p); return eff.source === "bunfig" ? eff.strategy : `${eff.strategy} (default)`; },
+    trustedDeps:   (p) => p.trustedDeps.length ? p.trustedDeps.join(", ") : "-",
+    nativeDeps:    (p) => p.nativeDeps.length ? p.nativeDeps.join(", ") : "-",
+    scripts:       (p) => p.scriptsCount || "-",
+    envVars:       (p) => p.bunfigEnvRefs.length ? p.bunfigEnvRefs.join(", ") : "-",
+  };
+
+  const rows = projects.map((p, idx) => {
+    const row: Record<string, string | number> = {};
+    for (const col of columnDefs) {
+      const fn = columnValueMap[col.key];
+      row[col.header] = fn ? fn(p, idx) : "-";
+    }
     if (detail) {
-      base.Author = p.author;
-      base.License = p.license;
-      base.Description = p.description.length > 40
+      row["Author"] = p.author;
+      row["License"] = p.license;
+      row["Description"] = p.description.length > 40
         ? p.description.slice(0, 37) + "..."
         : p.description;
-      base.Scripts = p.scriptsCount || "-";
     }
-
-    return base;
+    return row;
   });
 
-  console.table(rows);
+  const headers = columnDefs.map((col) => col.header);
+  if (detail) headers.push("Author", "License", "Description");
+  console.log(Bun.inspect.table(rows, headers, { colors: true }));
 }
 
 // ── Sort comparator ────────────────────────────────────────────────────
@@ -1048,7 +1069,8 @@ async function renderAudit(projects: ProjectInfo[]) {
     // Runtime & networking
     { key: "NODE_TLS_REJECT_UNAUTHORIZED",   desc: "SSL cert validation (0 = INSECURE)" },
     { key: "BUN_CONFIG_MAX_HTTP_REQUESTS",   desc: "max concurrent HTTP requests (default 256)" },
-    { key: "BUN_CONFIG_VERBOSE_FETCH",       desc: "log fetch requests (curl | 1)" },
+    { key: "BUN_CONFIG_VERBOSE_FETCH",       desc: "log fetch requests (curl | true | false)", recommend: "curl" },
+    { key: "BUN_CONFIG_DNS_TIME_TO_LIVE_SECONDS", desc: "DNS cache TTL in seconds (default 30)", recommend: "5" },
     { key: "BUN_OPTIONS",                    desc: "prepend CLI args to every bun invocation" },
     // Caching & temp
     { key: "BUN_RUNTIME_TRANSPILER_CACHE_PATH", desc: "transpiler cache dir (\"\" or \"0\" = disabled)", recommend: "${BUN_PLATFORM_HOME}/.bun-cache" },
@@ -1084,6 +1106,44 @@ async function renderAudit(projects: ProjectInfo[]) {
       console.log(`    ${c.cyan(key.padEnd(PAD))} ${c.dim("not set")}  ${c.dim(desc)}`);
     }
   }
+
+  // DNS cache stats
+  console.log();
+  console.log(c.bold("  DNS cache:"));
+  console.log();
+  const dnsStats = dns.getCacheStats();
+  const dnsRows = [
+    { Stat: "cacheHitsCompleted", Value: dnsStats.cacheHitsCompleted, Description: "resolved from cache" },
+    { Stat: "cacheHitsInflight",  Value: dnsStats.cacheHitsInflight,  Description: "deduplicated in-flight" },
+    { Stat: "cacheMisses",        Value: dnsStats.cacheMisses,        Description: "fresh lookups" },
+    { Stat: "size",               Value: dnsStats.size,               Description: "entries cached now" },
+    { Stat: "errors",             Value: dnsStats.errors,             Description: "failed lookups" },
+    { Stat: "totalCount",         Value: dnsStats.totalCount,         Description: "total requests" },
+  ];
+  console.log(Bun.inspect.table(dnsRows, { colors: true }));
+  const hitRate = dnsStats.totalCount > 0
+    ? ((dnsStats.cacheHitsCompleted + dnsStats.cacheHitsInflight) / dnsStats.totalCount * 100).toFixed(0)
+    : null;
+  if (dnsStats.errors > 0) {
+    console.log(`    ${c.red("⚠")} ${c.red(`${dnsStats.errors} DNS error(s)`)} — check connectivity or registry URLs`);
+  }
+  if (hitRate !== null && Number(hitRate) < 50 && dnsStats.totalCount >= 5) {
+    console.log(`    ${c.yellow("→")} hit rate ${c.yellow(hitRate + "%")} — use ${c.cyan("dns.prefetch(host, port)")} for known hosts`);
+  }
+  console.log(`    ${c.dim("Tip: use dns.prefetch(host, 443) for known registry domains at startup.")}`);
+  console.log(`    ${c.dim("Run --fix-dns to auto-generate dns-prefetch.ts across all projects.")}`);
+  console.log(`    ${c.dim("Monitor: bun install --verbose shows DNS prefetch activity in real time.")}`);
+
+  // dns-prefetch.ts coverage
+  let prefetchCount = 0;
+  for (const p of withPkg) {
+    const f = Bun.file(`${PROJECTS_ROOT}/${p.folder}/dns-prefetch.ts`);
+    if (await f.exists()) prefetchCount++;
+  }
+  const prefetchPct = ((prefetchCount / withPkg.length) * 100).toFixed(0);
+  const prefetchBar = prefetchCount === withPkg.length ? c.green("OK")
+    : prefetchCount === 0 ? c.yellow(`0/${withPkg.length}`) : c.yellow(`${prefetchCount}/${withPkg.length}`);
+  console.log(`    ${c.cyan("dns-prefetch".padEnd(14))} ${String(prefetchCount).padStart(2)}/${withPkg.length}  (${prefetchPct}%)  ${prefetchBar}  ${c.dim("dns-prefetch.ts present (run --fix-dns)")}`);
 
   // Infrastructure readiness
   console.log();
@@ -1690,6 +1750,130 @@ async function fixEngine(projects: ProjectInfo[], dryRun: boolean) {
   console.log();
 }
 
+// ── Fix DNS: TTL recommendation + per-project dns-prefetch.ts ─────────
+async function fixDns(projects: ProjectInfo[], dryRun: boolean) {
+  const withPkg = projects.filter((p) => p.hasPkg);
+
+  console.log();
+  console.log(c.bold(c.cyan(`  ${dryRun ? "Dry Run:" : "Generating"} DNS prefetch snippets`)));
+  console.log();
+
+  // ── .env.template update ──────────────────────────────────────
+  const templatePath = `${PROJECTS_ROOT}/scanner/.env.template`;
+  const templateFile = Bun.file(templatePath);
+  const templateContent = (await templateFile.exists()) ? await templateFile.text() : "";
+
+  if (!templateContent.includes("BUN_CONFIG_DNS_TIME_TO_LIVE_SECONDS")) {
+    const dnsBlock = [
+      "",
+      "# DNS cache TTL — AWS recommends 5s for dynamic environments (Bun default: 30)",
+      "# BUN_CONFIG_DNS_TIME_TO_LIVE_SECONDS=5",
+    ].join("\n");
+
+    if (dryRun) {
+      console.log(`  .env.template:`);
+      console.log(`    ${c.yellow("DRY")}  BUN_CONFIG_DNS_TIME_TO_LIVE_SECONDS=5`);
+    } else {
+      await Bun.write(templatePath, templateContent.trimEnd() + "\n" + dnsBlock + "\n");
+      console.log(`  .env.template:`);
+      console.log(`    ${c.green("FIX")}  BUN_CONFIG_DNS_TIME_TO_LIVE_SECONDS=5`);
+    }
+  } else {
+    console.log(`  .env.template:`);
+    console.log(c.dim(`    SKIP already contains BUN_CONFIG_DNS_TIME_TO_LIVE_SECONDS`));
+  }
+
+  console.log();
+
+  // ── Per-project dns-prefetch.ts ───────────────────────────────
+  let totalDomains = new Set<string>();
+  let generated = 0;
+  let skipped = 0;
+
+  for (const p of withPkg) {
+    const dir = `${PROJECTS_ROOT}/${p.folder}`;
+    const domains = new Set<string>();
+
+    // Extract from bunfig.toml
+    const bunfigFile = Bun.file(`${dir}/bunfig.toml`);
+    if (await bunfigFile.exists()) {
+      try {
+        const toml = await bunfigFile.text();
+        // [install] registry
+        const regMatch = toml.match(/registry\s*=\s*"([^"]+)"/);
+        if (regMatch) {
+          try { domains.add(new URL(regMatch[1]).hostname); } catch {}
+        }
+        // [install.scopes] urls
+        for (const m of toml.matchAll(/url\s*=\s*"([^"]+)"/g)) {
+          try { domains.add(new URL(m[1]).hostname); } catch {}
+        }
+      } catch {}
+    }
+
+    // Extract from .npmrc
+    const npmrcFile = Bun.file(`${dir}/.npmrc`);
+    if (await npmrcFile.exists()) {
+      try {
+        const npmrc = await npmrcFile.text();
+        // global registry
+        for (const m of npmrc.matchAll(/^registry\s*=\s*(.+)$/gm)) {
+          try { domains.add(new URL(m[1].trim()).hostname); } catch {}
+        }
+        // scoped registries
+        for (const m of npmrc.matchAll(/^@\w+:registry\s*=\s*(.+)$/gm)) {
+          try { domains.add(new URL(m[1].trim()).hostname); } catch {}
+        }
+      } catch {}
+    }
+
+    // Always include npmjs as fallback
+    domains.add("registry.npmjs.org");
+
+    for (const d of domains) totalDomains.add(d);
+
+    const sorted = [...domains].sort();
+    const lines = [
+      `// dns-prefetch.ts — auto-generated by scan.ts --fix-dns`,
+      `// These domains are explicitly prefetched at runtime by Bun for lower latency`,
+      `// Re-run: bun run ../scanner/scan.ts --fix-dns`,
+      ``,
+      `import { dns } from "bun";`,
+      ``,
+      ...sorted.map((d) => `dns.prefetch("${d}", 443);`),
+      ``,
+    ].join("\n");
+
+    const prefetchPath = `${dir}/dns-prefetch.ts`;
+    const prefetchFile = Bun.file(prefetchPath);
+    const existing = (await prefetchFile.exists()) ? await prefetchFile.text() : null;
+
+    if (existing === lines) {
+      console.log(`    ${c.dim("SKIP")} ${p.folder.padEnd(32)} dns-prefetch.ts already up-to-date`);
+      skipped++;
+      continue;
+    }
+
+    const domainList = sorted.join(", ");
+    if (dryRun) {
+      console.log(`    ${c.yellow("DRY")}  ${p.folder.padEnd(32)} ${domainList}`);
+    } else {
+      await Bun.write(prefetchPath, lines);
+      console.log(`    ${c.green("FIX")}  ${p.folder.padEnd(32)} ${domainList}`);
+      generated++;
+    }
+  }
+
+  console.log();
+  if (dryRun) {
+    console.log(c.dim(`  ${totalDomains.size} domain(s) detected across ${withPkg.length} projects.`));
+    console.log(c.dim(`  Run without --dry-run to apply.`));
+  } else {
+    console.log(c.green(`  Generated ${generated} dns-prefetch.ts file(s). ${skipped} already up-to-date.`));
+  }
+  console.log();
+}
+
 // ── Fix Scopes: inject [install.scopes] into bunfig.toml ─────────────
 // Usage: --fix-scopes https://npm.factory-wager.com @factorywager @duoplus
 async function fixScopes(projects: ProjectInfo[], registryUrl: string, scopeNames: string[], dryRun: boolean) {
@@ -1986,7 +2170,6 @@ async function fixRegistry(projects: ProjectInfo[], registryUrl: string, dryRun:
 // ── Fix Trusted: detect native deps and add to trustedDependencies ────
 // Scans node_modules for packages with lifecycle scripts, heuristic-matches
 // native dep patterns, and writes to package.json trustedDependencies.
-const NATIVE_PATTERN = /napi|prebuild|node-gyp|node-pre-gyp|ffi-napi|binding\.gyp|cmake-js|cargo-cp-artifact/i;
 
 async function fixTrusted(projects: ProjectInfo[], dryRun: boolean) {
   const withPkg = projects.filter((p) => p.hasPkg);
@@ -2753,6 +2936,7 @@ ${c.bold("  Modes:")}
     ${c.cyan("--fix-npmrc")} <url> @s.. [--dry-run] Rewrite .npmrc with scoped template
     ${c.cyan("--fix-trusted")} [--dry-run]          Auto-detect native deps → trustedDependencies
     ${c.cyan("--fix-env-docs")}                     Inject audit recommendations into .env.template
+    ${c.cyan("--fix-dns")} [--dry-run]              Set DNS TTL + generate prefetch snippets
     ${c.cyan("--why")} <pkg> [--top] [--depth N]    bun why across all projects
     ${c.cyan("--outdated")} [-r] [--wf] [-p]        bun outdated across all projects
     ${c.cyan("--update")} [--dry-run]               bun update across all projects
@@ -2960,6 +3144,9 @@ ${c.bold("  Other:")}
       "# Centralize transpiler cache — git-ignored, speeds up repeated scans/builds",
       "# BUN_RUNTIME_TRANSPILER_CACHE_PATH=${BUN_PLATFORM_HOME}/.bun-cache",
       "",
+      "# Debug network requests — prints fetch/http as curl commands",
+      "# BUN_CONFIG_VERBOSE_FETCH=curl",
+      "",
       "# Disable telemetry & crash reports (privacy best practice)",
       "# DO_NOT_TRACK=1",
     ].join("\n");
@@ -2971,6 +3158,12 @@ ${c.bold("  Other:")}
     } else {
       console.log(c.dim("  .env.template already contains runtime recommendations — no changes"));
     }
+    return;
+  }
+
+  // ── Fix DNS mode ───────────────────────────────────────────────
+  if (flags["fix-dns"]) {
+    await fixDns(projects, !!flags["dry-run"]);
     return;
   }
 
@@ -3089,26 +3282,47 @@ ${c.bold("  Other:")}
     const newCount = currentXref.filter((x) => !prevFolders.has(x.folder)).length;
     const removedCount = prevSnapshot.projects.filter((p) => !currentFolders.has(p.folder)).length;
     let changedCount = 0;
+    let trustedDelta = 0;
+    let nativeDelta = 0;
     for (const x of currentXref) {
       const prev = prevMap.get(x.folder);
       if (!prev) continue;
       if (x.bunDefault.length !== prev.bunDefault.length || x.explicit.length !== prev.explicit.length || x.blocked.length !== prev.blocked.length) changedCount++;
+      trustedDelta += x.explicit.length - prev.explicit.length;
+      nativeDelta += x.bunDefault.length - prev.bunDefault.length;
     }
     const hasDrift = newCount > 0 || removedCount > 0 || changedCount > 0;
-    if (hasDrift) {
-      const parts: string[] = [];
-      if (newCount > 0) parts.push(c.cyan(`+${newCount} new`));
-      if (removedCount > 0) parts.push(c.red(`-${removedCount} removed`));
-      if (changedCount > 0) parts.push(c.yellow(`${changedCount} changed`));
-      console.log();
-      console.log(`  ${c.dim("xref Δ")} ${parts.join(c.dim(", "))}  ${c.dim(`(vs ${prevSnapshot.timestamp.slice(0, 10)}, run --compare for details)`)}`);
-    } else {
-      console.log();
-      console.log(`  ${c.dim(`xref Δ  no drift (vs ${prevSnapshot.timestamp.slice(0, 10)})`)}`);
-    }
+
+    // Structured delta footer table
+    const footer: Record<string, string> = {
+      Snapshot: prevSnapshot.timestamp.slice(0, 10),
+      "Projects Δ": `+${newCount}/-${removedCount}`,
+      "Trusted Δ": trustedDelta >= 0 ? `+${trustedDelta}` : String(trustedDelta),
+      "Native Δ": nativeDelta >= 0 ? `+${nativeDelta}` : String(nativeDelta),
+      "Linker Δ": "0",
+      Drift: hasDrift ? "DETECTED" : "none",
+    };
+    console.log(Bun.inspect.table([footer], { colors: true }));
+
     if (!flags["no-auto-snapshot"]) {
       await saveXrefSnapshot(currentXref, projects.filter((p) => p.hasPkg).length);
     }
+
+    // ── Audit log entry ────────────────────────────────────────────
+    const auditLogPath = `${SNAPSHOT_DIR}/audit.jsonl`;
+    const entry = {
+      timestamp: new Date().toISOString(),
+      scanDuration: elapsed,
+      projectsScanned: projects.length,
+      projectsChanged: changedCount,
+      snapshotHash: "",
+      driftDetected: hasDrift,
+      user: Bun.env.USER ?? "unknown",
+      cwd: import.meta.dir,
+    };
+    const { mkdir } = await import("node:fs/promises");
+    await mkdir(SNAPSHOT_DIR, { recursive: true });
+    await appendFile(auditLogPath, JSON.stringify(entry) + "\n");
   }
 }
 
