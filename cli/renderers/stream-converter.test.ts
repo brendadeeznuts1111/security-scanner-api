@@ -1,8 +1,8 @@
 // stream-converter.test.ts — Bun Native Stream Converter Annihilation Suite
 import { test, expect, describe } from "bun:test";
 import {
-  STREAM_MIGRATION_MATRIX,
-  MIGRATION_WEIGHTS,
+  BUN_STREAM_MIGRATION_MATRIX,
+  BUN_MIGRATION_WEIGHTS,
   calcMigrationR,
   totalComplexityReduction,
   totalMemorySaved,
@@ -174,14 +174,14 @@ describe("Stream Migration Matrix", () => {
   });
 
   test("all rScores are between 0.99 and 1.0", () => {
-    for (const entry of STREAM_MIGRATION_MATRIX) {
+    for (const entry of BUN_STREAM_MIGRATION_MATRIX) {
       expect(entry.rScore).toBeGreaterThanOrEqual(0.99);
       expect(entry.rScore).toBeLessThanOrEqual(1.0);
     }
   });
 
   test("all entries reduce complexity", () => {
-    for (const entry of STREAM_MIGRATION_MATRIX) {
+    for (const entry of BUN_STREAM_MIGRATION_MATRIX) {
       expect(entry.complexityAfter).toBeLessThan(entry.complexityBefore);
       expect(entry.complexityAfter).toBe(1);
     }
@@ -199,21 +199,21 @@ describe("Stream Migration Matrix", () => {
   });
 
   test("all security tiers are HARD", () => {
-    for (const entry of STREAM_MIGRATION_MATRIX) {
+    for (const entry of BUN_STREAM_MIGRATION_MATRIX) {
       expect(entry.securityTier).toBe("HARD");
     }
   });
 
   test("migration weights sum to 1.0", () => {
-    const sum = MIGRATION_WEIGHTS.performance +
-      MIGRATION_WEIGHTS.memory +
-      MIGRATION_WEIGHTS.edgeCases +
-      MIGRATION_WEIGHTS.security;
+    const sum = BUN_MIGRATION_WEIGHTS.performance +
+      BUN_MIGRATION_WEIGHTS.memory +
+      BUN_MIGRATION_WEIGHTS.edgeCases +
+      BUN_MIGRATION_WEIGHTS.security;
     expect(sum).toBeCloseTo(1.0, 10);
   });
 
   test("calcMigrationR returns values in [0, 1]", () => {
-    for (const entry of STREAM_MIGRATION_MATRIX) {
+    for (const entry of BUN_STREAM_MIGRATION_MATRIX) {
       const r = calcMigrationR(entry.metrics);
       expect(r).toBeGreaterThanOrEqual(0);
       expect(r).toBeLessThanOrEqual(1);
@@ -221,14 +221,14 @@ describe("Stream Migration Matrix", () => {
   });
 
   test("each entry has unique id 1-8", () => {
-    const ids = STREAM_MIGRATION_MATRIX.map(e => e.id);
+    const ids = BUN_STREAM_MIGRATION_MATRIX.map(e => e.id);
     expect(new Set(ids).size).toBe(8);
     expect(Math.min(...ids)).toBe(1);
     expect(Math.max(...ids)).toBe(8);
   });
 
   test("8 distinct stream types", () => {
-    const types = new Set(STREAM_MIGRATION_MATRIX.map(e => e.streamType));
+    const types = new Set(BUN_STREAM_MIGRATION_MATRIX.map(e => e.streamType));
     expect(types.size).toBe(8);
   });
 });

@@ -13,7 +13,7 @@ interface StreamConverter {
   useCase: string;
 }
 
-const CONVERTERS: readonly StreamConverter[] = [
+const BUN_CONVERTERS: readonly StreamConverter[] = [
   {
     function: "Bun.readableStreamToArrayBuffer",
     input: "ReadableStream<Uint8Array>",
@@ -78,7 +78,7 @@ interface SpawnConverterRoute {
   output: string;
 }
 
-const SPAWN_CONVERTER_MATRIX: readonly SpawnConverterRoute[] = [
+const BUN_SPAWN_CONVERTER_MATRIX: readonly SpawnConverterRoute[] = [
   { spawnOption: 'stdout: "pipe"', streamProp: "stdout", converter: "readableStreamToText", output: "string" },
   { spawnOption: 'stdout: "pipe"', streamProp: "stdout", converter: "readableStreamToArrayBuffer", output: "ArrayBuffer" },
   { spawnOption: 'stdout: "pipe"', streamProp: "stdout", converter: "readableStreamToBytes", output: "Uint8Array" },
@@ -114,15 +114,15 @@ type FormDataEncoding =
 // ═══════════════════════════════════════════════════════════════
 
 function converterCount(): number {
-  return CONVERTERS.length;
+  return BUN_CONVERTERS.length;
 }
 
 function converterByOutput(output: string): StreamConverter | undefined {
-  return CONVERTERS.find((c) => c.output === output);
+  return BUN_CONVERTERS.find((c) => c.output === output);
 }
 
 function converterNames(): string[] {
-  return CONVERTERS.map((c) => c.function);
+  return BUN_CONVERTERS.map((c) => c.function);
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -130,8 +130,8 @@ function converterNames(): string[] {
 // ═══════════════════════════════════════════════════════════════
 
 export {
-  CONVERTERS,
-  SPAWN_CONVERTER_MATRIX,
+  BUN_CONVERTERS,
+  BUN_SPAWN_CONVERTER_MATRIX,
   converterCount,
   converterByOutput,
   converterNames,

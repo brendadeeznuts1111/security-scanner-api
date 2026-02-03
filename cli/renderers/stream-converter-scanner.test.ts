@@ -2,30 +2,30 @@
 import { test, expect, describe } from "bun:test";
 import {
   StreamConverterScanner,
-  STREAM_CONVERTER_RULES,
-  DETECTION_PATTERNS,
+  BUN_STREAM_CONVERTER_RULES,
+  BUN_DETECTION_PATTERNS,
 } from "./stream-converter-scanner";
 
 const scanner = new StreamConverterScanner();
 
-describe("STREAM_CONVERTER_RULES", () => {
+describe("BUN_STREAM_CONVERTER_RULES", () => {
   test("5 migration rules defined", () => {
-    expect(STREAM_CONVERTER_RULES.length).toBe(5);
+    expect(BUN_STREAM_CONVERTER_RULES.length).toBe(5);
   });
 
   test("all rules have unique ids", () => {
-    const ids = STREAM_CONVERTER_RULES.map(r => r.id);
+    const ids = BUN_STREAM_CONVERTER_RULES.map(r => r.id);
     expect(new Set(ids).size).toBe(ids.length);
   });
 
   test("all rScores are >= 0.95", () => {
-    for (const rule of STREAM_CONVERTER_RULES) {
+    for (const rule of BUN_STREAM_CONVERTER_RULES) {
       expect(rule.rScore).toBeGreaterThanOrEqual(0.95);
     }
   });
 
   test("all telemetry has positive performanceGain", () => {
-    for (const rule of STREAM_CONVERTER_RULES) {
+    for (const rule of BUN_STREAM_CONVERTER_RULES) {
       expect(rule.telemetry.performanceGain).toBeGreaterThan(0);
       expect(rule.telemetry.memoryReduction).toBeGreaterThan(0);
       expect(rule.telemetry.securityImprovement).toBe(100);
@@ -33,15 +33,15 @@ describe("STREAM_CONVERTER_RULES", () => {
   });
 
   test("all rules have documentation URLs", () => {
-    for (const rule of STREAM_CONVERTER_RULES) {
+    for (const rule of BUN_STREAM_CONVERTER_RULES) {
       expect(rule.documentation).toStartWith("https://bun.sh/docs/api/streams");
     }
   });
 });
 
-describe("DETECTION_PATTERNS", () => {
+describe("BUN_DETECTION_PATTERNS", () => {
   test("4 detection patterns defined", () => {
-    expect(DETECTION_PATTERNS.length).toBe(4);
+    expect(BUN_DETECTION_PATTERNS.length).toBe(4);
   });
 });
 

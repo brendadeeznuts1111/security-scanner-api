@@ -5,7 +5,7 @@ import { readdir, appendFile } from "node:fs/promises";
 import { availableParallelism } from "node:os";
 import { dns } from "bun";
 import { z } from "zod";
-import { SCANNER_COLUMNS } from "./scan-columns";
+import { BUN_SCANNER_COLUMNS } from "./scan-columns";
 
 // ── Broken-pipe guard ─────────────────────────────────────────────────
 // When piped to a command that closes early (e.g., `scan | head`, `scan | true`),
@@ -70,6 +70,8 @@ const { values: flags, positionals } = parseArgs({
     "delete-token": { type: "string" },
     "list-tokens":  { type: "boolean", default: false },
     "check-tokens": { type: "boolean", default: false },
+    rss:              { type: "boolean", default: false },
+    "advisory-feed":  { type: "string" },
   },
   strict: true,
 });
@@ -592,12 +594,12 @@ const BUN_DEFAULT_TRUSTED = new Set([
 const PROJECTS_ROOT = Bun.env.BUN_PLATFORM_HOME ?? "/Users/nolarose/Projects";
 
 // ── Keychain (Bun.secrets) ────────────────────────────────────────────
-export const KEYCHAIN_SERVICE = "dev.bun.scanner";
-export const KEYCHAIN_SERVICE_LEGACY = "bun-scanner";
-export const KEYCHAIN_TOKEN_NAMES = ["FW_REGISTRY_TOKEN", "REGISTRY_TOKEN"] as const;
+export const BUN_KEYCHAIN_SERVICE = "dev.bun.scanner";
+export const BUN_KEYCHAIN_SERVICE_LEGACY = "bun-scanner";
+export const BUN_KEYCHAIN_TOKEN_NAMES = ["FW_REGISTRY_TOKEN", "REGISTRY_TOKEN"] as const;
 
 export function isValidTokenName(name: string): boolean {
-  return (KEYCHAIN_TOKEN_NAMES as readonly string[]).includes(name);
+  return (BUN_KEYCHAIN_TOKEN_NAMES as readonly string[]).includes(name);
 }
 
 export function validateTokenValue(value: string): { valid: true } | { valid: false; reason: string } {
@@ -691,7 +693,7 @@ export function classifyKeychainError(err: unknown): KeychainErr {
 }
 
 // -- security CLI fallback (macOS) -----------------------------------------
-async function securityGet(name: string, service = KEYCHAIN_SERVICE): Promise<KeychainResult<string | null>> {
+async function securityGet(name: string, service = BUN_KEYCHAIN_SERVICE): Promise<KeychainResult<string | null>> {
   try {
     const proc = Bun.spawn(["security", "find-generic-password", "-s", service, "-a", name, "-w"], {
       stdout: "pipe", stderr: "pipe",
@@ -718,7 +720,7 @@ async function securityGet(name: string, service = KEYCHAIN_SERVICE): Promise<Ke
   }
 }
 
-async function securitySet(name: string, value: string, service = KEYCHAIN_SERVICE): Promise<KeychainResult<void>> {
+async function securitySet(name: string, value: string, service = BUN_KEYCHAIN_SERVICE): Promise<KeychainResult<void>> {
   try {
     // delete first so add doesn't fail with "duplicate item"
     const del = Bun.spawn(["security", "delete-generic-password", "-s", service, "-a", name], {
@@ -739,7 +741,7 @@ async function securitySet(name: string, value: string, service = KEYCHAIN_SERVI
   }
 }
 
-async function securityDelete(name: string, service = KEYCHAIN_SERVICE): Promise<KeychainResult<boolean>> {
+async function securityDelete(name: string, service = BUN_KEYCHAIN_SERVICE): Promise<KeychainResult<boolean>> {
   try {
     const proc = Bun.spawn(["security", "delete-generic-password", "-s", service, "-a", name], {
       stdout: "pipe", stderr: "pipe",
@@ -758,7 +760,7 @@ async function securityDelete(name: string, service = KEYCHAIN_SERVICE): Promise
 }
 
 // -- keychain metadata (macOS security CLI) --------------------------------
-async function securityMeta(name: string, service = KEYCHAIN_SERVICE): Promise<string | null> {
+async function securityMeta(name: string, service = BUN_KEYCHAIN_SERVICE): Promise<string | null> {
   try {
     const proc = Bun.spawn(["security", "find-generic-password", "-s", service, "-a", name], {
       stdout: "pipe", stderr: "pipe",
@@ -779,7 +781,7 @@ export async function keychainGet(name: string): Promise<KeychainResult<string |
   let result: KeychainResult<string | null>;
   if (_hasBunSecrets) {
     try {
-      const value = (await (globalThis as any).secrets.get(KEYCHAIN_SERVICE, name)) ?? null;
+      const value = (await (globalThis as any).secrets.get(BUN_KEYCHAIN_SERVICE, name)) ?? null;
       result = { ok: true, value };
     } catch (err) {
       result = classifyKeychainError(err);
@@ -798,7 +800,7 @@ export async function keychainSet(name: string, value: string): Promise<Keychain
   let result: KeychainResult<void>;
   if (_hasBunSecrets) {
     try {
-      await (globalThis as any).secrets.set(KEYCHAIN_SERVICE, name, value);
+      await (globalThis as any).secrets.set(BUN_KEYCHAIN_SERVICE, name, value);
       result = { ok: true, value: undefined };
     } catch (err) {
       result = classifyKeychainError(err);
@@ -816,7 +818,7 @@ export async function keychainDelete(name: string): Promise<KeychainResult<boole
   let result: KeychainResult<boolean>;
   if (_hasBunSecrets) {
     try {
-      result = { ok: true, value: await (globalThis as any).secrets.delete(KEYCHAIN_SERVICE, name) };
+      result = { ok: true, value: await (globalThis as any).secrets.delete(BUN_KEYCHAIN_SERVICE, name) };
     } catch (err) {
       result = classifyKeychainError(err);
     }
@@ -837,23 +839,23 @@ export function tokenSource(name: string): "env" | "keychain" | "not set" {
 
 async function migrateKeychainService(): Promise<void> {
   if (process.platform !== "darwin") return;
-  for (const name of KEYCHAIN_TOKEN_NAMES) {
-    const legacy = await securityGet(name, KEYCHAIN_SERVICE_LEGACY);
+  for (const name of BUN_KEYCHAIN_TOKEN_NAMES) {
+    const legacy = await securityGet(name, BUN_KEYCHAIN_SERVICE_LEGACY);
     if (!legacy.ok || !legacy.value) continue;
-    const current = await securityGet(name, KEYCHAIN_SERVICE);
+    const current = await securityGet(name, BUN_KEYCHAIN_SERVICE);
     if (current.ok && current.value) {
       // already exists under new service — just clean up legacy
-      await securityDelete(name, KEYCHAIN_SERVICE_LEGACY);
+      await securityDelete(name, BUN_KEYCHAIN_SERVICE_LEGACY);
       continue;
     }
-    const stored = await securitySet(name, legacy.value, KEYCHAIN_SERVICE);
-    if (stored.ok) await securityDelete(name, KEYCHAIN_SERVICE_LEGACY);
+    const stored = await securitySet(name, legacy.value, BUN_KEYCHAIN_SERVICE);
+    if (stored.ok) await securityDelete(name, BUN_KEYCHAIN_SERVICE_LEGACY);
   }
 }
 
 async function autoLoadKeychainTokens(): Promise<void> {
   await migrateKeychainService();
-  for (const name of KEYCHAIN_TOKEN_NAMES) {
+  for (const name of BUN_KEYCHAIN_TOKEN_NAMES) {
     if (Bun.env[name]) continue;
     const result = await keychainGet(name);
     if (result.ok && result.value) {
@@ -915,7 +917,7 @@ async function checkTokenHealth(): Promise<void> {
   console.log(`\n${c.bold("  Token Health Check")}`);
   console.log(`  ${c.dim(`registry: ${registryUrl}`)}\n`);
 
-  for (const name of KEYCHAIN_TOKEN_NAMES) {
+  for (const name of BUN_KEYCHAIN_TOKEN_NAMES) {
     const kcResult = await keychainGet(name);
     const envVal = Bun.env[name];
     const value = (kcResult.ok && kcResult.value) ? kcResult.value : envVal;
@@ -992,6 +994,9 @@ export type XrefSnapshot = z.infer<typeof XrefSnapshotSchema>;
 const SNAPSHOT_DIR = `${import.meta.dir}/.audit`;
 const SNAPSHOT_PATH = `${SNAPSHOT_DIR}/xref-snapshot.json`;
 const TOKEN_AUDIT_PATH = `${SNAPSHOT_DIR}/token-events.jsonl`;
+export const BUN_TOKEN_AUDIT_RSS_PATH = `${SNAPSHOT_DIR}/token-events.rss.xml`;
+export const BUN_SCAN_RESULTS_RSS_PATH = `${SNAPSHOT_DIR}/scan-results.rss.xml`;
+export const BUN_ADVISORY_MATCHES_PATH = `${SNAPSHOT_DIR}/advisory-matches.jsonl`;
 
 type TokenEvent = "store" | "delete" | "load" | "load_skip" | "store_fail" | "delete_fail" | "check_fail";
 
@@ -1010,6 +1015,260 @@ async function logTokenEvent(evt: { event: TokenEvent; tokenName: string; result
     await appendFile(TOKEN_AUDIT_PATH, JSON.stringify(entry) + "\n");
   } catch {
     // audit must never break operations
+  }
+}
+
+// ── XML / RSS helpers ──────────────────────────────────────────────────
+
+export function escapeXml(text: string): string {
+  return text
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&apos;");
+}
+
+export function decodeXmlEntities(text: string): string {
+  return text
+    .replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g, "$1")
+    .replace(/&apos;/g, "'")
+    .replace(/&quot;/g, '"')
+    .replace(/&gt;/g, ">")
+    .replace(/&lt;/g, "<")
+    .replace(/&amp;/g, "&");
+}
+
+interface RssChannel {
+  title: string;
+  description: string;
+  link: string;
+  language?: string;
+  ttl?: number;
+  items: Array<{ title: string; description: string; link?: string; pubDate: string; guid?: string }>;
+}
+
+export function generateRssXml(channel: RssChannel): string {
+  const items = [...channel.items].sort(
+    (a, b) => new Date(b.pubDate).getTime() - new Date(a.pubDate).getTime(),
+  );
+  const itemsXml = items
+    .map(
+      (it) =>
+        `    <item>
+      <title>${escapeXml(it.title)}</title>${it.link ? `\n      <link>${escapeXml(it.link)}</link>` : ""}
+      <guid${!it.guid && it.link ? "" : ` isPermaLink="false"`}>${escapeXml(it.guid ?? it.link ?? it.title)}</guid>
+      <description>${escapeXml(it.description)}</description>
+      <pubDate>${escapeXml(it.pubDate)}</pubDate>
+    </item>`,
+    )
+    .join("\n");
+  const buildDate = new Date().toUTCString();
+  const lang = channel.language ?? "en-us";
+  return `<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom">
+  <channel>
+    <title>${escapeXml(channel.title)}</title>
+    <link>${escapeXml(channel.link)}</link>
+    <description>${escapeXml(channel.description)}</description>
+    <language>${escapeXml(lang)}</language>
+    <atom:link href="${escapeXml(channel.link)}" rel="self" type="application/rss+xml"/>
+    <generator>Bun-Scanner</generator>
+    <lastBuildDate>${buildDate}</lastBuildDate>
+    <pubDate>${buildDate}</pubDate>${channel.ttl != null ? `\n    <ttl>${channel.ttl}</ttl>` : ""}
+${itemsXml}
+  </channel>
+</rss>
+`;
+}
+
+export function parseRssFeed(xmlText: string): Array<{ title: string; link: string; description: string; pubDate: string }> {
+  const results: Array<{ title: string; link: string; description: string; pubDate: string }> = [];
+
+  // Try RSS 2.0 <item> elements
+  const itemRegex = /<item[\s>]([\s\S]*?)<\/item>/gi;
+  let match: RegExpExecArray | null;
+  while ((match = itemRegex.exec(xmlText)) !== null) {
+    const block = match[1];
+    const title = decodeXmlEntities(block.match(/<title[^>]*>([\s\S]*?)<\/title>/i)?.[1] ?? "");
+    const link = decodeXmlEntities(block.match(/<link[^>]*>([\s\S]*?)<\/link>/i)?.[1] ?? "");
+    const description = decodeXmlEntities(
+      (block.match(/<description[^>]*>([\s\S]*?)<\/description>/i)?.[1] ??
+        block.match(/<content[^>]*>([\s\S]*?)<\/content>/i)?.[1] ?? ""),
+    );
+    const pubDate = decodeXmlEntities(block.match(/<pubDate[^>]*>([\s\S]*?)<\/pubDate>/i)?.[1] ?? "");
+    results.push({ title, link, description, pubDate });
+  }
+  if (results.length > 0) return results;
+
+  // Try Atom <entry> elements
+  const entryRegex = /<entry[\s>]([\s\S]*?)<\/entry>/gi;
+  while ((match = entryRegex.exec(xmlText)) !== null) {
+    const block = match[1];
+    const title = decodeXmlEntities(block.match(/<title[^>]*>([\s\S]*?)<\/title>/i)?.[1] ?? "");
+    const linkMatch = block.match(/<link[^>]*href=["']([^"']*)["'][^>]*\/?>/i);
+    const link = decodeXmlEntities(linkMatch?.[1] ?? block.match(/<link[^>]*>([\s\S]*?)<\/link>/i)?.[1] ?? "");
+    const description = decodeXmlEntities(
+      (block.match(/<summary[^>]*>([\s\S]*?)<\/summary>/i)?.[1] ??
+        block.match(/<content[^>]*>([\s\S]*?)<\/content>/i)?.[1] ?? ""),
+    );
+    const pubDate = decodeXmlEntities(
+      (block.match(/<published[^>]*>([\s\S]*?)<\/published>/i)?.[1] ??
+        block.match(/<updated[^>]*>([\s\S]*?)<\/updated>/i)?.[1] ?? ""),
+    );
+    results.push({ title, link, description, pubDate });
+  }
+
+  return results;
+}
+
+// ── RSS feature functions ──────────────────────────────────────────────
+
+async function publishTokenEventsRss(): Promise<void> {
+  try {
+    const file = Bun.file(TOKEN_AUDIT_PATH);
+    if (!(await file.exists())) return;
+    const text = await file.text();
+    const lines = text.trim().split("\n").filter(Boolean);
+    const events = lines
+      .map((l) => { try { return JSON.parse(l); } catch { return null; } })
+      .filter(Boolean)
+      .slice(-100)
+      .reverse();
+    if (events.length === 0) return;
+    const items = events.map((e: { event: string; tokenName: string; result: string; detail?: string; timestamp: string }) => ({
+      title: `Token ${e.event}: ${e.tokenName}`,
+      description: `Result: ${e.result}${e.detail ? ` — ${e.detail}` : ""}`,
+      pubDate: e.timestamp ? new Date(e.timestamp).toUTCString() : new Date().toUTCString(),
+      guid: `${e.timestamp}-${e.event}-${e.tokenName}`,
+    }));
+    const xml = generateRssXml({
+      title: "Token Audit Events",
+      description: "Token lifecycle events from Bun-Scanner",
+      link: `file://${BUN_TOKEN_AUDIT_RSS_PATH}`,
+      items,
+    });
+    const { mkdir } = await import("node:fs/promises");
+    await mkdir(SNAPSHOT_DIR, { recursive: true });
+    await Bun.write(BUN_TOKEN_AUDIT_RSS_PATH, xml);
+    console.log(`  RSS  ${BUN_TOKEN_AUDIT_RSS_PATH} (${items.length} events)`);
+  } catch (err) {
+    console.error("  Warning: failed to generate token events RSS:", (err as Error).message);
+  }
+}
+
+async function consumeAdvisoryFeed(feedUrl: string, projects: ProjectInfo[]): Promise<void> {
+  try {
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), 10_000);
+    const res = await fetch(feedUrl, {
+      signal: ctrl.signal,
+      headers: { "User-Agent": "Bun-Scanner/1.0" },
+    });
+    clearTimeout(timer);
+    if (!res.ok) {
+      console.error(`  Warning: advisory feed returned HTTP ${res.status}`);
+      return;
+    }
+    const xmlText = await res.text();
+    const advisories = parseRssFeed(xmlText);
+    if (advisories.length === 0) {
+      console.log("  Advisory feed: no entries found.");
+      return;
+    }
+
+    const pkgNames = new Set<string>();
+    for (const p of projects) {
+      for (const dep of p.keyDeps) pkgNames.add(dep);
+    }
+
+    const matches: Array<{ advisory: string; date: string; link: string; packages: string[]; folders: string[] }> = [];
+    for (const adv of advisories) {
+      const text = `${adv.title} ${adv.description}`;
+      const matched: string[] = [];
+      for (const pkg of pkgNames) {
+        const re = new RegExp(`\\b${pkg.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`, "i");
+        if (re.test(text)) matched.push(pkg);
+      }
+      if (matched.length > 0) {
+        const folders = projects
+          .filter((p) => p.keyDeps.some((d) => matched.includes(d)))
+          .map((p) => p.folder);
+        matches.push({ advisory: adv.title, date: adv.pubDate, link: adv.link, packages: matched, folders });
+      }
+    }
+
+    if (matches.length === 0) {
+      console.log(`  Advisory feed: ${advisories.length} entries, no matches to local packages.`);
+      return;
+    }
+
+    console.log(`\n  Advisory matches (${matches.length}):`);
+    for (const m of matches) {
+      console.log(`    • ${m.advisory}`);
+      if (m.date) console.log(`      Date: ${m.date}`);
+      if (m.link) console.log(`      Link: ${m.link}`);
+      console.log(`      Packages: ${m.packages.join(", ")}`);
+      console.log(`      Projects: ${m.folders.join(", ")}`);
+    }
+
+    const { mkdir } = await import("node:fs/promises");
+    await mkdir(SNAPSHOT_DIR, { recursive: true });
+    const lines = matches.map((m) => JSON.stringify({ ...m, fetchedAt: new Date().toISOString() })).join("\n") + "\n";
+    await appendFile(BUN_ADVISORY_MATCHES_PATH, lines);
+    console.log(`  Appended ${matches.length} match(es) to ${BUN_ADVISORY_MATCHES_PATH}`);
+  } catch (err) {
+    const msg = (err as Error).name === "AbortError" ? "request timed out" : (err as Error).message;
+    console.error(`  Warning: advisory feed failed: ${msg}`);
+  }
+}
+
+async function publishScanResultsRss(projects: ProjectInfo[]): Promise<void> {
+  try {
+    const notable = projects.filter((p) => {
+      if (!p.authReady) return true;
+      if (p.engine === "unknown") return true;
+      if (p.lock === "none") return true;
+      if (Object.keys(p.overrides).length > 0 || Object.keys(p.resolutions).length > 0) return true;
+      if (!p.resilient) return true;
+      if (p.cacheDisabled) return true;
+      if (p.noVerify) return true;
+      return false;
+    });
+    if (notable.length === 0) return;
+
+    const now = new Date().toUTCString();
+    const ts = Date.now();
+    const items = notable.map((p, i) => {
+      const findings: string[] = [];
+      if (!p.authReady) findings.push("auth not ready");
+      if (p.engine === "unknown") findings.push("unknown engine");
+      if (p.lock === "none") findings.push("no lockfile");
+      if (Object.keys(p.overrides).length > 0) findings.push(`${Object.keys(p.overrides).length} override(s)`);
+      if (Object.keys(p.resolutions).length > 0) findings.push(`${Object.keys(p.resolutions).length} resolution(s)`);
+      if (!p.resilient) findings.push("not resilient");
+      if (p.cacheDisabled) findings.push("cache disabled");
+      if (p.noVerify) findings.push("verification disabled");
+      return {
+        title: `${p.name}@${p.version} — ${findings.length} finding(s)`,
+        description: `Folder: ${p.folder}\nFindings: ${findings.join(", ")}`,
+        pubDate: now,
+        guid: `${p.folder}-${ts}-${i}`,
+      };
+    });
+
+    const xml = generateRssXml({
+      title: "Scan Results",
+      description: "Notable findings from Bun-Scanner",
+      link: `file://${BUN_SCAN_RESULTS_RSS_PATH}`,
+      items,
+    });
+    const { mkdir } = await import("node:fs/promises");
+    await mkdir(SNAPSHOT_DIR, { recursive: true });
+    await Bun.write(BUN_SCAN_RESULTS_RSS_PATH, xml);
+    console.log(`  RSS  ${BUN_SCAN_RESULTS_RSS_PATH} (${items.length} project(s))`);
+  } catch (err) {
+    console.error("  Warning: failed to generate scan results RSS:", (err as Error).message);
   }
 }
 
@@ -1676,7 +1935,7 @@ function inspectProject(p: ProjectInfo) {
   line(".npmrc",       p.hasNpmrc ? c.green("yes") : c.dim("no"));
   line("Auth Ready",   p.authReady ? c.green("YES") : c.dim("no"));
   line("Resilient",    p.resilient ? c.green("YES") : c.dim("no"));
-  for (const tkn of KEYCHAIN_TOKEN_NAMES) {
+  for (const tkn of BUN_KEYCHAIN_TOKEN_NAMES) {
     const src = tokenSource(tkn);
     const colored = src === "env" ? c.green(src) : src === "keychain" ? c.cyan(src) : c.yellow(src);
     line(`  ${tkn}`, colored);
@@ -1794,7 +2053,7 @@ function inspectProject(p: ProjectInfo) {
 
 // ── Table rendering ────────────────────────────────────────────────────
 function renderTable(projects: ProjectInfo[], detail: boolean) {
-  const columnDefs = SCANNER_COLUMNS.PROJECT_SCAN;
+  const columnDefs = BUN_SCANNER_COLUMNS.PROJECT_SCAN;
 
   const columnValueMap: Record<string, (p: ProjectInfo, idx: number) => string | number> = {
     idx:           (_p, i) => i,
@@ -2051,7 +2310,7 @@ async function renderAudit(projects: ProjectInfo[]) {
   console.log();
   console.log(c.bold("  Token sources:"));
   console.log();
-  for (const tkn of KEYCHAIN_TOKEN_NAMES) {
+  for (const tkn of BUN_KEYCHAIN_TOKEN_NAMES) {
     const src = tokenSource(tkn);
     const colored = src === "env" ? c.green(src) : src === "keychain" ? c.cyan(src) : c.yellow(src);
     const hint = src === "not set" ? c.dim(`  (--store-token ${tkn})`) : "";
@@ -3965,6 +4224,8 @@ ${c.bold("  Modes:")}
     ${c.cyan("--delete-token")} <name>              Remove a token from OS keychain
     ${c.cyan("--list-tokens")}                      Show stored token names and sources
     ${c.cyan("--check-tokens")}                     Verify stored tokens authenticate with registry
+    ${c.cyan("--rss")}                              Generate RSS feeds (.audit/*.rss.xml)
+    ${c.cyan("--advisory-feed")} <url>              Fetch & cross-ref security advisory RSS/Atom feed
 
 ${c.bold("  Filters:")}
     ${c.cyan("--filter")} <glob|bool>               Filter by name, folder, or boolean field
@@ -4001,7 +4262,7 @@ ${c.bold("  Other:")}
     const name = flags["store-token"];
     if (!isValidTokenName(name)) {
       console.error(`${c.red("error:")} unknown token name ${c.cyan(name)}`);
-      console.error(`  ${c.dim("allowed:")} ${KEYCHAIN_TOKEN_NAMES.join(", ")}`);
+      console.error(`  ${c.dim("allowed:")} ${BUN_KEYCHAIN_TOKEN_NAMES.join(", ")}`);
       process.exit(1);
     }
     let value: string;
@@ -4022,7 +4283,7 @@ ${c.bold("  Other:")}
     }
     const result = await keychainSet(name, value);
     if (result.ok) {
-      console.log(`${c.green("✓")} Stored ${c.cyan(name)} in OS keychain (service: ${KEYCHAIN_SERVICE})`);
+      console.log(`${c.green("✓")} Stored ${c.cyan(name)} in OS keychain (service: ${BUN_KEYCHAIN_SERVICE})`);
       await logTokenEvent({ event: "store", tokenName: name, result: "ok" });
     } else {
       const hints: Record<KeychainErr["code"], string> = {
@@ -4043,7 +4304,7 @@ ${c.bold("  Other:")}
     const name = flags["delete-token"];
     if (!isValidTokenName(name)) {
       console.error(`${c.red("error:")} unknown token name ${c.cyan(name)}`);
-      console.error(`  ${c.dim("allowed:")} ${KEYCHAIN_TOKEN_NAMES.join(", ")}`);
+      console.error(`  ${c.dim("allowed:")} ${BUN_KEYCHAIN_TOKEN_NAMES.join(", ")}`);
       process.exit(1);
     }
     const result = await keychainDelete(name);
@@ -4075,7 +4336,7 @@ ${c.bold("  Other:")}
 
     // Collect token data
     const tokenData: { name: string; source: string; inEnv: boolean; inKeychain: boolean; lookupMs: number; storedAt: string | null; m: TokenMetrics }[] = [];
-    for (const name of KEYCHAIN_TOKEN_NAMES) {
+    for (const name of BUN_KEYCHAIN_TOKEN_NAMES) {
       const t1 = Bun.nanoseconds();
       const inEnv = !!Bun.env[name];
       const kcResult = await keychainGet(name);
@@ -4104,7 +4365,7 @@ ${c.bold("  Other:")}
         console.log(`    ${c.cyan(t.name.padEnd(24))} ${colored}  ${c.dim(`${t.lookupMs.toFixed(1)}ms`)}`);
       }
       console.log();
-      console.log(`  ${c.dim(`${found}/${tokenData.length} resolved  ${totalMs.toFixed(1)}ms  backend: ${backend}  service: ${KEYCHAIN_SERVICE}`)}`);
+      console.log(`  ${c.dim(`${found}/${tokenData.length} resolved  ${totalMs.toFixed(1)}ms  backend: ${backend}  service: ${BUN_KEYCHAIN_SERVICE}`)}`);
 
       console.log();
       console.log(`${c.bold("  Lifecycle:")}\n`);
@@ -4119,7 +4380,7 @@ ${c.bold("  Other:")}
       // Detail view (--detail) — Token Health & Security Assessment
       const ROTATION_DAYS = 90;
       console.log(`\n  ${c.bold(c.cyan("Token Health & Security Assessment"))}`)
-      console.log(`  ${c.dim(`${found}/${tokenData.length} resolved  ${totalMs.toFixed(1)}ms  backend: ${backend}  service: ${KEYCHAIN_SERVICE}`)}\n`);
+      console.log(`  ${c.dim(`${found}/${tokenData.length} resolved  ${totalMs.toFixed(1)}ms  backend: ${backend}  service: ${BUN_KEYCHAIN_SERVICE}`)}\n`);
 
       const rows = tokenData.map((t) => {
         const active = t.inEnv || t.inKeychain;
@@ -4307,6 +4568,13 @@ ${c.bold("  Other:")}
   // ── Audit mode ──────────────────────────────────────────────────
   if (flags.audit) {
     await renderAudit(projects);
+    if (flags.rss) {
+      await publishTokenEventsRss();
+      await publishScanResultsRss(projects);
+    }
+    if (flags["advisory-feed"]) {
+      await consumeAdvisoryFeed(flags["advisory-feed"], projects);
+    }
     return;
   }
 
@@ -4598,6 +4866,16 @@ ${c.bold("  Other:")}
     const { mkdir } = await import("node:fs/promises");
     await mkdir(SNAPSHOT_DIR, { recursive: true });
     await appendFile(auditLogPath, JSON.stringify(entry) + "\n");
+  }
+
+  // ── RSS feed generation ──────────────────────────────────────────
+  if (flags.rss) {
+    console.log();
+    await publishTokenEventsRss();
+    await publishScanResultsRss(projects);
+  }
+  if (flags["advisory-feed"]) {
+    await consumeAdvisoryFeed(flags["advisory-feed"], projects);
   }
 }
 

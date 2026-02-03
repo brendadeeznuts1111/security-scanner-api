@@ -1,5 +1,5 @@
 import { describe, test, expect } from "bun:test";
-import { isFeatureFlagActive, classifyEnvFlag, effectiveLinker, platformHelp, shouldWarnMise, parseTzFromEnv, parseEnvVar, validateThreatFeed, ThreatFeedItemSchema, semverBumpType, isVulnerable, semverCompare, ProjectInfoSchema, XrefSnapshotSchema, XrefEntrySchema, PackageJsonSchema, classifyKeychainError, tokenSource, timeSince, keychainGet, keychainSet, keychainDelete, KEYCHAIN_SERVICE, KEYCHAIN_TOKEN_NAMES, isValidTokenName, validateTokenValue, tokenValueWarnings, type KeychainErr } from "./scan.ts";
+import { isFeatureFlagActive, classifyEnvFlag, effectiveLinker, platformHelp, shouldWarnMise, parseTzFromEnv, parseEnvVar, validateThreatFeed, ThreatFeedItemSchema, semverBumpType, isVulnerable, semverCompare, ProjectInfoSchema, XrefSnapshotSchema, XrefEntrySchema, PackageJsonSchema, classifyKeychainError, tokenSource, timeSince, keychainGet, keychainSet, keychainDelete, BUN_KEYCHAIN_SERVICE, BUN_KEYCHAIN_TOKEN_NAMES, isValidTokenName, validateTokenValue, tokenValueWarnings, escapeXml, decodeXmlEntities, generateRssXml, parseRssFeed, BUN_TOKEN_AUDIT_RSS_PATH, BUN_SCAN_RESULTS_RSS_PATH, BUN_ADVISORY_MATCHES_PATH, type KeychainErr } from "./scan.ts";
 
 describe("isFeatureFlagActive", () => {
   test("returns true for '1'", () => {
@@ -1195,15 +1195,15 @@ describe("token security edge cases", () => {
     await keychainDelete(name);
   });
 
-  test("KEYCHAIN_SERVICE is reverse-domain format", () => {
-    expect(KEYCHAIN_SERVICE).toBe("dev.bun.scanner");
-    expect(KEYCHAIN_SERVICE).toMatch(/^[a-z]+\.[a-z]+\.[a-z]+$/);
+  test("BUN_KEYCHAIN_SERVICE is reverse-domain format", () => {
+    expect(BUN_KEYCHAIN_SERVICE).toBe("dev.bun.scanner");
+    expect(BUN_KEYCHAIN_SERVICE).toMatch(/^[a-z]+\.[a-z]+\.[a-z]+$/);
   });
 
-  test("KEYCHAIN_TOKEN_NAMES contains expected tokens", () => {
-    expect(KEYCHAIN_TOKEN_NAMES).toContain("FW_REGISTRY_TOKEN");
-    expect(KEYCHAIN_TOKEN_NAMES).toContain("REGISTRY_TOKEN");
-    expect(KEYCHAIN_TOKEN_NAMES.length).toBe(2);
+  test("BUN_KEYCHAIN_TOKEN_NAMES contains expected tokens", () => {
+    expect(BUN_KEYCHAIN_TOKEN_NAMES).toContain("FW_REGISTRY_TOKEN");
+    expect(BUN_KEYCHAIN_TOKEN_NAMES).toContain("REGISTRY_TOKEN");
+    expect(BUN_KEYCHAIN_TOKEN_NAMES.length).toBe(2);
   });
 
   test("rotation detection: 90+ day old token", () => {
@@ -1274,5 +1274,191 @@ describe("token security edge cases", () => {
   test("tokenValueWarnings returns empty for real tokens", () => {
     expect(tokenValueWarnings("npm_Abc123XyZ4567890")).toEqual([]);
     expect(tokenValueWarnings("ghp_abcdefghijklmnop")).toEqual([]);
+  });
+});
+
+describe("RSS feed helpers", () => {
+  // ── escapeXml ───────────────────────────────────────────────────────
+  test("escapeXml escapes &, <, >, \", '", () => {
+    expect(escapeXml('Tom & Jerry <"friends"> aren\'t')).toBe(
+      "Tom &amp; Jerry &lt;&quot;friends&quot;&gt; aren&apos;t",
+    );
+    expect(escapeXml("clean text")).toBe("clean text");
+  });
+
+  // ── decodeXmlEntities ───────────────────────────────────────────────
+  test("decodeXmlEntities decodes entities and strips CDATA", () => {
+    expect(decodeXmlEntities("&amp; &lt; &gt; &quot; &apos;")).toBe('& < > " \'');
+    expect(decodeXmlEntities("<![CDATA[hello <world>]]>")).toBe("hello <world>");
+    expect(decodeXmlEntities("no entities")).toBe("no entities");
+  });
+
+  // ── generateRssXml ─────────────────────────────────────────────────
+  test("generateRssXml produces valid RSS 2.0 structure with correct escaping", () => {
+    const xml = generateRssXml({
+      title: "Test & Feed",
+      description: "A <test> feed",
+      link: "https://example.com",
+      items: [
+        { title: "Item 1", description: "Desc 1", link: "https://example.com/1", pubDate: "2025-01-02T00:00:00Z" },
+        { title: "Item 2", description: "Desc 2", pubDate: "2025-01-03T00:00:00Z" },
+      ],
+    });
+    expect(xml).toContain('<?xml version="1.0" encoding="UTF-8"?>');
+    expect(xml).toContain('<rss version="2.0"');
+    expect(xml).toContain("<title>Test &amp; Feed</title>");
+    expect(xml).toContain("<description>A &lt;test&gt; feed</description>");
+    expect(xml).toContain("<generator>Bun-Scanner</generator>");
+    expect(xml).toContain("<language>en-us</language>");
+    expect(xml).toContain("<pubDate>");
+    expect(xml).toContain("<lastBuildDate>");
+    expect(xml).toContain('rel="self"');
+    // Item 2 (newer) should appear before Item 1
+    const idx1 = xml.indexOf("Item 1");
+    const idx2 = xml.indexOf("Item 2");
+    expect(idx2).toBeLessThan(idx1);
+  });
+
+  // ── parseRssFeed (RSS 2.0) ─────────────────────────────────────────
+  test("parseRssFeed parses RSS 2.0 items", () => {
+    const xml = `<rss version="2.0"><channel>
+      <item>
+        <title>Advisory A</title>
+        <link>https://example.com/a</link>
+        <description>Affects lodash</description>
+        <pubDate>Mon, 01 Jan 2025 00:00:00 GMT</pubDate>
+      </item>
+      <item>
+        <title>Advisory B</title>
+        <link>https://example.com/b</link>
+        <description>Affects express</description>
+        <pubDate>Tue, 02 Jan 2025 00:00:00 GMT</pubDate>
+      </item>
+    </channel></rss>`;
+    const items = parseRssFeed(xml);
+    expect(items).toHaveLength(2);
+    expect(items[0].title).toBe("Advisory A");
+    expect(items[0].link).toBe("https://example.com/a");
+    expect(items[0].description).toBe("Affects lodash");
+    expect(items[1].title).toBe("Advisory B");
+  });
+
+  // ── parseRssFeed (Atom) ─────────────────────────────────────────────
+  test("parseRssFeed parses Atom entries (title, link href=, summary, published)", () => {
+    const xml = `<feed xmlns="http://www.w3.org/2005/Atom">
+      <entry>
+        <title>CVE-2025-0001</title>
+        <link href="https://ghsa.example/1"/>
+        <summary>Buffer overflow in zlib</summary>
+        <published>2025-03-15T12:00:00Z</published>
+      </entry>
+      <entry>
+        <title>CVE-2025-0002</title>
+        <link href="https://ghsa.example/2"/>
+        <content>XSS in react-dom</content>
+        <updated>2025-03-16T08:00:00Z</updated>
+      </entry>
+    </feed>`;
+    const items = parseRssFeed(xml);
+    expect(items).toHaveLength(2);
+    expect(items[0].title).toBe("CVE-2025-0001");
+    expect(items[0].link).toBe("https://ghsa.example/1");
+    expect(items[0].description).toBe("Buffer overflow in zlib");
+    expect(items[0].pubDate).toBe("2025-03-15T12:00:00Z");
+    expect(items[1].title).toBe("CVE-2025-0002");
+    expect(items[1].description).toBe("XSS in react-dom");
+    expect(items[1].pubDate).toBe("2025-03-16T08:00:00Z");
+  });
+
+  // ── parseRssFeed (garbage) ──────────────────────────────────────────
+  test("parseRssFeed returns empty array for garbage input", () => {
+    expect(parseRssFeed("not xml at all")).toEqual([]);
+    expect(parseRssFeed("")).toEqual([]);
+    expect(parseRssFeed("<html><body>nope</body></html>")).toEqual([]);
+  });
+
+  // ── parseRssFeed (CDATA) ───────────────────────────────────────────
+  test("parseRssFeed handles CDATA content", () => {
+    const xml = `<rss version="2.0"><channel>
+      <item>
+        <title><![CDATA[Alert: <critical>]]></title>
+        <description><![CDATA[Use &amp; in code]]></description>
+        <pubDate>Wed, 01 Jan 2025 00:00:00 GMT</pubDate>
+      </item>
+    </channel></rss>`;
+    const items = parseRssFeed(xml);
+    expect(items).toHaveLength(1);
+    expect(items[0].title).toBe("Alert: <critical>");
+    expect(items[0].description).toBe("Use & in code");
+  });
+});
+
+describe("RSS constants", () => {
+  test("BUN_TOKEN_AUDIT_RSS_PATH ends with .rss.xml and lives in .audit", () => {
+    expect(BUN_TOKEN_AUDIT_RSS_PATH).toEndWith("/token-events.rss.xml");
+    expect(BUN_TOKEN_AUDIT_RSS_PATH).toContain(".audit/");
+  });
+
+  test("BUN_SCAN_RESULTS_RSS_PATH ends with .rss.xml and lives in .audit", () => {
+    expect(BUN_SCAN_RESULTS_RSS_PATH).toEndWith("/scan-results.rss.xml");
+    expect(BUN_SCAN_RESULTS_RSS_PATH).toContain(".audit/");
+  });
+
+  test("BUN_ADVISORY_MATCHES_PATH ends with .jsonl and lives in .audit", () => {
+    expect(BUN_ADVISORY_MATCHES_PATH).toEndWith("/advisory-matches.jsonl");
+    expect(BUN_ADVISORY_MATCHES_PATH).toContain(".audit/");
+  });
+
+  test("all three paths share the same .audit directory prefix", () => {
+    const dir = (p: string) => p.slice(0, p.lastIndexOf("/"));
+    const d = dir(BUN_TOKEN_AUDIT_RSS_PATH);
+    expect(dir(BUN_SCAN_RESULTS_RSS_PATH)).toBe(d);
+    expect(dir(BUN_ADVISORY_MATCHES_PATH)).toBe(d);
+  });
+
+  test("paths are absolute", () => {
+    expect(BUN_TOKEN_AUDIT_RSS_PATH).toMatch(/^\//);
+    expect(BUN_SCAN_RESULTS_RSS_PATH).toMatch(/^\//);
+    expect(BUN_ADVISORY_MATCHES_PATH).toMatch(/^\//);
+  });
+});
+
+describe("RSS round-trip (generate → parse)", () => {
+  test("parseRssFeed can parse output of generateRssXml", () => {
+    const channel = {
+      title: "Round-trip test",
+      description: "Testing generate → parse",
+      link: "https://example.com/feed",
+      items: [
+        { title: "First", description: "Desc A", link: "https://example.com/1", pubDate: "Mon, 01 Jan 2025 00:00:00 GMT" },
+        { title: "Second", description: "Desc B", link: "https://example.com/2", pubDate: "Tue, 02 Jan 2025 00:00:00 GMT" },
+        { title: "Third", description: "Desc C", pubDate: "Wed, 03 Jan 2025 00:00:00 GMT", guid: "custom-guid-3" },
+      ],
+    };
+    const xml = generateRssXml(channel);
+    const parsed = parseRssFeed(xml);
+    expect(parsed).toHaveLength(3);
+    // generateRssXml sorts newest-first, so Third is first
+    expect(parsed[0].title).toBe("Third");
+    expect(parsed[1].title).toBe("Second");
+    expect(parsed[2].title).toBe("First");
+    expect(parsed[2].link).toBe("https://example.com/1");
+    // descriptions survive the escape/decode round-trip
+    expect(parsed[0].description).toBe("Desc C");
+  });
+
+  test("round-trip preserves special characters", () => {
+    const xml = generateRssXml({
+      title: "Special & chars",
+      description: "Test <b>bold</b>",
+      link: "https://example.com",
+      items: [
+        { title: 'He said "hello" & <goodbye>', description: "It's a 'test'", pubDate: "Mon, 01 Jan 2025 00:00:00 GMT" },
+      ],
+    });
+    const parsed = parseRssFeed(xml);
+    expect(parsed).toHaveLength(1);
+    expect(parsed[0].title).toBe('He said "hello" & <goodbye>');
+    expect(parsed[0].description).toBe("It's a 'test'");
   });
 });

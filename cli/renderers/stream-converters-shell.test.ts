@@ -1,7 +1,7 @@
 // stream-converters-shell.test.ts — Bun.$ Integration Tests
 import { test, expect, describe } from "bun:test";
 import { $ } from "bun";
-import { CONVERTERS, calcR, DEFAULTS } from "./stream-converters-enhanced";
+import { BUN_CONVERTERS, calcR, BUN_DEFAULTS } from "./stream-converters-enhanced";
 
 describe("Shell Pipeline Integration (Bun.$)", () => {
   test("text() via shell pipe", async () => {
@@ -38,39 +38,39 @@ describe("Shell Pipeline Integration (Bun.$)", () => {
 
 describe("Risk Scoring", () => {
   test("all converters score below maxRiskScore", () => {
-    for (const c of CONVERTERS) {
+    for (const c of BUN_CONVERTERS) {
       const r = calcR(c.risk);
-      expect(r).toBeLessThan(DEFAULTS.maxRiskScore);
+      expect(r).toBeLessThan(BUN_DEFAULTS.maxRiskScore);
     }
   });
 
   test("JSON has highest parsing risk", () => {
-    const json = CONVERTERS.find((c) => c.output === "object")!;
-    for (const c of CONVERTERS) {
+    const json = BUN_CONVERTERS.find((c) => c.output === "object")!;
+    for (const c of BUN_CONVERTERS) {
       expect(json.risk.parsing).toBeGreaterThanOrEqual(c.risk.parsing);
     }
   });
 
   test("FormData has highest untrusted risk", () => {
-    const form = CONVERTERS.find((c) => c.output === "FormData")!;
-    for (const c of CONVERTERS) {
+    const form = BUN_CONVERTERS.find((c) => c.output === "FormData")!;
+    for (const c of BUN_CONVERTERS) {
       expect(form.risk.untrusted).toBeGreaterThanOrEqual(c.risk.untrusted);
     }
   });
 
   test("text has lowest overall risk", () => {
-    const textScore = calcR(CONVERTERS.find((c) => c.output === "string")!.risk);
-    for (const c of CONVERTERS) {
+    const textScore = calcR(BUN_CONVERTERS.find((c) => c.output === "string")!.risk);
+    for (const c of BUN_CONVERTERS) {
       expect(textScore).toBeLessThanOrEqual(calcR(c.risk));
     }
   });
 
   test("maxRiskScore is 2.0", () => {
-    expect(DEFAULTS.maxRiskScore).toBe(2.0);
+    expect(BUN_DEFAULTS.maxRiskScore).toBe(2.0);
   });
 
   test("weights sum to 2.0", () => {
-    const { memory, parsing, untrusted } = DEFAULTS.weights;
+    const { memory, parsing, untrusted } = BUN_DEFAULTS.weights;
     expect(memory + parsing + untrusted).toBe(2.0);
   });
 });

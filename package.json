@@ -15,11 +15,14 @@
     "audit": "bun run scan.ts --audit",
     "test:ci": "bun test --no-env-file scan.test.ts",
     "scan:ci": "bun run --no-env-file scan.ts",
+    "lint": "bunx eslint .",
+    "lint:fix": "bunx eslint . --fix",
     "bench:init": "bun run benchmarks/team-init.ts",
     "profile:cpu": "bun run --smol --cpu-prof --cpu-prof-dir .audit --cpu-prof-name cpu-profile scan.ts --audit",
     "profile:cpu:md": "bun run --smol --cpu-prof --cpu-prof-md --cpu-prof-dir .audit --cpu-prof-name cpu-profile scan.ts --audit",
     "profile:heap": "bun run --smol --heap-prof --heap-prof-dir .audit --heap-prof-name heap-profile scan.ts --audit",
-    "profile:heap:md": "bun run --smol --heap-prof-md --heap-prof-dir .audit --heap-prof-name heap-profile scan.ts --audit"
+    "profile:heap:md": "bun run --smol --heap-prof-md --heap-prof-dir .audit --heap-prof-name heap-profile scan.ts --audit",
+    "prepare": "husky"
   },
   "keywords": [
     "bun",
@@ -34,7 +37,10 @@
   },
   "devDependencies": {
     "@types/bun": "latest",
-    "typescript": "^5.9.2"
+    "eslint": "^9.39.2",
+    "husky": "^9.1.7",
+    "typescript": "^5.9.2",
+    "typescript-eslint": "^8.54.0"
   },
   "dependencies": {
     "zod": "^4.3.6"

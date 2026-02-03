@@ -11,7 +11,7 @@ interface ConverterRisk {
   untrusted: number; // 0.0–1.0  risk when fed untrusted input
 }
 
-const DEFAULTS = {
+const BUN_DEFAULTS = {
   maxRiskScore: 2.0,
   weights: { memory: 0.5, parsing: 0.8, untrusted: 0.7 } as const,
 } as const;
@@ -19,9 +19,9 @@ const DEFAULTS = {
 /** Weighted risk score: memory×0.5 + parsing×0.8 + untrusted×0.7 */
 function calcR(risk: ConverterRisk): number {
   return (
-    risk.memory * DEFAULTS.weights.memory +
-    risk.parsing * DEFAULTS.weights.parsing +
-    risk.untrusted * DEFAULTS.weights.untrusted
+    risk.memory * BUN_DEFAULTS.weights.memory +
+    risk.parsing * BUN_DEFAULTS.weights.parsing +
+    risk.untrusted * BUN_DEFAULTS.weights.untrusted
   );
 }
 
@@ -38,7 +38,7 @@ interface EnhancedStreamConverter {
   risk: ConverterRisk;
 }
 
-const CONVERTERS: readonly EnhancedStreamConverter[] = [
+const BUN_CONVERTERS: readonly EnhancedStreamConverter[] = [
   {
     function: "Bun.readableStreamToArrayBuffer",
     input: "ReadableStream<Uint8Array>",
@@ -108,7 +108,7 @@ interface MigrationMetrics {
   securityHardening: number; // 0.0–1.0 security improvement
 }
 
-const MIGRATION_WEIGHTS = {
+const BUN_MIGRATION_WEIGHTS = {
   performance: 0.4,
   memory: 0.3,
   edgeCases: 0.2,
@@ -117,10 +117,10 @@ const MIGRATION_WEIGHTS = {
 
 /** Migration R-score: higher = better migration candidate */
 function calcMigrationR(m: MigrationMetrics): number {
-  const perf = Math.min(m.performanceRatio / 30, 1.0) * MIGRATION_WEIGHTS.performance;
-  const mem = Math.min(m.memoryDelta / 1024, 1.0) * MIGRATION_WEIGHTS.memory;
-  const edge = (1 - m.edgeCases / 10) * MIGRATION_WEIGHTS.edgeCases;
-  const sec = m.securityHardening * MIGRATION_WEIGHTS.security;
+  const perf = Math.min(m.performanceRatio / 30, 1.0) * BUN_MIGRATION_WEIGHTS.performance;
+  const mem = Math.min(m.memoryDelta / 1024, 1.0) * BUN_MIGRATION_WEIGHTS.memory;
+  const edge = (1 - m.edgeCases / 10) * BUN_MIGRATION_WEIGHTS.edgeCases;
+  const sec = m.securityHardening * BUN_MIGRATION_WEIGHTS.security;
   return perf + mem + edge + sec;
 }
 
@@ -149,7 +149,7 @@ interface StreamMigrationEntry {
   metrics: MigrationMetrics;
 }
 
-const STREAM_MIGRATION_MATRIX: readonly StreamMigrationEntry[] = [
+const BUN_STREAM_MIGRATION_MATRIX: readonly StreamMigrationEntry[] = [
   {
     id: 1,
     userlandPattern: "new Response(stream).text()",
@@ -245,35 +245,35 @@ const STREAM_MIGRATION_MATRIX: readonly StreamMigrationEntry[] = [
 // ═══════════════════════════════════════════════════════════════
 
 function converterCount(): number {
-  return CONVERTERS.length;
+  return BUN_CONVERTERS.length;
 }
 
 function riskRanking(): { function: string; score: number }[] {
-  return CONVERTERS
+  return BUN_CONVERTERS
     .map((c) => ({ function: c.function, score: calcR(c.risk) }))
     .sort((a, b) => b.score - a.score);
 }
 
 function highRiskConverters(threshold = 1.0): EnhancedStreamConverter[] {
-  return CONVERTERS.filter((c) => calcR(c.risk) >= threshold);
+  return BUN_CONVERTERS.filter((c) => calcR(c.risk) >= threshold);
 }
 
 function migrationCount(): number {
-  return STREAM_MIGRATION_MATRIX.length;
+  return BUN_STREAM_MIGRATION_MATRIX.length;
 }
 
 function totalComplexityReduction(): { before: number; after: number; reduction: number } {
-  const before = STREAM_MIGRATION_MATRIX.reduce((s, e) => s + e.complexityBefore, 0);
-  const after = STREAM_MIGRATION_MATRIX.reduce((s, e) => s + e.complexityAfter, 0);
+  const before = BUN_STREAM_MIGRATION_MATRIX.reduce((s, e) => s + e.complexityBefore, 0);
+  const after = BUN_STREAM_MIGRATION_MATRIX.reduce((s, e) => s + e.complexityAfter, 0);
   return { before, after, reduction: before - after };
 }
 
 function totalMemorySaved(): number {
-  return STREAM_MIGRATION_MATRIX.reduce((s, e) => s + Math.abs(e.memoryDeltaBytes), 0);
+  return BUN_STREAM_MIGRATION_MATRIX.reduce((s, e) => s + Math.abs(e.memoryDeltaBytes), 0);
 }
 
 function migrationsByRScore(): readonly StreamMigrationEntry[] {
-  return [...STREAM_MIGRATION_MATRIX].sort((a, b) => b.rScore - a.rScore);
+  return [...BUN_STREAM_MIGRATION_MATRIX].sort((a, b) => b.rScore - a.rScore);
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -281,10 +281,10 @@ function migrationsByRScore(): readonly StreamMigrationEntry[] {
 // ═══════════════════════════════════════════════════════════════
 
 export {
-  CONVERTERS,
-  DEFAULTS,
-  STREAM_MIGRATION_MATRIX,
-  MIGRATION_WEIGHTS,
+  BUN_CONVERTERS,
+  BUN_DEFAULTS,
+  BUN_STREAM_MIGRATION_MATRIX,
+  BUN_MIGRATION_WEIGHTS,
   calcR,
   calcMigrationR,
   converterCount,

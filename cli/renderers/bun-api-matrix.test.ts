@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import {
   BUN_API_CATALOG,
-  SCANNER_USED_APIS,
+  BUN_SCANNER_APIS,
   formatDocUrl,
   filterByCategory,
   filterByTopic,
@@ -55,9 +55,9 @@ describe("BUN_API_CATALOG", () => {
     }
   });
 
-  test("all docUrls start with https://bun.com/docs", () => {
+  test("all docUrls start with https://bun.sh/docs", () => {
     for (const entry of BUN_API_CATALOG) {
-      expect(entry.docUrl.startsWith("https://bun.com/docs")).toBe(true);
+      expect(entry.docUrl.startsWith("https://bun.sh/docs")).toBe(true);
     }
   });
 
@@ -138,15 +138,15 @@ describe("BUN_API_CATALOG", () => {
   });
 });
 
-describe("SCANNER_USED_APIS", () => {
+describe("BUN_SCANNER_APIS", () => {
   test("known APIs are present", () => {
-    expect(SCANNER_USED_APIS.has("Bun.hash")).toBe(true);
-    expect(SCANNER_USED_APIS.has("Bun.semver")).toBe(true);
+    expect(BUN_SCANNER_APIS.has("Bun.hash")).toBe(true);
+    expect(BUN_SCANNER_APIS.has("Bun.semver")).toBe(true);
   });
 
   test("every entry exists in the catalog", () => {
     const catalogApis = new Set(BUN_API_CATALOG.map((e) => e.api));
-    for (const api of SCANNER_USED_APIS) {
+    for (const api of BUN_SCANNER_APIS) {
       expect(catalogApis.has(api)).toBe(true);
     }
   });
@@ -280,9 +280,9 @@ describe("renderScanner", () => {
     expect(SCANNER_CASES[0][1]).not.toBe(SCANNER_CASES[1][1]);
   });
 
-  test("SCANNER_USED_APIS entries render \u2713, non-used render \u00b7", () => {
+  test("BUN_SCANNER_APIS entries render \u2713, non-used render \u00b7", () => {
     for (const entry of BUN_API_CATALOG) {
-      const used = SCANNER_USED_APIS.has(entry.api);
+      const used = BUN_SCANNER_APIS.has(entry.api);
       const stripped = Bun.stripANSI(renderScanner(used));
       expect(stripped).toBe(used ? "\u2713" : "\u00b7");
     }
@@ -291,19 +291,19 @@ describe("renderScanner", () => {
 
 describe("formatDocUrl", () => {
   test("short URL returned unchanged", () => {
-    const url = "https://bun.com/docs/api/http";
+    const url = "https://bun.sh/docs/api/http";
     expect(formatDocUrl(url)).toBe(url);
   });
 
   test("long URL truncated with ellipsis", () => {
-    const url = "https://bun.com/docs/api/some-very-long-path-that-exceeds-default-max-length";
+    const url = "https://bun.sh/docs/api/some-very-long-path-that-exceeds-default-max-length";
     const result = formatDocUrl(url);
     expect(result.length).toBe(48);
     expect(result.endsWith("\u2026")).toBe(true);
   });
 
   test("explicit large maxLen preserves full URL", () => {
-    const url = "https://bun.com/docs/api/some-very-long-path-that-exceeds-default-max-length";
+    const url = "https://bun.sh/docs/api/some-very-long-path-that-exceeds-default-max-length";
     expect(formatDocUrl(url, 200)).toBe(url);
   });
 });
@@ -380,7 +380,7 @@ describe("Unicode symbol system", () => {
         expect(validSurfaceSymbols.has(ch)).toBe(true);
       }
 
-      const scannerStripped = Bun.stripANSI(renderScanner(SCANNER_USED_APIS.has(entry.api)));
+      const scannerStripped = Bun.stripANSI(renderScanner(BUN_SCANNER_APIS.has(entry.api)));
       expect(validScannerSymbols.has(scannerStripped)).toBe(true);
     }
   });

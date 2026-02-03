@@ -49,7 +49,7 @@ interface SpawnOptions {
 // STREAM CAPTURE MATRIX
 // ═══════════════════════════════════════════════════════════════
 
-const STREAM_CONFIG = {
+const BUN_STREAM_CONFIG = {
   // To capture output, use "pipe"
   capture: {
     stdout: { option: "stdout" as const, prop: "stdout" as const, method: "text" as const },
@@ -498,7 +498,7 @@ export {
   getResourceUsage,
 
   // Constants
-  STREAM_CONFIG,
+  BUN_STREAM_CONFIG,
 
   // Types
   type SpawnOptions,

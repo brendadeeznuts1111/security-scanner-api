@@ -45,7 +45,7 @@ export interface DocCoverageReport {
 // API PROVENANCE — version that introduced each API
 // ═══════════════════════════════════════════════════════════════
 
-export const API_PROVENANCE: Readonly<Record<string, string>> = {
+export const BUN_API_PROVENANCE: Readonly<Record<string, string>> = {
   // pre-1.2 (core)
   "Bun.serve": "<1.2", "Bun.fetch": "<1.2", "Bun.listen": "<1.2",
   "Bun.connect": "<1.2", "WebSocket": "<1.2",
@@ -100,7 +100,7 @@ export const API_PROVENANCE: Readonly<Record<string, string>> = {
 // PERF ANNOTATIONS — version-specific performance changes
 // ═══════════════════════════════════════════════════════════════
 
-export const PERF_ANNOTATIONS: Readonly<Record<string, readonly PerfAnnotation[]>> = {
+export const BUN_PERF_ANNOTATIONS: Readonly<Record<string, readonly PerfAnnotation[]>> = {
   "Bun.spawnSync": [
     {
       version: "1.3.6",
@@ -155,7 +155,7 @@ export const PERF_ANNOTATIONS: Readonly<Record<string, readonly PerfAnnotation[]
 // RELATED APIS — semantically linked APIs for navigation
 // ═══════════════════════════════════════════════════════════════
 
-export const RELATED_APIS: Readonly<Record<string, readonly string[]>> = {
+export const BUN_RELATED_APIS: Readonly<Record<string, readonly string[]>> = {
   // HTTP & Networking
   "Bun.serve":   ["Bun.fetch", "WebSocket", "Bun.listen", "URLPattern"],
   "Bun.fetch":   ["Bun.serve", "Bun.readableStreamToJSON", "Bun.readableStreamToText"],
@@ -273,7 +273,7 @@ export const RELATED_APIS: Readonly<Record<string, readonly string[]>> = {
 // SEARCH KEYWORDS — discovery terms for each API
 // ═══════════════════════════════════════════════════════════════
 
-export const SEARCH_KEYWORDS: Readonly<Record<string, readonly string[]>> = {
+export const BUN_SEARCH_KEYWORDS: Readonly<Record<string, readonly string[]>> = {
   // HTTP & Networking
   "Bun.serve":   ["http", "server", "listen", "port", "fetch", "request", "response", "tls", "https"],
   "Bun.fetch":   ["http", "request", "get", "post", "fetch", "api", "client"],
@@ -409,12 +409,12 @@ export class DocLinkGenerator {
     return {
       api: entry.api,
       docUrl: entry.docUrl,
-      related: [...(RELATED_APIS[api] ?? [])],
-      keywords: [...(SEARCH_KEYWORDS[api] ?? [])],
-      since: API_PROVENANCE[api] ?? "unknown",
+      related: [...(BUN_RELATED_APIS[api] ?? [])],
+      keywords: [...(BUN_SEARCH_KEYWORDS[api] ?? [])],
+      since: BUN_API_PROVENANCE[api] ?? "unknown",
       category: entry.category,
       topic: entry.topic,
-      perf: PERF_ANNOTATIONS[api] ?? [],
+      perf: BUN_PERF_ANNOTATIONS[api] ?? [],
     };
   }
 
@@ -436,7 +436,7 @@ export class DocLinkGenerator {
       }
 
       // Keyword match
-      const keywords = SEARCH_KEYWORDS[entry.api];
+      const keywords = BUN_SEARCH_KEYWORDS[entry.api];
       if (keywords) {
         for (const term of terms) {
           if (keywords.some(k => k.includes(term))) {
@@ -468,7 +468,7 @@ export class DocLinkGenerator {
 
   /** Get all APIs related to the given API (1-hop graph traversal) */
   getRelated(api: string): BunApiEntry[] {
-    const related = RELATED_APIS[api];
+    const related = BUN_RELATED_APIS[api];
     if (!related) return [];
     return related
       .map(name => catalogIndex.get(name))
@@ -478,7 +478,7 @@ export class DocLinkGenerator {
   /** Get APIs introduced in a specific version */
   getByVersion(version: string): BunApiEntry[] {
     const apis: BunApiEntry[] = [];
-    for (const [api, v] of Object.entries(API_PROVENANCE)) {
+    for (const [api, v] of Object.entries(BUN_API_PROVENANCE)) {
       if (v === version) {
         const entry = catalogIndex.get(api);
         if (entry) apis.push(entry);
@@ -504,9 +504,9 @@ export class DocLinkGenerator {
 
     const rows = entries.map(e => ({
       API: e.api,
-      Since: API_PROVENANCE[e.api] ?? "unknown",
-      Related: (RELATED_APIS[e.api] ?? []).slice(0, 3).join(", ") || "-",
-      Keywords: (SEARCH_KEYWORDS[e.api] ?? []).slice(0, 4).join(", ") || "-",
+      Since: BUN_API_PROVENANCE[e.api] ?? "unknown",
+      Related: (BUN_RELATED_APIS[e.api] ?? []).slice(0, 3).join(", ") || "-",
+      Keywords: (BUN_SEARCH_KEYWORDS[e.api] ?? []).slice(0, 4).join(", ") || "-",
       "Doc URL": e.docUrl,
     }));
 
@@ -557,8 +557,8 @@ export class DocumentationScanner {
     const undocumented: string[] = [];
 
     for (const api of apisUsed) {
-      const hasKeywords = SEARCH_KEYWORDS[api] !== undefined;
-      const hasRelated = RELATED_APIS[api] !== undefined;
+      const hasKeywords = BUN_SEARCH_KEYWORDS[api] !== undefined;
+      const hasRelated = BUN_RELATED_APIS[api] !== undefined;
       if (hasKeywords && hasRelated) {
         documented.push(api);
       } else {
@@ -583,17 +583,17 @@ export class DocumentationScanner {
 // ═══════════════════════════════════════════════════════════════
 
 export function provenanceCount(): number {
-  return Object.keys(API_PROVENANCE).length;
+  return Object.keys(BUN_API_PROVENANCE).length;
 }
 
 export function relatedApiCount(): number {
-  return Object.keys(RELATED_APIS).length;
+  return Object.keys(BUN_RELATED_APIS).length;
 }
 
 export function keywordCount(): number {
-  return Object.keys(SEARCH_KEYWORDS).length;
+  return Object.keys(BUN_SEARCH_KEYWORDS).length;
 }
 
 export function annotationCount(): number {
-  return Object.keys(PERF_ANNOTATIONS).length;
+  return Object.keys(BUN_PERF_ANNOTATIONS).length;
 }

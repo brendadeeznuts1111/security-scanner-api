@@ -1,7 +1,7 @@
 import { test, expect, describe } from "bun:test";
 import {
-  CONVERTERS,
-  SPAWN_CONVERTER_MATRIX,
+  BUN_CONVERTERS,
+  BUN_SPAWN_CONVERTER_MATRIX,
   converterCount,
   converterByOutput,
   converterNames,
@@ -11,7 +11,7 @@ import {
 // CATALOG TESTS
 // ═══════════════════════════════════════════════════════════════
 
-describe("CONVERTERS catalog", () => {
+describe("BUN_CONVERTERS catalog", () => {
   test("has 7 converters", () => {
     expect(converterCount()).toBe(7);
   });
@@ -22,7 +22,7 @@ describe("CONVERTERS catalog", () => {
   });
 
   test("all entries have non-empty fields", () => {
-    for (const c of CONVERTERS) {
+    for (const c of BUN_CONVERTERS) {
       expect(c.function.length).toBeGreaterThan(0);
       expect(c.input).toBe("ReadableStream<Uint8Array>");
       expect(c.output.length).toBeGreaterThan(0);
@@ -31,7 +31,7 @@ describe("CONVERTERS catalog", () => {
   });
 
   test("all function names start with Bun.readableStreamTo", () => {
-    for (const c of CONVERTERS) {
+    for (const c of BUN_CONVERTERS) {
       expect(c.function.startsWith("Bun.readableStreamTo")).toBe(true);
     }
   });
@@ -51,16 +51,16 @@ describe("CONVERTERS catalog", () => {
   });
 });
 
-describe("SPAWN_CONVERTER_MATRIX", () => {
+describe("BUN_SPAWN_CONVERTER_MATRIX", () => {
   test("all routes reference valid converters", () => {
     const names = new Set(converterNames().map((n) => n.replace("Bun.", "")));
-    for (const route of SPAWN_CONVERTER_MATRIX) {
+    for (const route of BUN_SPAWN_CONVERTER_MATRIX) {
       expect(names.has(route.converter)).toBe(true);
     }
   });
 
   test("all routes use pipe option", () => {
-    for (const route of SPAWN_CONVERTER_MATRIX) {
+    for (const route of BUN_SPAWN_CONVERTER_MATRIX) {
       expect(route.spawnOption).toEndWith('"pipe"');
     }
   });

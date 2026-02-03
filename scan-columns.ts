@@ -1,6 +1,6 @@
 // scan-columns.ts — Scanner Column Schema
 
-export const SCANNER_COLUMNS = {
+export const BUN_SCANNER_COLUMNS = {
   // Main Project Table
   PROJECT_SCAN: [
     { key: "idx", header: "#", width: 4, default: 0 },

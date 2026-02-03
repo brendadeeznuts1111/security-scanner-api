@@ -1,7 +1,8 @@
 // stream-converter-scanner.ts
 // Detects userland stream conversion patterns and recommends native Bun replacements
 
-import { STREAM_MIGRATION_MATRIX, type StreamMigrationEntry } from "./stream-converters-enhanced";
+import { BUN_STREAM_MIGRATION_MATRIX, type StreamMigrationEntry } from "./stream-converters-enhanced";
+import { BUN_DOC_BASE } from "./bun-api-matrix";
 
 // ═══════════════════════════════════════════════════════════════
 // TYPES
@@ -47,7 +48,7 @@ interface ScanReport {
 // MIGRATION RULES
 // ═══════════════════════════════════════════════════════════════
 
-const STREAM_CONVERTER_RULES: readonly MigrationRule[] = [
+const BUN_STREAM_CONVERTER_RULES: readonly MigrationRule[] = [
   {
     id: "stream-text-001",
     pattern: /await\s+new\s+Response\s*\(\s*(\w+)\s*\)\.text\s*\(\s*\)/g,
@@ -56,7 +57,7 @@ const STREAM_CONVERTER_RULES: readonly MigrationRule[] = [
     confidence: 0.99,
     category: "StreamConversion",
     telemetry: { performanceGain: 7.1, memoryReduction: 128, securityImprovement: 100 },
-    documentation: "https://bun.sh/docs/api/streams#readablestreamtotext",
+    documentation: `${BUN_DOC_BASE}/api/streams#readablestreamtotext`,
   },
   {
     id: "stream-json-002",
@@ -66,7 +67,7 @@ const STREAM_CONVERTER_RULES: readonly MigrationRule[] = [
     confidence: 0.99,
     category: "StreamConversion",
     telemetry: { performanceGain: 10.2, memoryReduction: 160, securityImprovement: 100 },
-    documentation: "https://bun.sh/docs/api/streams#readablestreamtojson",
+    documentation: `${BUN_DOC_BASE}/api/streams#readablestreamtojson`,
   },
   {
     id: "stream-buffer-003",
@@ -76,7 +77,7 @@ const STREAM_CONVERTER_RULES: readonly MigrationRule[] = [
     confidence: 0.98,
     category: "StreamConversion",
     telemetry: { performanceGain: 8.5, memoryReduction: 192, securityImprovement: 100 },
-    documentation: "https://bun.sh/docs/api/streams#readablestreamtoarraybuffer",
+    documentation: `${BUN_DOC_BASE}/api/streams#readablestreamtoarraybuffer`,
   },
   {
     id: "stream-blob-004",
@@ -86,7 +87,7 @@ const STREAM_CONVERTER_RULES: readonly MigrationRule[] = [
     confidence: 0.98,
     category: "StreamConversion",
     telemetry: { performanceGain: 6.8, memoryReduction: 256, securityImprovement: 100 },
-    documentation: "https://bun.sh/docs/api/streams#readablestreamtoblob",
+    documentation: `${BUN_DOC_BASE}/api/streams#readablestreamtoblob`,
   },
   {
     id: "stream-concat-005",
@@ -96,7 +97,7 @@ const STREAM_CONVERTER_RULES: readonly MigrationRule[] = [
     confidence: 0.95,
     category: "StreamConversion",
     telemetry: { performanceGain: 5.3, memoryReduction: 160, securityImprovement: 100 },
-    documentation: "https://bun.sh/docs/api/streams#readablestreamtobytes",
+    documentation: `${BUN_DOC_BASE}/api/streams#readablestreamtobytes`,
   },
 ] as const;
 
@@ -104,7 +105,7 @@ const STREAM_CONVERTER_RULES: readonly MigrationRule[] = [
 // DETECTION PATTERNS (broader than migration rules)
 // ═══════════════════════════════════════════════════════════════
 
-const DETECTION_PATTERNS = [
+const BUN_DETECTION_PATTERNS = [
   { regex: /new\s+Response\s*\(/g, type: "ResponseConstructor", converter: "readableStreamToText" },
   { regex: /Buffer\.concat\s*\(/g, type: "BufferConcat", converter: "readableStreamToBytes" },
   { regex: /new\s+TextDecoder/g, type: "TextDecoder", converter: "readableStreamToText" },
@@ -119,7 +120,7 @@ class StreamConverterScanner {
   scan(code: string): StreamConverterMatch[] {
     const matches: StreamConverterMatch[] = [];
 
-    for (const pattern of DETECTION_PATTERNS) {
+    for (const pattern of BUN_DETECTION_PATTERNS) {
       // Reset regex state for each scan
       const regex = new RegExp(pattern.regex.source, pattern.regex.flags);
       let match: RegExpExecArray | null;
@@ -147,7 +148,7 @@ class StreamConverterScanner {
     let totalSpeedup = 0;
     let totalMemory = 0;
     for (const m of matches) {
-      const rule = STREAM_CONVERTER_RULES.find(r => r.replacement.includes(m.converter));
+      const rule = BUN_STREAM_CONVERTER_RULES.find(r => r.replacement.includes(m.converter));
       if (rule) {
         totalSpeedup += rule.telemetry.performanceGain;
         totalMemory += rule.telemetry.memoryReduction;
@@ -175,7 +176,7 @@ class StreamConverterScanner {
   }
 
   private lookupRScore(converter: string): number {
-    const entry = STREAM_MIGRATION_MATRIX.find(e => e.converter === converter);
+    const entry = BUN_STREAM_MIGRATION_MATRIX.find(e => e.converter === converter);
     return entry?.rScore ?? 0.95;
   }
 
@@ -196,8 +197,8 @@ class StreamConverterScanner {
 
 export {
   StreamConverterScanner,
-  STREAM_CONVERTER_RULES,
-  DETECTION_PATTERNS,
+  BUN_STREAM_CONVERTER_RULES,
+  BUN_DETECTION_PATTERNS,
   type MigrationRule,
   type MigrationTelemetry,
   type StreamConverterMatch,

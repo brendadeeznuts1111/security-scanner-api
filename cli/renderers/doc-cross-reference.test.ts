@@ -1,10 +1,10 @@
 // doc-cross-reference.test.ts
 import { test, expect, describe } from "bun:test";
 import {
-  API_PROVENANCE,
-  PERF_ANNOTATIONS,
-  RELATED_APIS,
-  SEARCH_KEYWORDS,
+  BUN_API_PROVENANCE,
+  BUN_PERF_ANNOTATIONS,
+  BUN_RELATED_APIS,
+  BUN_SEARCH_KEYWORDS,
   DocLinkGenerator,
   DocumentationScanner,
   provenanceCount,
@@ -22,39 +22,39 @@ const generator = new DocLinkGenerator();
 const scanner = new DocumentationScanner();
 
 // ═══════════════════════════════════════════════════════════════
-// API_PROVENANCE
+// BUN_API_PROVENANCE
 // ═══════════════════════════════════════════════════════════════
 
-describe("API_PROVENANCE", () => {
+describe("BUN_API_PROVENANCE", () => {
   test("has entries for core APIs", () => {
-    expect(API_PROVENANCE["Bun.serve"]).toBe("<1.2");
-    expect(API_PROVENANCE["Bun.file"]).toBe("<1.2");
-    expect(API_PROVENANCE["Bun.spawn"]).toBe("<1.2");
-    expect(API_PROVENANCE["bun:sqlite"]).toBe("<1.2");
+    expect(BUN_API_PROVENANCE["Bun.serve"]).toBe("<1.2");
+    expect(BUN_API_PROVENANCE["Bun.file"]).toBe("<1.2");
+    expect(BUN_API_PROVENANCE["Bun.spawn"]).toBe("<1.2");
+    expect(BUN_API_PROVENANCE["bun:sqlite"]).toBe("<1.2");
   });
 
   test("has entries for 1.2.0 APIs", () => {
-    expect(API_PROVENANCE["Bun.sql"]).toBe("1.2.0");
-    expect(API_PROVENANCE["Bun.S3Client"]).toBe("1.2.0");
-    expect(API_PROVENANCE["Bun.color"]).toBe("1.2.0");
+    expect(BUN_API_PROVENANCE["Bun.sql"]).toBe("1.2.0");
+    expect(BUN_API_PROVENANCE["Bun.S3Client"]).toBe("1.2.0");
+    expect(BUN_API_PROVENANCE["Bun.color"]).toBe("1.2.0");
   });
 
   test("has entries for 1.3.x APIs", () => {
-    expect(API_PROVENANCE["Bun.redis"]).toBe("1.3.0");
-    expect(API_PROVENANCE["URLPattern"]).toBe("1.3.4");
-    expect(API_PROVENANCE["Bun.Terminal"]).toBe("1.3.5");
-    expect(API_PROVENANCE["Bun.Archive"]).toBe("1.3.6");
-    expect(API_PROVENANCE["Bun.markdown"]).toBe("1.3.8");
+    expect(BUN_API_PROVENANCE["Bun.redis"]).toBe("1.3.0");
+    expect(BUN_API_PROVENANCE["URLPattern"]).toBe("1.3.4");
+    expect(BUN_API_PROVENANCE["Bun.Terminal"]).toBe("1.3.5");
+    expect(BUN_API_PROVENANCE["Bun.Archive"]).toBe("1.3.6");
+    expect(BUN_API_PROVENANCE["Bun.markdown"]).toBe("1.3.8");
   });
 
   test("provenanceCount matches object keys", () => {
-    expect(provenanceCount()).toBe(Object.keys(API_PROVENANCE).length);
+    expect(provenanceCount()).toBe(Object.keys(BUN_API_PROVENANCE).length);
   });
 
   test("all provenance APIs exist in catalog", () => {
     const catalogApis = new Set(BUN_API_CATALOG.map(e => e.api));
     const missing: string[] = [];
-    for (const api of Object.keys(API_PROVENANCE)) {
+    for (const api of Object.keys(BUN_API_PROVENANCE)) {
       if (!catalogApis.has(api)) missing.push(api);
     }
     expect(missing).toEqual([]);
@@ -62,25 +62,25 @@ describe("API_PROVENANCE", () => {
 
   test("valid version strings", () => {
     const validVersions = /^(<1\.2|1\.\d+\.\d+)$/;
-    for (const version of Object.values(API_PROVENANCE)) {
+    for (const version of Object.values(BUN_API_PROVENANCE)) {
       expect(version).toMatch(validVersions);
     }
   });
 });
 
 // ═══════════════════════════════════════════════════════════════
-// RELATED_APIS
+// BUN_RELATED_APIS
 // ═══════════════════════════════════════════════════════════════
 
-describe("RELATED_APIS", () => {
+describe("BUN_RELATED_APIS", () => {
   test("relatedApiCount matches object keys", () => {
-    expect(relatedApiCount()).toBe(Object.keys(RELATED_APIS).length);
+    expect(relatedApiCount()).toBe(Object.keys(BUN_RELATED_APIS).length);
   });
 
   test("all source APIs exist in catalog", () => {
     const catalogApis = new Set(BUN_API_CATALOG.map(e => e.api));
     const missing: string[] = [];
-    for (const api of Object.keys(RELATED_APIS)) {
+    for (const api of Object.keys(BUN_RELATED_APIS)) {
       if (!catalogApis.has(api)) missing.push(api);
     }
     expect(missing).toEqual([]);
@@ -89,7 +89,7 @@ describe("RELATED_APIS", () => {
   test("all target APIs exist in catalog", () => {
     const catalogApis = new Set(BUN_API_CATALOG.map(e => e.api));
     const missing: string[] = [];
-    for (const [source, targets] of Object.entries(RELATED_APIS)) {
+    for (const [source, targets] of Object.entries(BUN_RELATED_APIS)) {
       for (const target of targets) {
         if (!catalogApis.has(target)) missing.push(`${source} -> ${target}`);
       }
@@ -98,70 +98,70 @@ describe("RELATED_APIS", () => {
   });
 
   test("no self-references", () => {
-    for (const [api, related] of Object.entries(RELATED_APIS)) {
+    for (const [api, related] of Object.entries(BUN_RELATED_APIS)) {
       expect(related).not.toContain(api);
     }
   });
 
   test("key relationships are bidirectional", () => {
     // Bun.serve <-> Bun.fetch
-    expect(RELATED_APIS["Bun.serve"]).toContain("Bun.fetch");
-    expect(RELATED_APIS["Bun.fetch"]).toContain("Bun.serve");
+    expect(BUN_RELATED_APIS["Bun.serve"]).toContain("Bun.fetch");
+    expect(BUN_RELATED_APIS["Bun.fetch"]).toContain("Bun.serve");
 
     // Bun.spawn <-> Bun.spawnSync
-    expect(RELATED_APIS["Bun.spawn"]).toContain("Bun.spawnSync");
-    expect(RELATED_APIS["Bun.spawnSync"]).toContain("Bun.spawn");
+    expect(BUN_RELATED_APIS["Bun.spawn"]).toContain("Bun.spawnSync");
+    expect(BUN_RELATED_APIS["Bun.spawnSync"]).toContain("Bun.spawn");
 
     // Bun.gzipSync <-> Bun.gunzipSync
-    expect(RELATED_APIS["Bun.gzipSync"]).toContain("Bun.gunzipSync");
-    expect(RELATED_APIS["Bun.gunzipSync"]).toContain("Bun.gzipSync");
+    expect(BUN_RELATED_APIS["Bun.gzipSync"]).toContain("Bun.gunzipSync");
+    expect(BUN_RELATED_APIS["Bun.gunzipSync"]).toContain("Bun.gzipSync");
 
     // Bun.file <-> Bun.write
-    expect(RELATED_APIS["Bun.file"]).toContain("Bun.write");
-    expect(RELATED_APIS["Bun.write"]).toContain("Bun.file");
+    expect(BUN_RELATED_APIS["Bun.file"]).toContain("Bun.write");
+    expect(BUN_RELATED_APIS["Bun.write"]).toContain("Bun.file");
   });
 
   test("each entry has 1-5 related APIs", () => {
-    for (const [api, related] of Object.entries(RELATED_APIS)) {
+    for (const [api, related] of Object.entries(BUN_RELATED_APIS)) {
       expect(related.length).toBeGreaterThanOrEqual(1);
       expect(related.length).toBeLessThanOrEqual(5);
     }
   });
 
   test("no duplicate targets per API", () => {
-    for (const [api, related] of Object.entries(RELATED_APIS)) {
+    for (const [api, related] of Object.entries(BUN_RELATED_APIS)) {
       expect(new Set(related).size).toBe(related.length);
     }
   });
 });
 
 // ═══════════════════════════════════════════════════════════════
-// SEARCH_KEYWORDS
+// BUN_SEARCH_KEYWORDS
 // ═══════════════════════════════════════════════════════════════
 
-describe("SEARCH_KEYWORDS", () => {
+describe("BUN_SEARCH_KEYWORDS", () => {
   test("keywordCount matches object keys", () => {
-    expect(keywordCount()).toBe(Object.keys(SEARCH_KEYWORDS).length);
+    expect(keywordCount()).toBe(Object.keys(BUN_SEARCH_KEYWORDS).length);
   });
 
   test("all keyword APIs exist in catalog", () => {
     const catalogApis = new Set(BUN_API_CATALOG.map(e => e.api));
     const missing: string[] = [];
-    for (const api of Object.keys(SEARCH_KEYWORDS)) {
+    for (const api of Object.keys(BUN_SEARCH_KEYWORDS)) {
       if (!catalogApis.has(api)) missing.push(api);
     }
     expect(missing).toEqual([]);
   });
 
   test("each entry has 2-10 keywords", () => {
-    for (const [api, keywords] of Object.entries(SEARCH_KEYWORDS)) {
+    for (const [api, keywords] of Object.entries(BUN_SEARCH_KEYWORDS)) {
       expect(keywords.length).toBeGreaterThanOrEqual(2);
       expect(keywords.length).toBeLessThanOrEqual(10);
     }
   });
 
   test("all keywords are lowercase", () => {
-    for (const keywords of Object.values(SEARCH_KEYWORDS)) {
+    for (const keywords of Object.values(BUN_SEARCH_KEYWORDS)) {
       for (const kw of keywords) {
         expect(kw).toBe(kw.toLowerCase());
       }
@@ -169,41 +169,41 @@ describe("SEARCH_KEYWORDS", () => {
   });
 
   test("no duplicate keywords per API", () => {
-    for (const [api, keywords] of Object.entries(SEARCH_KEYWORDS)) {
+    for (const [api, keywords] of Object.entries(BUN_SEARCH_KEYWORDS)) {
       expect(new Set(keywords).size).toBe(keywords.length);
     }
   });
 
   test("expected keywords present", () => {
-    expect(SEARCH_KEYWORDS["Bun.serve"]).toContain("http");
-    expect(SEARCH_KEYWORDS["Bun.serve"]).toContain("server");
-    expect(SEARCH_KEYWORDS["bun:sqlite"]).toContain("sqlite");
-    expect(SEARCH_KEYWORDS["bun:sqlite"]).toContain("database");
-    expect(SEARCH_KEYWORDS["Bun.hash"]).toContain("hash");
-    expect(SEARCH_KEYWORDS["HTMLRewriter"]).toContain("html");
+    expect(BUN_SEARCH_KEYWORDS["Bun.serve"]).toContain("http");
+    expect(BUN_SEARCH_KEYWORDS["Bun.serve"]).toContain("server");
+    expect(BUN_SEARCH_KEYWORDS["bun:sqlite"]).toContain("sqlite");
+    expect(BUN_SEARCH_KEYWORDS["bun:sqlite"]).toContain("database");
+    expect(BUN_SEARCH_KEYWORDS["Bun.hash"]).toContain("hash");
+    expect(BUN_SEARCH_KEYWORDS["HTMLRewriter"]).toContain("html");
   });
 });
 
 // ═══════════════════════════════════════════════════════════════
-// PERF_ANNOTATIONS
+// BUN_PERF_ANNOTATIONS
 // ═══════════════════════════════════════════════════════════════
 
-describe("PERF_ANNOTATIONS", () => {
+describe("BUN_PERF_ANNOTATIONS", () => {
   test("annotationCount matches object keys", () => {
-    expect(annotationCount()).toBe(Object.keys(PERF_ANNOTATIONS).length);
+    expect(annotationCount()).toBe(Object.keys(BUN_PERF_ANNOTATIONS).length);
   });
 
   test("all annotated APIs exist in catalog", () => {
     const catalogApis = new Set(BUN_API_CATALOG.map(e => e.api));
     const missing: string[] = [];
-    for (const api of Object.keys(PERF_ANNOTATIONS)) {
+    for (const api of Object.keys(BUN_PERF_ANNOTATIONS)) {
       if (!catalogApis.has(api)) missing.push(api);
     }
     expect(missing).toEqual([]);
   });
 
   test("every annotation has required fields", () => {
-    for (const [api, annotations] of Object.entries(PERF_ANNOTATIONS)) {
+    for (const [api, annotations] of Object.entries(BUN_PERF_ANNOTATIONS)) {
       expect(annotations.length).toBeGreaterThan(0);
       for (const a of annotations) {
         expect(a.version.length).toBeGreaterThan(0);
@@ -214,7 +214,7 @@ describe("PERF_ANNOTATIONS", () => {
   });
 
   test("Bun.spawnSync has close_range annotation for 1.3.6", () => {
-    const annotations = PERF_ANNOTATIONS["Bun.spawnSync"];
+    const annotations = BUN_PERF_ANNOTATIONS["Bun.spawnSync"];
     expect(annotations).toBeDefined();
     expect(annotations.length).toBeGreaterThanOrEqual(1);
     const fix = annotations.find(a => a.version === "1.3.6");
@@ -226,7 +226,7 @@ describe("PERF_ANNOTATIONS", () => {
   });
 
   test("Bun.spawn shares the close_range annotation", () => {
-    const annotations = PERF_ANNOTATIONS["Bun.spawn"];
+    const annotations = BUN_PERF_ANNOTATIONS["Bun.spawn"];
     expect(annotations).toBeDefined();
     const fix = annotations.find(a => a.version === "1.3.6");
     expect(fix).toBeDefined();
@@ -234,7 +234,7 @@ describe("PERF_ANNOTATIONS", () => {
   });
 
   test("Bun.hash has crc32 SIMD annotation for 1.3.6", () => {
-    const annotations = PERF_ANNOTATIONS["Bun.hash"];
+    const annotations = BUN_PERF_ANNOTATIONS["Bun.hash"];
     expect(annotations).toBeDefined();
     const fix = annotations.find(a => a.version === "1.3.6");
     expect(fix).toBeDefined();
@@ -243,7 +243,7 @@ describe("PERF_ANNOTATIONS", () => {
 
   test("valid version strings in all annotations", () => {
     const validVersions = /^(<1\.2|1\.\d+\.\d+)$/;
-    for (const annotations of Object.values(PERF_ANNOTATIONS)) {
+    for (const annotations of Object.values(BUN_PERF_ANNOTATIONS)) {
       for (const a of annotations) {
         expect(a.version).toMatch(validVersions);
       }
@@ -251,7 +251,7 @@ describe("PERF_ANNOTATIONS", () => {
   });
 
   test("ref URLs are valid when present", () => {
-    for (const annotations of Object.values(PERF_ANNOTATIONS)) {
+    for (const annotations of Object.values(BUN_PERF_ANNOTATIONS)) {
       for (const a of annotations) {
         if (a.ref) {
           expect(a.ref).toStartWith("https://");
@@ -271,7 +271,7 @@ describe("DocLinkGenerator", () => {
       const link = generator.getDocLink("Bun.serve");
       expect(link).not.toBeNull();
       expect(link!.api).toBe("Bun.serve");
-      expect(link!.docUrl).toContain("bun.com/docs");
+      expect(link!.docUrl).toContain("bun.sh/docs");
       expect(link!.related.length).toBeGreaterThan(0);
       expect(link!.keywords.length).toBeGreaterThan(0);
       expect(link!.since).toBe("<1.2");
@@ -371,8 +371,8 @@ describe("DocLinkGenerator", () => {
     });
 
     test("returns empty for API without related entries", () => {
-      // Find an API that isn't in RELATED_APIS
-      const allRelated = new Set(Object.keys(RELATED_APIS));
+      // Find an API that isn't in BUN_RELATED_APIS
+      const allRelated = new Set(Object.keys(BUN_RELATED_APIS));
       const unlinked = BUN_API_CATALOG.find(e => !allRelated.has(e.api));
       if (unlinked) {
         expect(generator.getRelated(unlinked.api)).toEqual([]);
@@ -547,7 +547,7 @@ describe("DocumentationScanner", () => {
     });
 
     test("100% coverage for well-documented APIs", () => {
-      // Use APIs that have both RELATED_APIS and SEARCH_KEYWORDS entries
+      // Use APIs that have both BUN_RELATED_APIS and BUN_SEARCH_KEYWORDS entries
       const code = 'Bun.serve({ fetch() {} }); Bun.file("x");';
       const report = scanner.report("test.ts", code);
       expect(report.documented).toContain("Bun.serve");
@@ -580,7 +580,7 @@ describe("DocumentationScanner", () => {
 describe("Cross-reference consistency", () => {
   test("every catalog API with provenance is in a valid version", () => {
     const versions = new Set(["<1.2", "1.2.0", "1.3.0", "1.3.4", "1.3.5", "1.3.6", "1.3.8"]);
-    for (const version of Object.values(API_PROVENANCE)) {
+    for (const version of Object.values(BUN_API_PROVENANCE)) {
       expect(versions).toContain(version);
     }
   });
@@ -588,7 +588,7 @@ describe("Cross-reference consistency", () => {
   test("provenance + related + keywords coverage > 50% of catalog", () => {
     const catalogApis = BUN_API_CATALOG.map(e => e.api);
     const covered = catalogApis.filter(
-      api => API_PROVENANCE[api] || RELATED_APIS[api] || SEARCH_KEYWORDS[api]
+      api => BUN_API_PROVENANCE[api] || BUN_RELATED_APIS[api] || BUN_SEARCH_KEYWORDS[api]
     );
     const pct = (covered.length / catalogApis.length) * 100;
     expect(pct).toBeGreaterThan(50);
