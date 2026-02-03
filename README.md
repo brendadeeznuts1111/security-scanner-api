@@ -2,7 +2,7 @@
 
 Multi-project scanner for Bun monorepos. Scans `$BUN_PLATFORM_HOME` for all projects and reports on dependencies, configuration, security posture, and infrastructure consistency.
 
-Built with [Bun](https://bun.sh).
+Built with [Bun](https://bun.sh). Based on Bun's [Security Scanner API](https://bun.com/docs/install/security-scanner-api) and the official [security-scanner-template](https://github.com/oven-sh/security-scanner-template).
 
 ## Quick start
 
@@ -136,6 +136,11 @@ bun test scan.test.ts
 - `parseTzFromEnv` — TZ extraction from .env contents (quoting, comments, multi-file)
 - `parseEnvVar` — generic env var parsing (DNS TTL, DO_NOT_TRACK, etc.)
 - `timezone subprocess` — real `Bun.spawn` tests verifying `--tz` flag, `getHours()` across zones, snapshot cross-timezone consistency
+
+## References
+
+- [Bun Security Scanner API docs](https://bun.com/docs/install/security-scanner-api)
+- [oven-sh/security-scanner-template](https://github.com/oven-sh/security-scanner-template)
 
 ## License
 
