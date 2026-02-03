@@ -1949,26 +1949,22 @@ async function renderAudit(projects: ProjectInfo[]) {
       }
     };
 
+    const reads: [string, string][] = [];
     for (const entry of entries) {
-      // Handle scoped packages (@org/pkg)
       if (entry.startsWith("@")) {
         let scoped: string[] = [];
         try { scoped = await readdir(`${nmDir}/${entry}`); } catch { continue; }
-        for (const sub of scoped) {
-          try {
-            const pkg = await Bun.file(`${nmDir}/${entry}/${sub}/package.json`).json();
-            classifyPkg(`${entry}/${sub}`, pkg.scripts ?? {});
-          } catch {}
-        }
-        continue;
+        for (const sub of scoped) reads.push([`${entry}/${sub}`, `${nmDir}/${entry}/${sub}/package.json`]);
+      } else {
+        reads.push([entry, `${nmDir}/${entry}/package.json`]);
       }
-
-      // Regular packages
-      try {
-        const pkg = await Bun.file(`${nmDir}/${entry}/package.json`).json();
-        classifyPkg(entry, pkg.scripts ?? {});
-      } catch {}
     }
+    await Promise.all(reads.map(async ([name, path]) => {
+      try {
+        const pkg = await Bun.file(path).json();
+        classifyPkg(name, pkg.scripts ?? {});
+      } catch {}
+    }));
     xrefData.push(xref);
   }
 
@@ -3214,7 +3210,7 @@ async function outdatedAcrossProjects(projects: ProjectInfo[], opts: OutdatedOpt
         }
         entry.projects.push(h.folder);
         entry.currents.add(pkg.current);
-        if (pkg.latest > entry.latest) entry.latest = pkg.latest;
+        if (semverCompare(pkg.latest, entry.latest) > 0) entry.latest = pkg.latest;
         if (pkg.workspace) entry.workspaces.add(pkg.workspace);
       }
     }
@@ -3534,8 +3530,9 @@ async function verifyLockfiles(projects: ProjectInfo[]) {
 // ── Info: run `bun info <pkg>` and show registry metadata ────────────
 async function infoPackage(pkg: string, projects: ProjectInfo[], jsonOut: boolean, property?: string) {
   // Run bun info from a dir that has package.json (bun requires it)
-  const cwd = projects.find((p) => p.hasPkg)
-    ? `${PROJECTS_ROOT}/${projects.find((p) => p.hasPkg)!.folder}`
+  const firstWithPkg = projects.find((p) => p.hasPkg);
+  const cwd = firstWithPkg
+    ? `${PROJECTS_ROOT}/${firstWithPkg.folder}`
     : PROJECTS_ROOT;
 
   // If a specific property is requested, run bun info <pkg> <property> directly
