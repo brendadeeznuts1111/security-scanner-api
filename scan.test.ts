@@ -423,6 +423,105 @@ describe("Bun API integration (scanner uses Bun.hash, Bun.file, Bun.semver, dns)
     expect(Bun.hash.wyhash(new Uint8Array([0x00, 0x62, 0x75, 0x6e])).toString(16)).toBe(hash);
   });
 
+  test("Bun.hash accepts all input types: string, TypedArray, DataView, ArrayBuffer", () => {
+    const str = "some data here";
+    const arr = new Uint8Array([1, 2, 3, 4]);
+
+    const fromString = Bun.hash(str);
+    const fromTypedArray = Bun.hash(arr);
+    const fromArrayBuffer = Bun.hash(arr.buffer);
+    const fromDataView = Bun.hash(new DataView(arr.buffer));
+
+    // All return bigint
+    expect(typeof fromString).toBe("bigint");
+    expect(typeof fromTypedArray).toBe("bigint");
+    expect(typeof fromArrayBuffer).toBe("bigint");
+    expect(typeof fromDataView).toBe("bigint");
+
+    // Same binary input via different views → same hash
+    expect(fromTypedArray).toBe(fromArrayBuffer);
+    expect(fromArrayBuffer).toBe(fromDataView);
+
+    // String vs binary → different hash
+    expect(fromString).not.toBe(fromTypedArray);
+  });
+
+  test("Bun.hash with integer seed", () => {
+    expect(Bun.hash("some data here", 1234)).toBe(15724820720172937558n);
+  });
+
+  test("Bun.hash with BigInt seed above MAX_SAFE_INTEGER", () => {
+    const bigSeed = BigInt(Number.MAX_SAFE_INTEGER) + 1n;
+    const hash = Bun.hash("data", bigSeed);
+    expect(typeof hash).toBe("bigint");
+    // Different from default seed
+    expect(hash).not.toBe(Bun.hash("data"));
+    // Different from small seed
+    expect(hash).not.toBe(Bun.hash("data", 1234));
+  });
+
+  test("Bun.hash.wyhash with seed", () => {
+    const a = Bun.hash.wyhash("data", 0);
+    const b = Bun.hash.wyhash("data", 1234);
+    expect(a).not.toBe(b); // different seeds → different hashes
+    expect(typeof a).toBe("bigint");
+  });
+
+  test("all Bun.hash algorithms produce consistent output with seed", () => {
+    const data = "data";
+    const seed = 1234;
+
+    // 64-bit algorithms (return bigint)
+    const wyhash    = Bun.hash.wyhash(data, seed);
+    const city64    = Bun.hash.cityHash64(data, seed);
+    const xx64      = Bun.hash.xxHash64(data, seed);
+    const xx3       = Bun.hash.xxHash3(data, seed);
+    const murmur64  = Bun.hash.murmur64v2(data, seed);
+    const rapid     = Bun.hash.rapidhash(data, seed);
+
+    for (const h of [wyhash, city64, xx64, xx3, murmur64, rapid]) {
+      expect(typeof h).toBe("bigint");
+      expect(h).toBeGreaterThan(0n);
+    }
+
+    // 32-bit algorithms (return number)
+    const crc32     = Bun.hash.crc32(data, seed);
+    const adler32   = Bun.hash.adler32(data, seed);
+    const city32    = Bun.hash.cityHash32(data, seed);
+    const xx32      = Bun.hash.xxHash32(data, seed);
+    const murmur3   = Bun.hash.murmur32v3(data, seed);
+    const murmur2   = Bun.hash.murmur32v2(data, seed);
+
+    for (const h of [crc32, adler32, city32, xx32, murmur3, murmur2]) {
+      expect(typeof h).toBe("number");
+      expect(h).toBeGreaterThan(0);
+    }
+
+    // All 12 algorithms produce unique hashes for the same input
+    const all = [wyhash, city64, xx64, xx3, murmur64, rapid, BigInt(crc32), BigInt(adler32), BigInt(city32), BigInt(xx32), BigInt(murmur3), BigInt(murmur2)];
+    const unique = new Set(all.map(String));
+    expect(unique.size).toBe(12);
+  });
+
+  test("all Bun.hash algorithms are deterministic", () => {
+    const data = "lockfile content";
+    const seed = 42;
+
+    // Run each twice — must be identical
+    expect(Bun.hash.wyhash(data, seed)).toBe(Bun.hash.wyhash(data, seed));
+    expect(Bun.hash.crc32(data, seed)).toBe(Bun.hash.crc32(data, seed));
+    expect(Bun.hash.adler32(data, seed)).toBe(Bun.hash.adler32(data, seed));
+    expect(Bun.hash.cityHash32(data, seed)).toBe(Bun.hash.cityHash32(data, seed));
+    expect(Bun.hash.cityHash64(data, seed)).toBe(Bun.hash.cityHash64(data, seed));
+    expect(Bun.hash.xxHash32(data, seed)).toBe(Bun.hash.xxHash32(data, seed));
+    expect(Bun.hash.xxHash64(data, seed)).toBe(Bun.hash.xxHash64(data, seed));
+    expect(Bun.hash.xxHash3(data, seed)).toBe(Bun.hash.xxHash3(data, seed));
+    expect(Bun.hash.murmur32v3(data, seed)).toBe(Bun.hash.murmur32v3(data, seed));
+    expect(Bun.hash.murmur32v2(data, seed)).toBe(Bun.hash.murmur32v2(data, seed));
+    expect(Bun.hash.murmur64v2(data, seed)).toBe(Bun.hash.murmur64v2(data, seed));
+    expect(Bun.hash.rapidhash(data, seed)).toBe(Bun.hash.rapidhash(data, seed));
+  });
+
   test("Bun.file reads package.json and returns valid JSON", async () => {
     // Use any real project — scanner itself now has a package.json
     const file = Bun.file(`${import.meta.dir}/package.json`);
