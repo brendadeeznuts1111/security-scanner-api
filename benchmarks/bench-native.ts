@@ -1,7 +1,8 @@
 /**
  * Benchmark: Bun native API replacements
  *
- * Tests the 3 patterns replaced in scan.ts against their userland equivalents.
+ * Tests the 3 patterns replaced in scan.ts against their userland equivalents,
+ * plus Bun.wrapAnsi performance across input sizes and option variants.
  * Uses Bun.nanoseconds() for timing per https://bun.sh/docs/api/utils#bun-nanoseconds
  *
  * Run: bun run benchmarks/bench-native.ts
@@ -10,6 +11,7 @@
  *   - Bun.stripANSI: https://bun.sh/docs/api/utils#bun-stripansi
  *   - proc.stdout.text(): https://bun.sh/docs/api/spawn#reading-stdout
  *   - Bun.fileURLToPath: https://bun.sh/docs/api/utils#bun-fileurltopath
+ *   - Bun.wrapAnsi: https://bun.sh/docs/api/utils#bun-wrapansi
  */
 
 const ITERATIONS = 10_000;
@@ -215,6 +217,69 @@ const URL_CASES = {
   const neo = bench("fileURLToPath", () => Bun.fileURLToPath(url));
   report("unicode", old, neo);
 }
+
+// ── Bench 4: Bun.wrapAnsi ────────────────────────────────────────────
+// Ref: https://bun.sh/docs/api/utils#bun-wrapansi
+// Bun docs: 33-88x faster than wrap-ansi npm package.
+// Native ANSI-aware word wrapping with color preservation across line breaks.
+
+console.log("\n═══ 4. Bun.wrapAnsi ═══");
+console.log(`   ref: https://bun.sh/docs/api/utils#bun-wrapansi\n`);
+
+const WRAP_COLS = 20;
+
+const WRAP_INPUTS = {
+  short: "\x1b[31mThis is a short colored text\x1b[0m padding!!",
+  medium: Array.from({ length: 18 }, (_, i) => `\x1b[${31 + (i % 7)}mWord${i} text segment here\x1b[0m`).join(" "),
+  long: "",
+  hardWrap: "",
+  noTrimLong: "",
+};
+WRAP_INPUTS.long = WRAP_INPUTS.medium.repeat(10);
+WRAP_INPUTS.hardWrap = Array.from({ length: 200 }, (_, i) => `\x1b[${31 + (i % 7)}mLongword${i}coloredtext\x1b[0m`).join(" ");
+WRAP_INPUTS.noTrimLong = "  " + WRAP_INPUTS.long + "  ";
+
+// Correctness: verify color preservation across line breaks
+{
+  const text = "\x1b[31mThis is a long red text that needs wrapping\x1b[0m";
+  const wrapped = Bun.wrapAnsi(text, WRAP_COLS);
+  const wrapLines = wrapped.split("\n");
+  const allColored = wrapLines.every((l) => l.includes("\x1b[31m"));
+  console.log(`  Color preservation: ${allColored ? "pass" : "FAIL"} (${wrapLines.length} lines, all re-open red)`);
+}
+
+// Size benchmarks (matching Bun v1.3.7 release notes cases)
+const wrapCases: [string, string, Parameters<typeof Bun.wrapAnsi>[2]][] = [
+  ["short (~45 chars)", WRAP_INPUTS.short, undefined],
+  ["medium (~810 chars)", WRAP_INPUTS.medium, undefined],
+  ["long (~8100 chars)", WRAP_INPUTS.long, undefined],
+  ["hard wrap colored", WRAP_INPUTS.hardWrap, { hard: true }],
+  ["no trim long", WRAP_INPUTS.noTrimLong, { trim: false }],
+];
+
+for (const [name, input, opts] of wrapCases) {
+  console.log(`  [${name}] (${input.length} chars)`);
+  const r = bench(name, () => Bun.wrapAnsi(input, WRAP_COLS, opts));
+  console.log(`  Bun.wrapAnsi:  mean=${fmt(r.mean_ns)}  min=${fmt(r.min_ns)}  max=${fmt(r.max_ns)}`);
+  console.log();
+}
+
+// Option variants (all on long input)
+console.log("  [option variants] (long input, 20 cols)");
+
+const optCases: [string, Parameters<typeof Bun.wrapAnsi>[2]][] = [
+  ["default", undefined],
+  ["hard: true", { hard: true }],
+  ["wordWrap: false", { wordWrap: false }],
+  ["trim: false", { trim: false }],
+  ["ambiguousIsNarrow: false", { ambiguousIsNarrow: false }],
+];
+
+for (const [name, opts] of optCases) {
+  const r = bench(name, () => Bun.wrapAnsi(WRAP_INPUTS.long, WRAP_COLS, opts));
+  console.log(`  ${name.padEnd(28)} mean=${fmt(r.mean_ns)}  min=${fmt(r.min_ns)}`);
+}
+console.log();
 
 // ── Load team member profile ─────────────────────────────────────────
 
