@@ -1,6 +1,6 @@
 {
-  "generated": "2026-02-03T14:31:10.743Z",
-  "previous_generated": "2026-02-03T14:30:43.926Z",
+  "generated": "2026-02-03T14:45:25.773Z",
+  "previous_generated": "2026-02-03T14:44:56.262Z",
   "file": "scan.ts",
   "runtime": {
     "name": "bun",
@@ -19,6 +19,7 @@
     "unicode.passthrough": 4,
     "unicode.binary": 1,
     "unicode.n_a": 6,
+    "unicode.handled_total": 17,
     "legacy.response_wrapper": 0,
     "legacy.url_pathname": 0,
     "legacy.strip_ansi_regex": 0,
@@ -65,13 +66,47 @@
     "api.Bun.Glob.calls": 1,
     "api.Bun.openInEditor.calls": 1,
     "api.import.meta.url.calls": 1,
-    "api.import.meta.main.calls": 1
+    "api.import.meta.main.calls": 1,
+    "category.Shell & Process.used": 4,
+    "category.Utilities.used": 6,
+    "category.Streaming.used": 0,
+    "category.Hashing & Security.used": 1,
+    "category.Routing.used": 0,
+    "category.Databases.used": 0,
+    "category.Build & Bundling.used": 0,
+    "category.Advanced.used": 0,
+    "category.HTTP & Networking.used": 0,
+    "category.Compression.used": 0,
+    "category.Configuration.used": 3,
+    "category.File I/O.used": 5,
+    "category.Semver.used": 1,
+    "category.Shell & Process.available": 8,
+    "category.Utilities.available": 35,
+    "category.Streaming.available": 2,
+    "category.Hashing & Security.available": 11,
+    "category.Routing.available": 1,
+    "category.Databases.available": 6,
+    "category.Build & Bundling.available": 5,
+    "category.Advanced.available": 6,
+    "category.HTTP & Networking.available": 6,
+    "category.Compression.available": 4,
+    "category.Configuration.available": 4,
+    "category.File I/O.available": 15,
+    "category.Semver.available": 1,
+    "signal_cat.Error signals.used": 0,
+    "signal_cat.Termination signals.used": 2,
+    "signal_cat.User signals.used": 0,
+    "signal_cat.Child signals.used": 0,
+    "signal_cat.Input signals.used": 0,
+    "signal_cat.Operation signals.used": 0,
+    "signal_cat.Job control.used": 0,
+    "signal_cat.Misc.used": 0
   },
   "delta": {
     "has_baseline": true,
-    "total_metrics": 57,
+    "total_metrics": 92,
     "changed_count": 0,
-    "unchanged_count": 57,
+    "unchanged_count": 92,
     "changes": []
   },
   "coverage": {
@@ -81,8 +116,39 @@
     "signals": "5.4%",
     "terminal_options": "0.0%",
     "terminal_members": "0.0%",
-    "resource_usage": "0.0%"
+    "resource_usage": "0.0%",
+    "unicode": "73.9%"
   },
+  "heatmap": [
+    {
+      "surface": "Runtime APIs",
+      "pct": 22.115384615384613
+    },
+    {
+      "surface": "Spawn Options",
+      "pct": 29.411764705882355
+    },
+    {
+      "surface": "Subprocess Props",
+      "pct": 25
+    },
+    {
+      "surface": "Signals",
+      "pct": 5.405405405405405
+    },
+    {
+      "surface": "Terminal",
+      "pct": 0
+    },
+    {
+      "surface": "ResourceUsage",
+      "pct": 0
+    },
+    {
+      "surface": "Unicode",
+      "pct": 73.91304347826086
+    }
+  ],
   "summary": {
     "surface_table": [
       {
@@ -192,6 +258,475 @@
     "file_size_bytes": 198029,
     "file_lines": 4360
   },
+  "api_categories": {
+    "Shell & Process": {
+      "used": [
+        "argv",
+        "env",
+        "spawn",
+        "spawnSync"
+      ],
+      "unused": [
+        "$",
+        "sleep",
+        "sleepSync",
+        "which"
+      ],
+      "available": 8,
+      "used_count": 4,
+      "coverage": "50.0%"
+    },
+    "Utilities": {
+      "used": [
+        "Glob",
+        "inspect",
+        "nanoseconds",
+        "openInEditor",
+        "stringWidth",
+        "stripANSI"
+      ],
+      "unused": [
+        "Archive",
+        "CSRF",
+        "Cookie",
+        "CookieMap",
+        "FFI",
+        "JSON5",
+        "JSONC",
+        "JSONL",
+        "TOML",
+        "Terminal",
+        "YAML",
+        "color",
+        "deepEquals",
+        "deepMatch",
+        "embeddedFiles",
+        "escapeHTML",
+        "isMainThread",
+        "markdown",
+        "pathToFileURL",
+        "postgres",
+        "randomUUIDv5",
+        "randomUUIDv7",
+        "secrets",
+        "sha",
+        "wrapAnsi",
+        "zstdCompress",
+        "zstdCompressSync",
+        "zstdDecompress",
+        "zstdDecompressSync"
+      ],
+      "available": 35,
+      "used_count": 6,
+      "coverage": "17.1%"
+    },
+    "Streaming": {
+      "used": [],
+      "unused": [
+        "ArrayBufferSink",
+        "concatArrayBuffers"
+      ],
+      "available": 2,
+      "used_count": 0,
+      "coverage": "0.0%"
+    },
+    "Hashing & Security": {
+      "used": [
+        "hash"
+      ],
+      "unused": [
+        "CryptoHasher",
+        "MD4",
+        "MD5",
+        "SHA1",
+        "SHA224",
+        "SHA256",
+        "SHA384",
+        "SHA512",
+        "SHA512_256",
+        "password"
+      ],
+      "available": 11,
+      "used_count": 1,
+      "coverage": "9.1%"
+    },
+    "Routing": {
+      "used": [],
+      "unused": [
+        "FileSystemRouter"
+      ],
+      "available": 1,
+      "used_count": 0,
+      "coverage": "0.0%"
+    },
+    "Databases": {
+      "used": [],
+      "unused": [
+        "RedisClient",
+        "S3Client",
+        "SQL",
+        "redis",
+        "s3",
+        "sql"
+      ],
+      "available": 6,
+      "used_count": 0,
+      "coverage": "0.0%"
+    },
+    "Build & Bundling": {
+      "used": [],
+      "unused": [
+        "Transpiler",
+        "build",
+        "plugin",
+        "resolve",
+        "resolveSync"
+      ],
+      "available": 5,
+      "used_count": 0,
+      "coverage": "0.0%"
+    },
+    "Advanced": {
+      "used": [],
+      "unused": [
+        "allocUnsafe",
+        "gc",
+        "generateHeapSnapshot",
+        "peek",
+        "shrink",
+        "unsafe"
+      ],
+      "available": 6,
+      "used_count": 0,
+      "coverage": "0.0%"
+    },
+    "HTTP & Networking": {
+      "used": [],
+      "unused": [
+        "connect",
+        "dns",
+        "fetch",
+        "listen",
+        "serve",
+        "udpSocket"
+      ],
+      "available": 6,
+      "used_count": 0,
+      "coverage": "0.0%"
+    },
+    "Compression": {
+      "used": [],
+      "unused": [
+        "deflateSync",
+        "gunzipSync",
+        "gzipSync",
+        "inflateSync"
+      ],
+      "available": 4,
+      "used_count": 0,
+      "coverage": "0.0%"
+    },
+    "Configuration": {
+      "used": [
+        "main",
+        "revision",
+        "version"
+      ],
+      "unused": [
+        "enableANSIColors"
+      ],
+      "available": 4,
+      "used_count": 3,
+      "coverage": "75.0%"
+    },
+    "File I/O": {
+      "used": [
+        "file",
+        "fileURLToPath",
+        "stderr",
+        "stdout",
+        "write"
+      ],
+      "unused": [
+        "indexOfLine",
+        "mmap",
+        "readableStreamToArray",
+        "readableStreamToArrayBuffer",
+        "readableStreamToBlob",
+        "readableStreamToBytes",
+        "readableStreamToFormData",
+        "readableStreamToJSON",
+        "readableStreamToText",
+        "stdin"
+      ],
+      "available": 15,
+      "used_count": 5,
+      "coverage": "33.3%"
+    },
+    "Semver": {
+      "used": [
+        "semver"
+      ],
+      "unused": [],
+      "available": 1,
+      "used_count": 1,
+      "coverage": "100.0%"
+    }
+  },
+  "signal_categories": {
+    "Error signals": {
+      "used": 0,
+      "available": 5,
+      "coverage": "0.0%",
+      "used_signals": []
+    },
+    "Termination signals": {
+      "used": 2,
+      "available": 5,
+      "coverage": "40.0%",
+      "used_signals": [
+        "SIGTERM",
+        "SIGINT"
+      ]
+    },
+    "User signals": {
+      "used": 0,
+      "available": 2,
+      "coverage": "0.0%",
+      "used_signals": []
+    },
+    "Child signals": {
+      "used": 0,
+      "available": 1,
+      "coverage": "0.0%",
+      "used_signals": []
+    },
+    "Input signals": {
+      "used": 0,
+      "available": 2,
+      "coverage": "0.0%",
+      "used_signals": []
+    },
+    "Operation signals": {
+      "used": 0,
+      "available": 6,
+      "coverage": "0.0%",
+      "used_signals": []
+    },
+    "Job control": {
+      "used": 0,
+      "available": 4,
+      "coverage": "0.0%",
+      "used_signals": []
+    },
+    "Misc": {
+      "used": 0,
+      "available": 12,
+      "coverage": "0.0%",
+      "used_signals": []
+    }
+  },
+  "subprocess_per_site": {
+    "pid": {
+      "type": "number",
+      "used": false,
+      "sites_using": 0,
+      "total_sites": 15,
+      "ratio": "0/15"
+    },
+    "exited": {
+      "type": "Promise<number>",
+      "used": true,
+      "sites_using": 14,
+      "total_sites": 15,
+      "ratio": "14/15"
+    },
+    "exitCode": {
+      "type": "number",
+      "used": false,
+      "sites_using": 0,
+      "total_sites": 15,
+      "ratio": "0/15"
+    },
+    "signalCode": {
+      "type": "NodeJS.Signals",
+      "used": false,
+      "sites_using": 0,
+      "total_sites": 15,
+      "ratio": "0/15"
+    },
+    "killed": {
+      "type": "boolean",
+      "used": false,
+      "sites_using": 0,
+      "total_sites": 15,
+      "ratio": "0/15"
+    },
+    "stdin": {
+      "type": "FileSink",
+      "used": false,
+      "sites_using": 0,
+      "total_sites": 15,
+      "ratio": "0/15"
+    },
+    "stdout": {
+      "type": "ReadableStream",
+      "used": true,
+      "sites_using": 8,
+      "total_sites": 15,
+      "ratio": "8/15"
+    },
+    "stderr": {
+      "type": "ReadableStream",
+      "used": true,
+      "sites_using": 9,
+      "total_sites": 15,
+      "ratio": "9/15"
+    },
+    "readable": {
+      "type": "ReadableStream",
+      "used": false,
+      "sites_using": 0,
+      "total_sites": 15,
+      "ratio": "0/15"
+    },
+    "terminal": {
+      "type": "Terminal",
+      "used": false,
+      "sites_using": 0,
+      "total_sites": 15,
+      "ratio": "0/15"
+    },
+    "kill": {
+      "type": "method",
+      "used": false,
+      "sites_using": 0,
+      "total_sites": 15,
+      "ratio": "0/15"
+    },
+    "ref": {
+      "type": "method",
+      "used": false,
+      "sites_using": 0,
+      "total_sites": 15,
+      "ratio": "0/15"
+    },
+    "unref": {
+      "type": "method",
+      "used": false,
+      "sites_using": 0,
+      "total_sites": 15,
+      "ratio": "0/15"
+    },
+    "send": {
+      "type": "method",
+      "used": false,
+      "sites_using": 0,
+      "total_sites": 15,
+      "ratio": "0/15"
+    },
+    "disconnect": {
+      "type": "method",
+      "used": false,
+      "sites_using": 0,
+      "total_sites": 15,
+      "ratio": "0/15"
+    },
+    "resourceUsage": {
+      "type": "method",
+      "used": false,
+      "sites_using": 0,
+      "total_sites": 15,
+      "ratio": "0/15"
+    }
+  },
+  "spawn_option_matrix": [
+    {
+      "option": "cwd",
+      "status": "Used",
+      "sites": 8
+    },
+    {
+      "option": "env",
+      "status": "Unused",
+      "sites": 0
+    },
+    {
+      "option": "stdio",
+      "status": "Used",
+      "sites": 1
+    },
+    {
+      "option": "stdin",
+      "status": "Unused",
+      "sites": 0
+    },
+    {
+      "option": "stdout",
+      "status": "Used",
+      "sites": 15
+    },
+    {
+      "option": "stderr",
+      "status": "Used",
+      "sites": 15
+    },
+    {
+      "option": "onExit",
+      "status": "Unused",
+      "sites": 0
+    },
+    {
+      "option": "ipc",
+      "status": "Used",
+      "sites": 1
+    },
+    {
+      "option": "serialization",
+      "status": "Unused",
+      "sites": 0
+    },
+    {
+      "option": "windowsHide",
+      "status": "Unused",
+      "sites": 0
+    },
+    {
+      "option": "windowsVerbatimArguments",
+      "status": "Unused",
+      "sites": 0
+    },
+    {
+      "option": "argv0",
+      "status": "Unused",
+      "sites": 0
+    },
+    {
+      "option": "signal",
+      "status": "Unused",
+      "sites": 0
+    },
+    {
+      "option": "timeout",
+      "status": "Unused",
+      "sites": 0
+    },
+    {
+      "option": "killSignal",
+      "status": "Unused",
+      "sites": 0
+    },
+    {
+      "option": "maxBuffer",
+      "status": "Unused",
+      "sites": 0
+    },
+    {
+      "option": "terminal",
+      "status": "Unused",
+      "sites": 0
+    }
+  ],
   "apis": [
     {
       "api": "Bun.file",

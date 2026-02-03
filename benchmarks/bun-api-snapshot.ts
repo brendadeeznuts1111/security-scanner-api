@@ -466,10 +466,113 @@ const availableApis = Object.keys(Bun).filter((k) => !k.startsWith("_")).sort();
 const usedApiNames = results.map((r) => r.api.replace(/^(Bun\.|import\.meta\.|proc\.)/, "").replace(/\.\*$/, "").split(".")[0]);
 const unusedApis = availableApis.filter((k) => !usedApiNames.includes(k));
 
-// ── Metrics: flat table of every tracked number ─────────────────────
-// Every numeric metric in one place — the base for delta tracking.
+// ── API categorization ──────────────────────────────────────────────
+// Groups all available Bun runtime APIs into functional categories.
 
-const totalCalls = results.reduce((sum, r) => sum + r.calls, 0);
+const API_CATEGORY_RULES: [string, RegExp][] = [
+  ["HTTP & Networking",  /^(serve|fetch|connect|listen|dns|udpSocket|Socket|TCPSocket|TLSSocket|Listener)/],
+  ["Shell & Process",    /^(spawn|spawnSync|\$|which|argv|env|sleep)/],
+  ["File I/O",           /^(file|write|read|stdin|stdout|stderr|openFile|mmap|indexOfLine|BunFile)/],
+  ["Build & Bundling",   /^(build|Transpiler|plugin|resolve)/],
+  ["Hashing & Security", /^(hash|CryptoHasher|SHA|MD[45]|password|TOTP|Crypto)/],
+  ["Databases",          /^(sql|SQL|S3Client|s3|redis|Redis)/],
+  ["Compression",        /^(gzip|deflate|inflate|gunzip|brotli|zlib)/],
+  ["Streaming",          /^(ArrayBufferSink|readableStreamTo|concatArrayBuffers)/],
+  ["Routing",            /^(FileSystemRouter|Router)/],
+  ["Advanced",           /^(gc|generateHeapSnapshot|shrink|jsc|allocUnsafe|unsafe|peek)/],
+  ["Semver",             /^(semver)/],
+  ["Configuration",      /^(version|revision|main|origin|cwd|assetPrefix|enableANSIColors)/],
+];
+
+function categorizeApi(name: string): string {
+  for (const [category, re] of API_CATEGORY_RULES) {
+    if (re.test(name)) return category;
+  }
+  return "Utilities";
+}
+
+function buildApiCategories() {
+  const cats: Record<string, { used: string[]; unused: string[]; available: number; used_count: number; coverage: string }> = {};
+
+  for (const api of availableApis) {
+    const cat = categorizeApi(api);
+    if (!cats[cat]) cats[cat] = { used: [], unused: [], available: 0, used_count: 0, coverage: "0.0%" };
+    cats[cat].available++;
+    if (usedApiNames.includes(api)) {
+      cats[cat].used.push(api);
+      cats[cat].used_count++;
+    } else {
+      cats[cat].unused.push(api);
+    }
+  }
+
+  for (const c of Object.values(cats)) {
+    c.coverage = c.available > 0 ? `${((c.used_count / c.available) * 100).toFixed(1)}%` : "n/a";
+  }
+  return cats;
+}
+
+const apiCategories = buildApiCategories();
+
+// ── Signal categorization ───────────────────────────────────────────
+
+const SIGNAL_CATEGORY_DEFS: Record<string, string[]> = {
+  "Error signals":       ["SIGABRT", "SIGBUS", "SIGFPE", "SIGILL", "SIGSEGV"],
+  "Termination signals": ["SIGTERM", "SIGKILL", "SIGHUP", "SIGQUIT", "SIGINT"],
+  "User signals":        ["SIGUSR1", "SIGUSR2"],
+  "Child signals":       ["SIGCHLD"],
+  "Input signals":       ["SIGTTIN", "SIGTTOU"],
+  "Operation signals":   ["SIGPIPE", "SIGALRM", "SIGPROF", "SIGVTALRM", "SIGIO", "SIGPOLL"],
+  "Job control":         ["SIGSTOP", "SIGTSTP", "SIGCONT", "SIGURG"],
+  "Misc":                ["SIGTRAP", "SIGSYS", "SIGXCPU", "SIGXFSZ", "SIGWINCH", "SIGPWR", "SIGSTKFLT", "SIGIOT", "SIGUNUSED", "SIGBREAK", "SIGLOST", "SIGINFO"],
+};
+
+function buildSignalCategories() {
+  const cats: Record<string, { used: number; available: number; coverage: string; used_signals: string[] }> = {};
+  for (const [cat, sigs] of Object.entries(SIGNAL_CATEGORY_DEFS)) {
+    const usedSigs = sigs.filter((s) => signalAnalysis.coverage[s]?.used);
+    cats[cat] = {
+      used: usedSigs.length,
+      available: sigs.length,
+      coverage: sigs.length > 0 ? `${((usedSigs.length / sigs.length) * 100).toFixed(1)}%` : "n/a",
+      used_signals: usedSigs,
+    };
+  }
+  return cats;
+}
+
+const signalCategories = buildSignalCategories();
+
+// ── Subprocess per-site member coverage ─────────────────────────────
+
+const SUBPROCESS_MEMBER_TYPES: Record<string, string> = {
+  pid: "number", exited: "Promise<number>", exitCode: "number", signalCode: "NodeJS.Signals",
+  killed: "boolean", stdin: "FileSink", stdout: "ReadableStream", stderr: "ReadableStream",
+  readable: "ReadableStream", terminal: "Terminal", kill: "method", ref: "method",
+  unref: "method", send: "method", disconnect: "method", resourceUsage: "method",
+};
+
+function buildSubprocessPerSite() {
+  const asyncSites = spawnAnalysis.sites.filter((s) => !s.sync);
+  const total = asyncSites.length;
+  const perMember: Record<string, { type: string; used: boolean; sites_using: number; total_sites: number; ratio: string }> = {};
+
+  for (const member of SUBPROCESS_MEMBERS) {
+    const sitesUsing = asyncSites.filter((s) => member in s.subprocessAccess).length;
+    perMember[member] = {
+      type: SUBPROCESS_MEMBER_TYPES[member] ?? "unknown",
+      used: sitesUsing > 0,
+      sites_using: sitesUsing,
+      total_sites: total,
+      ratio: `${sitesUsing}/${total}`,
+    };
+  }
+  return perMember;
+}
+
+const subprocessPerSite = buildSubprocessPerSite();
+
+// ── Unicode summary ─────────────────────────────────────────────────
 
 const unicodeCounts = {
   full: results.filter((r) => r.unicode === "full").length,
@@ -477,6 +580,35 @@ const unicodeCounts = {
   binary: results.filter((r) => r.unicode === "binary").length,
   "n/a": results.filter((r) => r.unicode === "n/a").length,
 };
+const unicodeHandled = unicodeCounts.full + unicodeCounts.passthrough + unicodeCounts.binary;
+
+// ── Helpers ─────────────────────────────────────────────────────────
+
+function pct(used: number, available: number): string {
+  return available > 0 ? `${((used / available) * 100).toFixed(1)}%` : "n/a";
+}
+
+function pctNum(used: number, available: number): number {
+  return available > 0 ? (used / available) * 100 : 0;
+}
+
+function bar(ratio: number, width = 18): string {
+  const filled = Math.round(ratio * width);
+  return "\u2588".repeat(filled) + "\u00b7".repeat(width - filled);
+}
+
+function heatLabel(p: number): string {
+  if (p === 0) return "None";
+  if (p < 10) return "Very Low";
+  if (p < 30) return "Low";
+  if (p < 60) return "Medium";
+  if (p < 80) return "High";
+  return "Very High";
+}
+
+// ── Metrics: flat table of every tracked number ─────────────────────
+
+const totalCalls = results.reduce((sum, r) => sum + r.calls, 0);
 
 const metrics: Record<string, number> = {
   // file
@@ -496,6 +628,7 @@ const metrics: Record<string, number> = {
   "unicode.passthrough":     unicodeCounts.passthrough,
   "unicode.binary":          unicodeCounts.binary,
   "unicode.n_a":             unicodeCounts["n/a"],
+  "unicode.handled_total":   unicodeHandled,
 
   // legacy patterns (should stay at 0)
   "legacy.response_wrapper": countPattern(/new Response\(proc\./g),
@@ -524,17 +657,30 @@ const metrics: Record<string, number> = {
   "terminal.members_used":      terminalAnalysis.members_used,
 
   // resource usage
-  "resource_usage.call_sites":    resourceUsageAnalysis.call_sites,
+  "resource_usage.call_sites":       resourceUsageAnalysis.call_sites,
   "resource_usage.fields_available": RESOURCE_USAGE_FIELDS.length,
-  "resource_usage.fields_used":     resourceUsageAnalysis.fields_used,
+  "resource_usage.fields_used":      resourceUsageAnalysis.fields_used,
 
   // per-signal context counts
   ...Object.fromEntries(
-    Object.entries(signalAnalysis.contexts).map(([ctx, n]) => [`signals.ctx.${ctx}`, n])
+    Object.entries(signalAnalysis.contexts).map(([ctx, n]) => [`signals.ctx.${ctx}`, n]),
   ),
 
   // per-api call counts
   ...Object.fromEntries(results.map((r) => [`api.${r.api}.calls`, r.calls])),
+
+  // per-category counts
+  ...Object.fromEntries(
+    Object.entries(apiCategories).map(([cat, d]) => [`category.${cat}.used`, d.used_count]),
+  ),
+  ...Object.fromEntries(
+    Object.entries(apiCategories).map(([cat, d]) => [`category.${cat}.available`, d.available]),
+  ),
+
+  // per-signal-category counts
+  ...Object.fromEntries(
+    Object.entries(signalCategories).map(([cat, d]) => [`signal_cat.${cat}.used`, d.used]),
+  ),
 };
 
 // ── Delta: compare against previous snapshot ────────────────────────
@@ -549,22 +695,13 @@ interface DeltaEntry {
 
 function computeDelta(current: Record<string, number>, previous: Record<string, number> | null): DeltaEntry[] {
   if (!previous) return [];
-
   const allKeys = new Set([...Object.keys(current), ...Object.keys(previous)]);
   const entries: DeltaEntry[] = [];
-
   for (const key of [...allKeys].sort()) {
     const cur = current[key] ?? 0;
     const prev = previous[key] ?? 0;
-    entries.push({
-      metric: key,
-      previous: prev,
-      current: cur,
-      delta: cur - prev,
-      changed: cur !== prev,
-    });
+    entries.push({ metric: key, previous: prev, current: cur, delta: cur - prev, changed: cur !== prev });
   }
-
   return entries;
 }
 
@@ -572,23 +709,43 @@ const previousMetrics: Record<string, number> | null = previousSnapshot?.metrics
 const deltaEntries = computeDelta(metrics, previousMetrics);
 const changedEntries = deltaEntries.filter((e) => e.changed);
 
-// ── Coverage percentages ────────────────────────────────────────────
-
-function pct(used: number, available: number): string {
-  return available > 0 ? `${((used / available) * 100).toFixed(1)}%` : "n/a";
-}
+// ── Coverage ────────────────────────────────────────────────────────
 
 const coverage = {
-  runtime_apis:       pct(results.length, availableApis.length),
-  spawn_options:      pct(spawnAnalysis.totals.options_used, SPAWN_OPTION_KEYS.length),
-  spawn_members:      pct(spawnAnalysis.totals.members_used, SUBPROCESS_MEMBERS.length),
-  signals:            pct(signalAnalysis.total_signals_used, SIGNALS.length),
-  terminal_options:   pct(terminalAnalysis.options_used, TERMINAL_OPTIONS_KEYS.length),
-  terminal_members:   pct(terminalAnalysis.members_used, TERMINAL_MEMBERS.length),
-  resource_usage:     pct(resourceUsageAnalysis.fields_used, RESOURCE_USAGE_FIELDS.length),
+  runtime_apis:   pct(results.length, availableApis.length),
+  spawn_options:  pct(spawnAnalysis.totals.options_used, SPAWN_OPTION_KEYS.length),
+  spawn_members:  pct(spawnAnalysis.totals.members_used, SUBPROCESS_MEMBERS.length),
+  signals:        pct(signalAnalysis.total_signals_used, SIGNALS.length),
+  terminal_options: pct(terminalAnalysis.options_used, TERMINAL_OPTIONS_KEYS.length),
+  terminal_members: pct(terminalAnalysis.members_used, TERMINAL_MEMBERS.length),
+  resource_usage: pct(resourceUsageAnalysis.fields_used, RESOURCE_USAGE_FIELDS.length),
+  unicode:        pct(unicodeHandled, results.length),
 };
 
-// ── Output ──────────────────────────────────────────────────────────
+// ── Heatmap data ────────────────────────────────────────────────────
+
+const heatmap = [
+  { surface: "Runtime APIs",     pct: pctNum(results.length, availableApis.length) },
+  { surface: "Spawn Options",    pct: pctNum(spawnAnalysis.totals.options_used, SPAWN_OPTION_KEYS.length) },
+  { surface: "Subprocess Props", pct: pctNum(spawnAnalysis.totals.members_used, SUBPROCESS_MEMBERS.length) },
+  { surface: "Signals",          pct: pctNum(signalAnalysis.total_signals_used, SIGNALS.length) },
+  { surface: "Terminal",         pct: pctNum(terminalAnalysis.options_used + terminalAnalysis.members_used, TERMINAL_OPTIONS_KEYS.length + TERMINAL_MEMBERS.length) },
+  { surface: "ResourceUsage",    pct: pctNum(resourceUsageAnalysis.fields_used, RESOURCE_USAGE_FIELDS.length) },
+  { surface: "Unicode",          pct: pctNum(unicodeHandled, results.length) },
+];
+
+// ── Spawn option matrix ─────────────────────────────────────────────
+
+const spawnOptionMatrix = SPAWN_OPTION_KEYS.map((key) => ({
+  option: key,
+  status: spawnAnalysis.optionCoverage[key]?.used ? "Used" : "Unused",
+  sites: spawnAnalysis.optionCoverage[key]?.sites ?? 0,
+}));
+
+// ── Output JSON ─────────────────────────────────────────────────────
+
+const processUsed = spawnAnalysis.totals.options_used + spawnAnalysis.totals.members_used;
+const processAvail = SPAWN_OPTION_KEYS.length + SUBPROCESS_MEMBERS.length;
 
 const snapshot = {
   generated: new Date().toISOString(),
@@ -609,30 +766,35 @@ const snapshot = {
     changes: changedEntries,
   },
   coverage,
+  heatmap,
   summary: {
     surface_table: [
-      { surface: "Bun Runtime APIs",   used: results.length,                    available: availableApis.length,            coverage: coverage.runtime_apis },
-      { surface: "API Call Sites",      used: totalCalls,                        available: null,                            coverage: null },
-      { surface: "Spawn Options",       used: spawnAnalysis.totals.options_used, available: SPAWN_OPTION_KEYS.length,        coverage: coverage.spawn_options },
-      { surface: "Subprocess Members",  used: spawnAnalysis.totals.members_used, available: SUBPROCESS_MEMBERS.length,       coverage: coverage.spawn_members },
-      { surface: "Spawn Sites (async)", used: spawnAnalysis.totals.spawn_sites,  available: null,                            coverage: null },
-      { surface: "Spawn Sites (sync)",  used: spawnAnalysis.totals.spawnSync_sites, available: null,                         coverage: null },
-      { surface: "Signals",             used: signalAnalysis.total_signals_used, available: SIGNALS.length,                  coverage: coverage.signals },
-      { surface: "Signal Sites",        used: signalAnalysis.sites.length,       available: null,                            coverage: null },
-      { surface: "Terminal Options",    used: terminalAnalysis.options_used,      available: TERMINAL_OPTIONS_KEYS.length,    coverage: coverage.terminal_options },
-      { surface: "Terminal Members",    used: terminalAnalysis.members_used,      available: TERMINAL_MEMBERS.length,         coverage: coverage.terminal_members },
-      { surface: "ResourceUsage Calls", used: resourceUsageAnalysis.call_sites,  available: null,                            coverage: null },
-      { surface: "ResourceUsage Fields",used: resourceUsageAnalysis.fields_used, available: RESOURCE_USAGE_FIELDS.length,    coverage: coverage.resource_usage },
-      { surface: "Unicode: full",       used: unicodeCounts.full,                available: null,                            coverage: null },
-      { surface: "Unicode: passthrough",used: unicodeCounts.passthrough,         available: null,                            coverage: null },
-      { surface: "Unicode: binary",     used: unicodeCounts.binary,              available: null,                            coverage: null },
-      { surface: "Unicode: n/a",        used: unicodeCounts["n/a"],              available: null,                            coverage: null },
-      { surface: "Legacy Patterns",     used: metrics["legacy.response_wrapper"] + metrics["legacy.url_pathname"] + metrics["legacy.strip_ansi_regex"], available: null, coverage: null },
+      { surface: "Bun Runtime APIs",    used: results.length,                       available: availableApis.length,         coverage: coverage.runtime_apis },
+      { surface: "API Call Sites",       used: totalCalls,                           available: null,                         coverage: null },
+      { surface: "Spawn Options",        used: spawnAnalysis.totals.options_used,    available: SPAWN_OPTION_KEYS.length,     coverage: coverage.spawn_options },
+      { surface: "Subprocess Members",   used: spawnAnalysis.totals.members_used,    available: SUBPROCESS_MEMBERS.length,    coverage: coverage.spawn_members },
+      { surface: "Spawn Sites (async)",  used: spawnAnalysis.totals.spawn_sites,     available: null,                         coverage: null },
+      { surface: "Spawn Sites (sync)",   used: spawnAnalysis.totals.spawnSync_sites, available: null,                         coverage: null },
+      { surface: "Signals",              used: signalAnalysis.total_signals_used,    available: SIGNALS.length,               coverage: coverage.signals },
+      { surface: "Signal Sites",         used: signalAnalysis.sites.length,          available: null,                         coverage: null },
+      { surface: "Terminal Options",     used: terminalAnalysis.options_used,         available: TERMINAL_OPTIONS_KEYS.length, coverage: coverage.terminal_options },
+      { surface: "Terminal Members",     used: terminalAnalysis.members_used,         available: TERMINAL_MEMBERS.length,      coverage: coverage.terminal_members },
+      { surface: "ResourceUsage Calls",  used: resourceUsageAnalysis.call_sites,     available: null,                         coverage: null },
+      { surface: "ResourceUsage Fields", used: resourceUsageAnalysis.fields_used,    available: RESOURCE_USAGE_FIELDS.length, coverage: coverage.resource_usage },
+      { surface: "Unicode: full",        used: unicodeCounts.full,                   available: null,                         coverage: null },
+      { surface: "Unicode: passthrough", used: unicodeCounts.passthrough,            available: null,                         coverage: null },
+      { surface: "Unicode: binary",      used: unicodeCounts.binary,                 available: null,                         coverage: null },
+      { surface: "Unicode: n/a",         used: unicodeCounts["n/a"],                 available: null,                         coverage: null },
+      { surface: "Legacy Patterns",      used: metrics["legacy.response_wrapper"] + metrics["legacy.url_pathname"] + metrics["legacy.strip_ansi_regex"], available: null, coverage: null },
     ],
     min_bun_version: "1.0.0",
     file_size_bytes: metrics["file.size_bytes"],
     file_lines: metrics["file.lines"],
   },
+  api_categories: apiCategories,
+  signal_categories: signalCategories,
+  subprocess_per_site: subprocessPerSite,
+  spawn_option_matrix: spawnOptionMatrix,
   apis: results,
   spawn: {
     doc: "https://bun.sh/docs/api/spawn",
@@ -675,6 +837,184 @@ const snapshot = {
   unused_bun_apis: unusedApis,
 };
 
-const output = JSON.stringify(snapshot, null, 2);
-await Bun.write(SNAPSHOT_PATH, output + "\n");
-console.log(output);
+// ── Write JSON ──────────────────────────────────────────────────────
+
+await Bun.write(SNAPSHOT_PATH, JSON.stringify(snapshot, null, 2) + "\n");
+
+// ── Dashboard ───────────────────────────────────────────────────────
+
+const W = 79;
+const hline = "\u2500".repeat(W - 2);
+const dline = "\u2550".repeat(W - 2);
+const thinline = "\u2500".repeat(W - 4);
+
+const pad = (s: string, n: number) => s.length >= n ? s.slice(0, n) : s + " ".repeat(n - s.length);
+const rpad = (s: string, n: number) => s.length >= n ? s.slice(0, n) : " ".repeat(n - s.length) + s;
+
+console.log(`\u2554${dline}\u2557`);
+console.log(`\u2551${pad(`  BUN API METRICS DASHBOARD \u2014 ${Object.keys(metrics).length} METRICS`, W - 2)}\u2551`);
+console.log(`\u255a${dline}\u255d`);
+console.log();
+
+// ── Section: Runtime API Coverage ──────────────────
+console.log(`\u250c${hline}\u2510`);
+console.log(`\u2502${pad(`  RUNTIME API COVERAGE (${results.length}/${availableApis.length} used \u2014 ${coverage.runtime_apis})`, W - 2)}\u2502`);
+console.log(`\u251c${hline}\u2524`);
+console.log(`\u2502  ${pad("Surface", 26)}${rpad("Used", 6)}${rpad("Avail", 8)}${rpad("Coverage", 10)}${" ".repeat(W - 2 - 2 - 26 - 6 - 8 - 10)}\u2502`);
+console.log(`\u2502  ${thinline}  \u2502`);
+
+for (const [cat, d] of Object.entries(apiCategories).sort((a, b) => b[1].available - a[1].available)) {
+  console.log(`\u2502  ${pad(cat, 26)}${rpad(String(d.used_count), 6)}${rpad(String(d.available), 8)}${rpad(d.coverage, 10)}${" ".repeat(W - 2 - 2 - 26 - 6 - 8 - 10)}\u2502`);
+}
+console.log(`\u2502  ${thinline}  \u2502`);
+console.log(`\u2502  ${pad("TOTAL", 26)}${rpad(String(results.length), 6)}${rpad(String(availableApis.length), 8)}${rpad(coverage.runtime_apis, 10)}${" ".repeat(W - 2 - 2 - 26 - 6 - 8 - 10)}\u2502`);
+console.log(`\u2514${hline}\u2518`);
+console.log();
+
+// ── Section: Process & Spawn Coverage ──────────────
+console.log(`\u250c${hline}\u2510`);
+console.log(`\u2502${pad(`  PROCESS & SPAWN COVERAGE (${processUsed}/${processAvail} used \u2014 ${pct(processUsed, processAvail)})`, W - 2)}\u2502`);
+console.log(`\u251c${hline}\u2524`);
+console.log(`\u2502  ${pad("Surface", 26)}${rpad("Used", 6)}${rpad("Avail", 8)}${rpad("Coverage", 10)}${" ".repeat(W - 2 - 2 - 26 - 6 - 8 - 10)}\u2502`);
+console.log(`\u2502  ${thinline}  \u2502`);
+
+const processRows = [
+  ["Spawn Options",       spawnAnalysis.totals.options_used,      SPAWN_OPTION_KEYS.length,        coverage.spawn_options],
+  ["Subprocess Members",  spawnAnalysis.totals.members_used,      SUBPROCESS_MEMBERS.length,       coverage.spawn_members],
+  ["Spawn Sites (async)", spawnAnalysis.totals.spawn_sites,       null,                            null],
+  ["Spawn Sites (sync)",  spawnAnalysis.totals.spawnSync_sites,   null,                            null],
+  ["Signals",             signalAnalysis.total_signals_used,      SIGNALS.length,                  coverage.signals],
+  ["Signal Sites",        signalAnalysis.sites.length,            null,                            null],
+  ["Terminal Options",    terminalAnalysis.options_used,           TERMINAL_OPTIONS_KEYS.length,    coverage.terminal_options],
+  ["Terminal Members",    terminalAnalysis.members_used,           TERMINAL_MEMBERS.length,         coverage.terminal_members],
+  ["ResourceUsage Calls", resourceUsageAnalysis.call_sites,       null,                            null],
+  ["ResourceUsage Fields", resourceUsageAnalysis.fields_used,     RESOURCE_USAGE_FIELDS.length,    coverage.resource_usage],
+] as const;
+
+for (const [name, used, avail, cov] of processRows) {
+  console.log(`\u2502  ${pad(name, 26)}${rpad(String(used), 6)}${rpad(avail !== null ? String(avail) : "-", 8)}${rpad(cov ?? "-", 10)}${" ".repeat(W - 2 - 2 - 26 - 6 - 8 - 10)}\u2502`);
+}
+console.log(`\u2514${hline}\u2518`);
+console.log();
+
+// ── Section: Spawn Configuration Matrix ────────────
+console.log(`\u250c${hline}\u2510`);
+console.log(`\u2502${pad("  SPAWN CONFIGURATION MATRIX", W - 2)}\u2502`);
+console.log(`\u251c${hline}\u2524`);
+console.log(`\u2502  ${pad("Option", 32)}${rpad("Status", 10)}${rpad("Sites", 8)}${" ".repeat(W - 2 - 2 - 32 - 10 - 8)}\u2502`);
+console.log(`\u2502  ${thinline}  \u2502`);
+for (const row of spawnOptionMatrix) {
+  console.log(`\u2502  ${pad(row.option, 32)}${rpad(row.status, 10)}${rpad(String(row.sites), 8)}${" ".repeat(W - 2 - 2 - 32 - 10 - 8)}\u2502`);
+}
+console.log(`\u2514${hline}\u2518`);
+console.log();
+
+// ── Section: Subprocess Interface ──────────────────
+console.log(`\u250c${hline}\u2510`);
+console.log(`\u2502${pad("  SUBPROCESS INTERFACE", W - 2)}\u2502`);
+console.log(`\u251c${hline}\u2524`);
+console.log(`\u2502  ${pad("Member", 20)}${pad("Type", 20)}${rpad("Used", 6)}${rpad("Sites", 10)}${" ".repeat(W - 2 - 2 - 20 - 20 - 6 - 10)}\u2502`);
+console.log(`\u2502  ${thinline}  \u2502`);
+for (const [member, d] of Object.entries(subprocessPerSite)) {
+  const mark = d.used ? "\u2713" : "\u2717";
+  console.log(`\u2502  ${pad(member, 20)}${pad(d.type, 20)}${rpad(mark, 6)}${rpad(d.ratio, 10)}${" ".repeat(W - 2 - 2 - 20 - 20 - 6 - 10)}\u2502`);
+}
+console.log(`\u2514${hline}\u2518`);
+console.log();
+
+// ── Section: Signal Coverage ───────────────────────
+console.log(`\u250c${hline}\u2510`);
+console.log(`\u2502${pad("  SIGNAL COVERAGE", W - 2)}\u2502`);
+console.log(`\u251c${hline}\u2524`);
+console.log(`\u2502  ${pad("Category", 24)}${rpad("Used", 6)}${rpad("Avail", 8)}${rpad("Coverage", 10)}${" ".repeat(W - 2 - 2 - 24 - 6 - 8 - 10)}\u2502`);
+console.log(`\u2502  ${thinline}  \u2502`);
+for (const [cat, d] of Object.entries(signalCategories)) {
+  console.log(`\u2502  ${pad(cat, 24)}${rpad(String(d.used), 6)}${rpad(String(d.available), 8)}${rpad(d.coverage, 10)}${" ".repeat(W - 2 - 2 - 24 - 6 - 8 - 10)}\u2502`);
+}
+console.log(`\u2514${hline}\u2518`);
+console.log();
+
+// ── Section: Unicode Handling ──────────────────────
+console.log(`\u250c${hline}\u2510`);
+console.log(`\u2502${pad(`  UNICODE HANDLING (${unicodeHandled}/${results.length} patterns \u2014 ${coverage.unicode})`, W - 2)}\u2502`);
+console.log(`\u251c${hline}\u2524`);
+const unicodeRows = [
+  ["full",        unicodeCounts.full,        "Full Unicode support"],
+  ["passthrough", unicodeCounts.passthrough,  "Pass-through to native"],
+  ["binary",      unicodeCounts.binary,       "Binary-safe operations"],
+  ["n/a",         unicodeCounts["n/a"],       "Not applicable"],
+] as const;
+for (const [cat, count, desc] of unicodeRows) {
+  console.log(`\u2502  ${pad(`Unicode: ${cat}`, 26)}${rpad(String(count), 6)}  ${pad(desc, W - 2 - 2 - 26 - 6 - 2)}\u2502`);
+}
+console.log(`\u2514${hline}\u2518`);
+console.log();
+
+// ── Section: Legacy ────────────────────────────────
+const legacyTotal = metrics["legacy.response_wrapper"] + metrics["legacy.url_pathname"] + metrics["legacy.strip_ansi_regex"];
+console.log(`\u250c${hline}\u2510`);
+console.log(`\u2502${pad("  LEGACY & DEPRECATION", W - 2)}\u2502`);
+console.log(`\u251c${hline}\u2524`);
+console.log(`\u2502  ${pad("Legacy Patterns", 26)}${rpad(String(legacyTotal), 6)}  ${pad(legacyTotal === 0 ? "No legacy patterns detected" : "LEGACY PATTERNS FOUND", W - 2 - 2 - 26 - 6 - 2)}\u2502`);
+console.log(`\u2514${hline}\u2518`);
+console.log();
+
+// ── Section: Coverage Heatmap ──────────────────────
+console.log(`\u250c${hline}\u2510`);
+console.log(`\u2502${pad("  COVERAGE HEATMAP", W - 2)}\u2502`);
+console.log(`\u251c${hline}\u2524`);
+for (const h of heatmap) {
+  const b = bar(h.pct / 100);
+  const p = `${h.pct.toFixed(1)}%`;
+  const label = heatLabel(h.pct);
+  console.log(`\u2502  ${pad(h.surface, 20)}[${b}] ${rpad(p, 6)}  ${pad(label, W - 2 - 2 - 20 - 1 - 18 - 2 - 6 - 2)}\u2502`);
+}
+console.log(`\u2514${hline}\u2518`);
+console.log();
+
+// ── Section: Delta Detection ───────────────────────
+console.log(`\u250c${hline}\u2510`);
+console.log(`\u2502${pad("  DELTA DETECTION", W - 2)}\u2502`);
+console.log(`\u251c${hline}\u2524`);
+if (!previousMetrics) {
+  console.log(`\u2502  ${pad("No baseline \u2014 first run. Re-run to track changes.", W - 4)}  \u2502`);
+} else if (changedEntries.length === 0) {
+  console.log(`\u2502  ${pad(`${deltaEntries.length} metrics tracked \u2014 0 changes since last run.`, W - 4)}  \u2502`);
+} else {
+  console.log(`\u2502  ${pad("Metric", 36)}${rpad("Prev", 8)}${rpad("Curr", 8)}${rpad("Delta", 10)}${" ".repeat(W - 2 - 2 - 36 - 8 - 8 - 10)}\u2502`);
+  console.log(`\u2502  ${thinline}  \u2502`);
+  for (const c of changedEntries.slice(0, 20)) {
+    const sign = c.delta > 0 ? "+" : "";
+    console.log(`\u2502  ${pad(c.metric, 36)}${rpad(String(c.previous), 8)}${rpad(String(c.current), 8)}${rpad(`${sign}${c.delta}`, 10)}${" ".repeat(W - 2 - 2 - 36 - 8 - 8 - 10)}\u2502`);
+  }
+  if (changedEntries.length > 20) {
+    console.log(`\u2502  ${pad(`... and ${changedEntries.length - 20} more`, W - 4)}  \u2502`);
+  }
+}
+console.log(`\u2514${hline}\u2518`);
+console.log();
+
+// ── Section: Summary ───────────────────────────────
+console.log(`\u250c${hline}\u2510`);
+console.log(`\u2502${pad("  METRICS SUMMARY", W - 2)}\u2502`);
+console.log(`\u251c${hline}\u2524`);
+const summaryRows = [
+  [`Total Metrics Tracked`,     String(Object.keys(metrics).length)],
+  [`Runtime APIs Used`,         `${results.length} / ${availableApis.length}   (${coverage.runtime_apis})`],
+  [`Process Options Used`,      `${spawnAnalysis.totals.options_used} / ${SPAWN_OPTION_KEYS.length}     (${coverage.spawn_options})`],
+  [`Subprocess Members Used`,   `${spawnAnalysis.totals.members_used} / ${SUBPROCESS_MEMBERS.length}     (${coverage.spawn_members})`],
+  [`Signals Used`,              `${signalAnalysis.total_signals_used} / ${SIGNALS.length}     (${coverage.signals})`],
+  [`Terminal Options Used`,     `${terminalAnalysis.options_used} / ${TERMINAL_OPTIONS_KEYS.length}      (${coverage.terminal_options})`],
+  [`ResourceUsage Fields Used`, `${resourceUsageAnalysis.fields_used} / ${RESOURCE_USAGE_FIELDS.length}      (${coverage.resource_usage})`],
+  [`Unicode Patterns`,          `${unicodeHandled} / ${results.length}     (${coverage.unicode})`],
+  [`Legacy Patterns`,           String(legacyTotal)],
+  [`File`,                      `${lines.length} lines \u00b7 ${(metrics["file.size_bytes"] / 1024).toFixed(1)} KB`],
+  [`Bun`,                       `${Bun.version} \u00b7 ${process.platform} ${process.arch}`],
+];
+for (const [label, value] of summaryRows) {
+  console.log(`\u2502  ${pad(label, 30)}${pad(value, W - 2 - 2 - 30)}\u2502`);
+}
+console.log(`\u2514${hline}\u2518`);
+console.log();
+
+console.log(`JSON written to ${SNAPSHOT_PATH}`);
