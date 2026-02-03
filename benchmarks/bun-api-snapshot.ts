@@ -4,11 +4,18 @@
  * Dynamically scans scan.ts and cross-references every Bun native API call
  * against the running Bun runtime surface, documentation URLs, and unicode status.
  *
- * Run: bun run benchmarks/bun-api-snapshot.ts
+ * Usage:
+ *   bun run benchmarks/bun-api-snapshot.ts            # dashboard + JSON file
+ *   bun run benchmarks/bun-api-snapshot.ts --json      # JSON to stdout
+ *   bun run benchmarks/bun-api-snapshot.ts --quiet     # JSON file only, no stdout
  *
- * Writes to bun-api-snapshot.json automatically and prints to stdout.
- * Delta tracking compares against the previous bun-api-snapshot.json on each run.
+ * Writes to bun-api-snapshot.json automatically.
+ * Delta tracking compares against the previous snapshot on each run.
  */
+
+const flags = new Set(Bun.argv.slice(2));
+const FLAG_JSON = flags.has("--json");
+const FLAG_QUIET = flags.has("--quiet");
 
 const SCAN_PATH = `${import.meta.dir}/../scan.ts`;
 const SNAPSHOT_PATH = `${import.meta.dir}/bun-api-snapshot.json`;
@@ -841,180 +848,265 @@ const snapshot = {
 
 await Bun.write(SNAPSHOT_PATH, JSON.stringify(snapshot, null, 2) + "\n");
 
-// ── Dashboard ───────────────────────────────────────────────────────
-
-const W = 79;
-const hline = "\u2500".repeat(W - 2);
-const dline = "\u2550".repeat(W - 2);
-const thinline = "\u2500".repeat(W - 4);
-
-const pad = (s: string, n: number) => s.length >= n ? s.slice(0, n) : s + " ".repeat(n - s.length);
-const rpad = (s: string, n: number) => s.length >= n ? s.slice(0, n) : " ".repeat(n - s.length) + s;
-
-console.log(`\u2554${dline}\u2557`);
-console.log(`\u2551${pad(`  BUN API METRICS DASHBOARD \u2014 ${Object.keys(metrics).length} METRICS`, W - 2)}\u2551`);
-console.log(`\u255a${dline}\u255d`);
-console.log();
-
-// ── Section: Runtime API Coverage ──────────────────
-console.log(`\u250c${hline}\u2510`);
-console.log(`\u2502${pad(`  RUNTIME API COVERAGE (${results.length}/${availableApis.length} used \u2014 ${coverage.runtime_apis})`, W - 2)}\u2502`);
-console.log(`\u251c${hline}\u2524`);
-console.log(`\u2502  ${pad("Surface", 26)}${rpad("Used", 6)}${rpad("Avail", 8)}${rpad("Coverage", 10)}${" ".repeat(W - 2 - 2 - 26 - 6 - 8 - 10)}\u2502`);
-console.log(`\u2502  ${thinline}  \u2502`);
-
-for (const [cat, d] of Object.entries(apiCategories).sort((a, b) => b[1].available - a[1].available)) {
-  console.log(`\u2502  ${pad(cat, 26)}${rpad(String(d.used_count), 6)}${rpad(String(d.available), 8)}${rpad(d.coverage, 10)}${" ".repeat(W - 2 - 2 - 26 - 6 - 8 - 10)}\u2502`);
+if (FLAG_JSON) {
+  console.log(JSON.stringify(snapshot, null, 2));
+  process.exit(0);
 }
-console.log(`\u2502  ${thinline}  \u2502`);
-console.log(`\u2502  ${pad("TOTAL", 26)}${rpad(String(results.length), 6)}${rpad(String(availableApis.length), 8)}${rpad(coverage.runtime_apis, 10)}${" ".repeat(W - 2 - 2 - 26 - 6 - 8 - 10)}\u2502`);
-console.log(`\u2514${hline}\u2518`);
-console.log();
-
-// ── Section: Process & Spawn Coverage ──────────────
-console.log(`\u250c${hline}\u2510`);
-console.log(`\u2502${pad(`  PROCESS & SPAWN COVERAGE (${processUsed}/${processAvail} used \u2014 ${pct(processUsed, processAvail)})`, W - 2)}\u2502`);
-console.log(`\u251c${hline}\u2524`);
-console.log(`\u2502  ${pad("Surface", 26)}${rpad("Used", 6)}${rpad("Avail", 8)}${rpad("Coverage", 10)}${" ".repeat(W - 2 - 2 - 26 - 6 - 8 - 10)}\u2502`);
-console.log(`\u2502  ${thinline}  \u2502`);
-
-const processRows = [
-  ["Spawn Options",       spawnAnalysis.totals.options_used,      SPAWN_OPTION_KEYS.length,        coverage.spawn_options],
-  ["Subprocess Members",  spawnAnalysis.totals.members_used,      SUBPROCESS_MEMBERS.length,       coverage.spawn_members],
-  ["Spawn Sites (async)", spawnAnalysis.totals.spawn_sites,       null,                            null],
-  ["Spawn Sites (sync)",  spawnAnalysis.totals.spawnSync_sites,   null,                            null],
-  ["Signals",             signalAnalysis.total_signals_used,      SIGNALS.length,                  coverage.signals],
-  ["Signal Sites",        signalAnalysis.sites.length,            null,                            null],
-  ["Terminal Options",    terminalAnalysis.options_used,           TERMINAL_OPTIONS_KEYS.length,    coverage.terminal_options],
-  ["Terminal Members",    terminalAnalysis.members_used,           TERMINAL_MEMBERS.length,         coverage.terminal_members],
-  ["ResourceUsage Calls", resourceUsageAnalysis.call_sites,       null,                            null],
-  ["ResourceUsage Fields", resourceUsageAnalysis.fields_used,     RESOURCE_USAGE_FIELDS.length,    coverage.resource_usage],
-] as const;
-
-for (const [name, used, avail, cov] of processRows) {
-  console.log(`\u2502  ${pad(name, 26)}${rpad(String(used), 6)}${rpad(avail !== null ? String(avail) : "-", 8)}${rpad(cov ?? "-", 10)}${" ".repeat(W - 2 - 2 - 26 - 6 - 8 - 10)}\u2502`);
+if (FLAG_QUIET) {
+  process.exit(0);
 }
-console.log(`\u2514${hline}\u2518`);
-console.log();
 
-// ── Section: Spawn Configuration Matrix ────────────
-console.log(`\u250c${hline}\u2510`);
-console.log(`\u2502${pad("  SPAWN CONFIGURATION MATRIX", W - 2)}\u2502`);
-console.log(`\u251c${hline}\u2524`);
-console.log(`\u2502  ${pad("Option", 32)}${rpad("Status", 10)}${rpad("Sites", 8)}${" ".repeat(W - 2 - 2 - 32 - 10 - 8)}\u2502`);
-console.log(`\u2502  ${thinline}  \u2502`);
-for (const row of spawnOptionMatrix) {
-  console.log(`\u2502  ${pad(row.option, 32)}${rpad(row.status, 10)}${rpad(String(row.sites), 8)}${" ".repeat(W - 2 - 2 - 32 - 10 - 8)}\u2502`);
+// ── ANSI styles ─────────────────────────────────────────────────────
+
+const S = {
+  reset:  "\x1b[0m",
+  bold:   "\x1b[1m",
+  dim:    "\x1b[2m",
+  red:    "\x1b[31m",
+  green:  "\x1b[32m",
+  yellow: "\x1b[33m",
+  blue:   "\x1b[34m",
+  cyan:   "\x1b[36m",
+  white:  "\x1b[37m",
+  gray:   "\x1b[90m",
+  bRed:   "\x1b[91m",
+  bGreen: "\x1b[92m",
+  bYellow:"\x1b[93m",
+  bCyan:  "\x1b[96m",
+  bWhite: "\x1b[97m",
+  bgCyan: "\x1b[46m",
+  bgBlue: "\x1b[44m",
+} as const;
+
+const o = (s: string) => Bun.enableANSIColors ? s : "";
+const R = o(S.reset);
+const B = o(S.bold);
+const D = o(S.dim);
+
+// ── Layout helpers (ANSI-width-aware) ───────────────────────────────
+
+// Bun.stringWidth gives display width ignoring ANSI escape codes
+const vw = (s: string): number => Bun.stringWidth(s);
+const lpad = (s: string, n: number) => { const w = vw(s); return w >= n ? s : s + " ".repeat(n - w); };
+const rpad = (s: string, n: number) => { const w = vw(s); return w >= n ? s : " ".repeat(n - w) + s; };
+
+const W = 80;
+const rule = (ch = "\u2500") => `${D}${ch.repeat(W)}${R}`;
+const thinRule = () => `  ${D}${"─".repeat(W - 4)}${R}`;
+
+// ── Color helpers ───────────────────────────────────────────────────
+
+function covColor(p: number): string {
+  if (!Bun.enableANSIColors) return "";
+  if (p >= 80) return S.bGreen;
+  if (p >= 50) return S.bCyan;
+  if (p >= 25) return S.bYellow;
+  if (p > 0)   return S.yellow;
+  return S.gray;
 }
-console.log(`\u2514${hline}\u2518`);
-console.log();
 
-// ── Section: Subprocess Interface ──────────────────
-console.log(`\u250c${hline}\u2510`);
-console.log(`\u2502${pad("  SUBPROCESS INTERFACE", W - 2)}\u2502`);
-console.log(`\u251c${hline}\u2524`);
-console.log(`\u2502  ${pad("Member", 20)}${pad("Type", 20)}${rpad("Used", 6)}${rpad("Sites", 10)}${" ".repeat(W - 2 - 2 - 20 - 20 - 6 - 10)}\u2502`);
-console.log(`\u2502  ${thinline}  \u2502`);
-for (const [member, d] of Object.entries(subprocessPerSite)) {
-  const mark = d.used ? "\u2713" : "\u2717";
-  console.log(`\u2502  ${pad(member, 20)}${pad(d.type, 20)}${rpad(mark, 6)}${rpad(d.ratio, 10)}${" ".repeat(W - 2 - 2 - 20 - 20 - 6 - 10)}\u2502`);
+function covLabel(p: number): string {
+  if (p === 0) return `${o(S.gray)}none${R}`;
+  if (p < 10)  return `${o(S.red)}critical${R}`;
+  if (p < 25)  return `${o(S.yellow)}low${R}`;
+  if (p < 50)  return `${o(S.bYellow)}moderate${R}`;
+  if (p < 75)  return `${o(S.bCyan)}good${R}`;
+  return `${o(S.bGreen)}high${R}`;
 }
-console.log(`\u2514${hline}\u2518`);
-console.log();
 
-// ── Section: Signal Coverage ───────────────────────
-console.log(`\u250c${hline}\u2510`);
-console.log(`\u2502${pad("  SIGNAL COVERAGE", W - 2)}\u2502`);
-console.log(`\u251c${hline}\u2524`);
-console.log(`\u2502  ${pad("Category", 24)}${rpad("Used", 6)}${rpad("Avail", 8)}${rpad("Coverage", 10)}${" ".repeat(W - 2 - 2 - 24 - 6 - 8 - 10)}\u2502`);
-console.log(`\u2502  ${thinline}  \u2502`);
-for (const [cat, d] of Object.entries(signalCategories)) {
-  console.log(`\u2502  ${pad(cat, 24)}${rpad(String(d.used), 6)}${rpad(String(d.available), 8)}${rpad(d.coverage, 10)}${" ".repeat(W - 2 - 2 - 24 - 6 - 8 - 10)}\u2502`);
+function colorBar(ratio: number, width = 20): string {
+  const filled = Math.round(ratio * width);
+  const empty = width - filled;
+  const c = covColor(ratio * 100);
+  return `${c}${"█".repeat(filled)}${o(S.gray)}${"░".repeat(empty)}${R}`;
 }
-console.log(`\u2514${hline}\u2518`);
-console.log();
 
-// ── Section: Unicode Handling ──────────────────────
-console.log(`\u250c${hline}\u2510`);
-console.log(`\u2502${pad(`  UNICODE HANDLING (${unicodeHandled}/${results.length} patterns \u2014 ${coverage.unicode})`, W - 2)}\u2502`);
-console.log(`\u251c${hline}\u2524`);
-const unicodeRows = [
-  ["full",        unicodeCounts.full,        "Full Unicode support"],
-  ["passthrough", unicodeCounts.passthrough,  "Pass-through to native"],
-  ["binary",      unicodeCounts.binary,       "Binary-safe operations"],
-  ["n/a",         unicodeCounts["n/a"],       "Not applicable"],
-] as const;
-for (const [cat, count, desc] of unicodeRows) {
-  console.log(`\u2502  ${pad(`Unicode: ${cat}`, 26)}${rpad(String(count), 6)}  ${pad(desc, W - 2 - 2 - 26 - 6 - 2)}\u2502`);
+function statusMark(used: boolean): string {
+  return used ? `${o(S.bGreen)}●${R}` : `${o(S.gray)}○${R}`;
 }
-console.log(`\u2514${hline}\u2518`);
-console.log();
 
-// ── Section: Legacy ────────────────────────────────
+function numStr(n: number, dimZero = true): string {
+  if (n === 0 && dimZero) return `${D}0${R}`;
+  return `${o(S.bWhite)}${n}${R}`;
+}
+
+function fracStr(used: number, avail: number): string {
+  const c = covColor(pctNum(used, avail));
+  return `${c}${used}${D}/${R}${avail}`;
+}
+
+function pctStr(p: number): string {
+  return `${covColor(p)}${p.toFixed(1)}%${R}`;
+}
+
+function deltaStr(d: number): string {
+  if (d > 0) return `${o(S.bGreen)}+${d}${R}`;
+  if (d < 0) return `${o(S.bRed)}${d}${R}`;
+  return `${D}±0${R}`;
+}
+
+// ── Dashboard rendering ─────────────────────────────────────────────
+
 const legacyTotal = metrics["legacy.response_wrapper"] + metrics["legacy.url_pathname"] + metrics["legacy.strip_ansi_regex"];
-console.log(`\u250c${hline}\u2510`);
-console.log(`\u2502${pad("  LEGACY & DEPRECATION", W - 2)}\u2502`);
-console.log(`\u251c${hline}\u2524`);
-console.log(`\u2502  ${pad("Legacy Patterns", 26)}${rpad(String(legacyTotal), 6)}  ${pad(legacyTotal === 0 ? "No legacy patterns detected" : "LEGACY PATTERNS FOUND", W - 2 - 2 - 26 - 6 - 2)}\u2502`);
-console.log(`\u2514${hline}\u2518`);
+const metricsCount = Object.keys(metrics).length;
+const ts = new Date().toISOString().replace("T", " ").slice(0, 19);
+
+// Header
+console.log();
+console.log(`  ${B}${o(S.bCyan)}BUN API SURFACE AUDIT${R}  ${D}${metricsCount} metrics · ${ts}${R}`);
+console.log(`  ${D}scan.ts · ${lines.length} lines · ${(metrics["file.size_bytes"] / 1024).toFixed(1)} KB · Bun ${Bun.version} · ${process.platform} ${process.arch}${R}`);
+console.log();
+console.log(rule("━"));
+
+// ── Coverage heatmap ───────────────────────────────
+console.log();
+console.log(`  ${B}COVERAGE${R}`);
 console.log();
 
-// ── Section: Coverage Heatmap ──────────────────────
-console.log(`\u250c${hline}\u2510`);
-console.log(`\u2502${pad("  COVERAGE HEATMAP", W - 2)}\u2502`);
-console.log(`\u251c${hline}\u2524`);
 for (const h of heatmap) {
-  const b = bar(h.pct / 100);
-  const p = `${h.pct.toFixed(1)}%`;
-  const label = heatLabel(h.pct);
-  console.log(`\u2502  ${pad(h.surface, 20)}[${b}] ${rpad(p, 6)}  ${pad(label, W - 2 - 2 - 20 - 1 - 18 - 2 - 6 - 2)}\u2502`);
+  const p = h.pct;
+  const b = colorBar(p / 100);
+  console.log(`  ${lpad(h.surface, 20)} ${b} ${rpad(pctStr(p), 14)} ${covLabel(p)}`);
 }
-console.log(`\u2514${hline}\u2518`);
+
+console.log();
+console.log(rule());
+
+// ── Runtime API categories ─────────────────────────
+console.log();
+console.log(`  ${B}RUNTIME API SURFACE${R}  ${D}${results.length}/${availableApis.length} used${R}`);
+console.log();
+console.log(`  ${D}${lpad("Category", 24)} ${rpad("Used", 6)} ${rpad("Avail", 6)} ${rpad("Coverage", 8)}${R}`);
+console.log(thinRule());
+
+for (const [cat, d] of Object.entries(apiCategories).sort((a, b) => b[1].used_count - a[1].used_count || b[1].available - a[1].available)) {
+  const p = pctNum(d.used_count, d.available);
+  console.log(`  ${lpad(cat, 24)} ${rpad(numStr(d.used_count), 12)} ${rpad(String(d.available), 6)} ${rpad(pctStr(p), 16)}`);
+}
+
+console.log(thinRule());
+console.log(`  ${B}${lpad("Total", 24)}${R} ${rpad(numStr(results.length, false), 12)} ${rpad(String(availableApis.length), 6)} ${rpad(pctStr(pctNum(results.length, availableApis.length)), 16)}`);
+
+console.log();
+console.log(rule());
+
+// ── Spawn option matrix ────────────────────────────
+console.log();
+console.log(`  ${B}SPAWN OPTIONS${R}  ${D}${spawnAnalysis.totals.options_used}/${SPAWN_OPTION_KEYS.length} used across ${spawnAnalysis.totals.spawn_sites + spawnAnalysis.totals.spawnSync_sites} spawn sites${R}`);
+console.log();
+console.log(`  ${D}${lpad("Option", 30)} ${"Status"}   ${rpad("Sites", 6)}${R}`);
+console.log(thinRule());
+
+for (const row of spawnOptionMatrix) {
+  const mark = statusMark(row.status === "Used");
+  const sites = row.sites > 0 ? `${o(S.bWhite)}${row.sites}${R}` : `${D}·${R}`;
+  console.log(`  ${D}${lpad(row.option, 30)}${R} ${mark} ${lpad(row.status === "Used" ? `${o(S.green)}used${R}` : `${D}unused${R}`, 16)} ${rpad(sites, 8)}`);
+}
+
+console.log();
+console.log(rule());
+
+// ── Subprocess interface ───────────────────────────
+console.log();
+console.log(`  ${B}SUBPROCESS INTERFACE${R}  ${D}${spawnAnalysis.totals.members_used}/${SUBPROCESS_MEMBERS.length} members accessed${R}`);
+console.log();
+console.log(`  ${D}${lpad("Member", 18)} ${lpad("Type", 18)} ${rpad("Sites", 8)}${R}`);
+console.log(thinRule());
+
+for (const [member, d] of Object.entries(subprocessPerSite)) {
+  const mark = statusMark(d.used);
+  const ratio = d.used
+    ? `${covColor(pctNum(d.sites_using, d.total_sites))}${d.sites_using}${D}/${R}${d.total_sites}`
+    : `${D}·${R}`;
+  console.log(`  ${mark} ${lpad(member, 17)} ${D}${lpad(d.type, 18)}${R} ${rpad(ratio, 14)}`);
+}
+
+console.log();
+console.log(rule());
+
+// ── Signals ────────────────────────────────────────
+console.log();
+console.log(`  ${B}SIGNALS${R}  ${D}${signalAnalysis.total_signals_used}/${SIGNALS.length} used · ${signalAnalysis.sites.length} call sites${R}`);
+console.log();
+console.log(`  ${D}${lpad("Category", 22)} ${rpad("Used", 6)} ${rpad("Avail", 6)} ${rpad("Coverage", 8)}${R}`);
+console.log(thinRule());
+
+for (const [cat, d] of Object.entries(signalCategories)) {
+  const p = pctNum(d.used, d.available);
+  const detail = d.used > 0 ? `  ${D}(${d.used_signals.join(", ")})${R}` : "";
+  console.log(`  ${lpad(cat, 22)} ${rpad(numStr(d.used), 12)} ${rpad(String(d.available), 6)} ${rpad(pctStr(p), 16)}${detail}`);
+}
+
+console.log();
+console.log(rule());
+
+// ── Unicode ────────────────────────────────────────
+console.log();
+console.log(`  ${B}UNICODE${R}  ${D}${unicodeHandled}/${results.length} APIs handle unicode (${coverage.unicode})${R}`);
 console.log();
 
-// ── Section: Delta Detection ───────────────────────
-console.log(`\u250c${hline}\u2510`);
-console.log(`\u2502${pad("  DELTA DETECTION", W - 2)}\u2502`);
-console.log(`\u251c${hline}\u2524`);
-if (!previousMetrics) {
-  console.log(`\u2502  ${pad("No baseline \u2014 first run. Re-run to track changes.", W - 4)}  \u2502`);
-} else if (changedEntries.length === 0) {
-  console.log(`\u2502  ${pad(`${deltaEntries.length} metrics tracked \u2014 0 changes since last run.`, W - 4)}  \u2502`);
-} else {
-  console.log(`\u2502  ${pad("Metric", 36)}${rpad("Prev", 8)}${rpad("Curr", 8)}${rpad("Delta", 10)}${" ".repeat(W - 2 - 2 - 36 - 8 - 8 - 10)}\u2502`);
-  console.log(`\u2502  ${thinline}  \u2502`);
-  for (const c of changedEntries.slice(0, 20)) {
-    const sign = c.delta > 0 ? "+" : "";
-    console.log(`\u2502  ${pad(c.metric, 36)}${rpad(String(c.previous), 8)}${rpad(String(c.current), 8)}${rpad(`${sign}${c.delta}`, 10)}${" ".repeat(W - 2 - 2 - 36 - 8 - 8 - 10)}\u2502`);
-  }
-  if (changedEntries.length > 20) {
-    console.log(`\u2502  ${pad(`... and ${changedEntries.length - 20} more`, W - 4)}  \u2502`);
-  }
-}
-console.log(`\u2514${hline}\u2518`);
-console.log();
-
-// ── Section: Summary ───────────────────────────────
-console.log(`\u250c${hline}\u2510`);
-console.log(`\u2502${pad("  METRICS SUMMARY", W - 2)}\u2502`);
-console.log(`\u251c${hline}\u2524`);
-const summaryRows = [
-  [`Total Metrics Tracked`,     String(Object.keys(metrics).length)],
-  [`Runtime APIs Used`,         `${results.length} / ${availableApis.length}   (${coverage.runtime_apis})`],
-  [`Process Options Used`,      `${spawnAnalysis.totals.options_used} / ${SPAWN_OPTION_KEYS.length}     (${coverage.spawn_options})`],
-  [`Subprocess Members Used`,   `${spawnAnalysis.totals.members_used} / ${SUBPROCESS_MEMBERS.length}     (${coverage.spawn_members})`],
-  [`Signals Used`,              `${signalAnalysis.total_signals_used} / ${SIGNALS.length}     (${coverage.signals})`],
-  [`Terminal Options Used`,     `${terminalAnalysis.options_used} / ${TERMINAL_OPTIONS_KEYS.length}      (${coverage.terminal_options})`],
-  [`ResourceUsage Fields Used`, `${resourceUsageAnalysis.fields_used} / ${RESOURCE_USAGE_FIELDS.length}      (${coverage.resource_usage})`],
-  [`Unicode Patterns`,          `${unicodeHandled} / ${results.length}     (${coverage.unicode})`],
-  [`Legacy Patterns`,           String(legacyTotal)],
-  [`File`,                      `${lines.length} lines \u00b7 ${(metrics["file.size_bytes"] / 1024).toFixed(1)} KB`],
-  [`Bun`,                       `${Bun.version} \u00b7 ${process.platform} ${process.arch}`],
+const uRows: [string, number, string, string][] = [
+  ["full",        unicodeCounts.full,       "Full ICU/UTF-8 processing",  S.bGreen],
+  ["passthrough", unicodeCounts.passthrough, "Native string pass-through", S.bCyan],
+  ["binary",      unicodeCounts.binary,     "Byte-level operations",      S.bYellow],
+  ["n/a",         unicodeCounts["n/a"],     "Not text-related",           S.gray],
 ];
-for (const [label, value] of summaryRows) {
-  console.log(`\u2502  ${pad(label, 30)}${pad(value, W - 2 - 2 - 30)}\u2502`);
+
+for (const [cat, count, desc, color] of uRows) {
+  console.log(`  ${o(color)}${lpad(cat, 14)}${R}  ${numStr(count)}  ${D}${desc}${R}`);
 }
-console.log(`\u2514${hline}\u2518`);
+
+console.log();
+console.log(rule());
+
+// ── Terminal + ResourceUsage ───────────────────────
+console.log();
+console.log(`  ${B}TERMINAL & RESOURCE USAGE${R}  ${D}not used in scan.ts${R}`);
+console.log();
+console.log(`  ${D}Terminal Options    ${terminalAnalysis.options_used}/${TERMINAL_OPTIONS_KEYS.length}    Terminal Members   ${terminalAnalysis.members_used}/${TERMINAL_MEMBERS.length}${R}`);
+console.log(`  ${D}ResourceUsage       ${resourceUsageAnalysis.call_sites} calls           Fields used       ${resourceUsageAnalysis.fields_used}/${RESOURCE_USAGE_FIELDS.length}${R}`);
+
+console.log();
+console.log(rule());
+
+// ── Legacy ─────────────────────────────────────────
+console.log();
+if (legacyTotal === 0) {
+  console.log(`  ${B}LEGACY${R}  ${o(S.bGreen)}clean${R}  ${D}no deprecated patterns detected${R}`);
+} else {
+  console.log(`  ${B}LEGACY${R}  ${o(S.bRed)}${legacyTotal} deprecated pattern${legacyTotal > 1 ? "s" : ""} found${R}`);
+  if (metrics["legacy.response_wrapper"] > 0) console.log(`    ${o(S.red)}●${R} new Response(proc.*): ${metrics["legacy.response_wrapper"]}`);
+  if (metrics["legacy.url_pathname"] > 0) console.log(`    ${o(S.red)}●${R} URL.pathname: ${metrics["legacy.url_pathname"]}`);
+  if (metrics["legacy.strip_ansi_regex"] > 0) console.log(`    ${o(S.red)}●${R} strip-ansi regex: ${metrics["legacy.strip_ansi_regex"]}`);
+}
+
+console.log();
+console.log(rule());
+
+// ── Delta ──────────────────────────────────────────
+console.log();
+if (!previousMetrics) {
+  console.log(`  ${B}DELTA${R}  ${D}no baseline — first run. Re-run to track changes.${R}`);
+} else if (changedEntries.length === 0) {
+  console.log(`  ${B}DELTA${R}  ${o(S.bGreen)}stable${R}  ${D}${deltaEntries.length} metrics · 0 changes${R}`);
+} else {
+  console.log(`  ${B}DELTA${R}  ${o(S.bYellow)}${changedEntries.length} change${changedEntries.length > 1 ? "s" : ""}${R}  ${D}${deltaEntries.length} metrics tracked${R}`);
+  console.log();
+  console.log(`  ${D}${lpad("Metric", 40)} ${rpad("Prev", 6)} ${rpad("Curr", 6)} ${rpad("Delta", 8)}${R}`);
+  console.log(thinRule());
+  for (const c of changedEntries.slice(0, 25)) {
+    console.log(`  ${lpad(c.metric, 40)} ${rpad(String(c.previous), 6)} ${rpad(String(c.current), 6)} ${rpad(deltaStr(c.delta), 14)}`);
+  }
+  if (changedEntries.length > 25) {
+    console.log(`  ${D}… and ${changedEntries.length - 25} more${R}`);
+  }
+}
+
+console.log();
+console.log(rule("━"));
 console.log();
 
-console.log(`JSON written to ${SNAPSHOT_PATH}`);
+// ── Footer ─────────────────────────────────────────
+console.log(`  ${D}snapshot written → ${SNAPSHOT_PATH}${R}`);
+console.log(`  ${D}use --json for machine-readable output · --quiet to suppress${R}`);
+console.log();
