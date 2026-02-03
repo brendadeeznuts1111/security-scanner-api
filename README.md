@@ -139,4 +139,4 @@ bun test scan.test.ts
 
 ## License
 
-Private.
+[MIT](LICENSE)
