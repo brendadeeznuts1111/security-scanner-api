@@ -12,6 +12,12 @@
  *   - proc.stdout.text(): https://bun.sh/docs/api/spawn#reading-stdout
  *   - Bun.fileURLToPath: https://bun.sh/docs/api/utils#bun-fileurltopath
  *   - Bun.wrapAnsi: https://bun.sh/docs/api/utils#bun-wrapansi
+ *   - Bun.color: https://bun.sh/docs/api/utils#bun-color
+ *   - Bun.enableANSIColors: https://bun.sh/docs/api/utils#bun-enableansicolors
+ *   - Bun.stringWidth: https://bun.sh/docs/api/utils#bun-stringwidth
+ *   - Bun.inspect.table: https://bun.sh/docs/api/utils#bun-inspect-table
+ *   - Bun.deepEquals: https://bun.sh/docs/api/utils#bun-deepequals
+ *   - Bun.nanoseconds: https://bun.sh/docs/api/utils#bun-nanoseconds
  */
 
 const ITERATIONS = 10_000;
@@ -64,21 +70,66 @@ async function benchAsync(
 const fmt = (ns: number) =>
   ns < 1_000 ? `${ns.toFixed(1)} ns` : ns < 1_000_000 ? `${(ns / 1_000).toFixed(2)} µs` : `${(ns / 1_000_000).toFixed(2)} ms`;
 
+// ── ANSI styles ─────────────────────────────────────────────────────
+
+const S = {
+  reset:  "\x1b[0m",
+  bold:   "\x1b[1m",
+  dim:    "\x1b[2m",
+  red:    Bun.color("red", "ansi-16m") ?? "",
+  green:  Bun.color("green", "ansi-16m") ?? "",
+};
+
+const useColor = Bun.enableANSIColors && !!process.stdout.isTTY;
+const o = (s: string) => useColor ? s : "";
+const R = o(S.reset);
+const B = o(S.bold);
+const D = o(S.dim);
+
+// ── Layout helpers (ANSI-width-aware) ───────────────────────────────
+
+const vw = (s: string): number => Bun.stringWidth(s);
+
+// ── Section header ──────────────────────────────────────────────────
+
+function sectionHeader(title: string, ref?: string) {
+  console.log(`\n${B}═══ ${title} ═══${R}`);
+  if (ref) console.log(`${D}   ref: ${ref}${R}\n`);
+  else console.log();
+}
+
+// ── Ratio coloring (HSL via Bun.color) ───────────────────────────────
+// Maps speedup ratio to HSL hue: 0.5x → red (0°), 1.0x → yellow (60°), 1.5x+ → green (120°)
+
+function ratioColor(ratio: number): string {
+  const clamped = Math.max(0.5, Math.min(ratio, 1.5));
+  const hue = Math.round(((clamped - 0.5) / 1.0) * 120);
+  return o(Bun.color(`hsl(${hue}, 90%, 55%)`, "ansi-16m") ?? "");
+}
+
 function report(label: string, old: ReturnType<typeof bench>, neo: ReturnType<typeof bench>) {
   const ratio = old.mean_ns / neo.mean_ns;
   const diff = old.mean_ns - neo.mean_ns;
-  console.log(`  old (${label}):  mean=${fmt(old.mean_ns)}  min=${fmt(old.min_ns)}  max=${fmt(old.max_ns)}`);
-  console.log(`  new (${label}):  mean=${fmt(neo.mean_ns)}  min=${fmt(neo.min_ns)}  max=${fmt(neo.max_ns)}`);
-  console.log(`  Δ: ${diff > 0 ? "+" : ""}${fmt(diff)}/op  ratio: ${ratio.toFixed(2)}x  ${ratio > 1 ? "(new is faster)" : ratio < 1 ? "(old is faster)" : "(equal)"}`);
+  const rows = [
+    { " ": `old (${label})`, Mean: fmt(old.mean_ns), Min: fmt(old.min_ns), Max: fmt(old.max_ns) },
+    { " ": `new (${label})`, Mean: fmt(neo.mean_ns), Min: fmt(neo.min_ns), Max: fmt(neo.max_ns) },
+  ];
+  // @ts-expect-error Bun.inspect.table accepts options as third arg
+  console.log(Bun.inspect.table(rows, [" ", "Mean", "Min", "Max"], { colors: useColor }));
+  const deltaColor = diff > 0 ? o(S.green) : diff < 0 ? o(S.red) : "";
+  const rc = ratioColor(ratio);
+  console.log(`  ${deltaColor}Δ: ${diff > 0 ? "+" : ""}${fmt(diff)}/op  ${rc}ratio: ${ratio.toFixed(2)}x${R}  ${ratio > 1 ? "(new is faster)" : ratio < 1 ? "(old is faster)" : "(equal)"}${R}`);
 }
+
+// ── Total runtime tracking ───────────────────────────────────────────
+const t0 = Bun.nanoseconds();
 
 // ── Bench 1: stripAnsi ──────────────────────────────────────────────
 // Ref: https://bun.sh/docs/api/utils#bun-stripansi
 // Bun docs: ~6-57x faster strip-ansi alternative (vs npm package).
 // We compare against a simple inline regex (not the npm package).
 
-console.log("═══ 1. stripAnsi: regex vs Bun.stripANSI ═══");
-console.log(`   ref: https://bun.sh/docs/api/utils#bun-stripansi\n`);
+sectionHeader("1. stripAnsi: regex vs Bun.stripANSI", "https://bun.sh/docs/api/utils#bun-stripansi");
 
 const ANSI_INPUTS = {
   short: "\x1b[1m\x1b[32mok\x1b[0m",
@@ -90,13 +141,13 @@ const ANSI_INPUTS = {
 const stripAnsiRegex = (s: string) => s.replace(/\x1b\[[0-9;]*m/g, "");
 
 for (const [name, input] of Object.entries(ANSI_INPUTS)) {
-  console.log(`  [${name}] (${input.length} chars)`);
+  console.log(`  ${D}[${name}] (${input.length} raw, ${vw(input)} visible)${R}`);
 
   // Verify correctness first
   const regexOut = stripAnsiRegex(input);
   const nativeOut = Bun.stripANSI(input);
   if (regexOut !== nativeOut) {
-    console.log(`  ⚠ OUTPUT MISMATCH: regex=${JSON.stringify(regexOut)} native=${JSON.stringify(nativeOut)}`);
+    console.log(`  ${o(S.red)}⚠ OUTPUT MISMATCH: regex=${JSON.stringify(regexOut)} native=${JSON.stringify(nativeOut)}${R}`);
   }
 
   const old = bench("regex", () => stripAnsiRegex(input));
@@ -112,8 +163,7 @@ for (const [name, input] of Object.entries(ANSI_INPUTS)) {
 // Old pattern: new Response(proc.stderr).text()
 // New pattern: proc.stderr.text()
 
-console.log("═══ 2. ReadableStream: new Response(stream).text() vs stream.text() ═══");
-console.log(`   ref: https://bun.sh/docs/api/spawn#reading-stdout\n`);
+sectionHeader("2. ReadableStream: new Response(stream).text() vs stream.text()", "https://bun.sh/docs/api/spawn#reading-stdout");
 
 const STREAM_CONTENT = "Error: could not be found in keychain\nSecKeychainSearchCopyNext: The specified item could not be found.\n";
 const streamBytes = new TextEncoder().encode(STREAM_CONTENT);
@@ -140,8 +190,16 @@ const r2new = await benchAsync("stream.text()", async () => {
 
 report("ReadableStream", r2old, r2new);
 
+// Correctness: verify stream.text() returns the original content
+{
+  const verifyStream = makeStream();
+  const verifyText = await verifyStream.text();
+  const streamMatch = Bun.deepEquals(verifyText, STREAM_CONTENT);
+  console.log(`  Stream correctness: ${streamMatch ? `${o(S.green)}pass${R}` : `${o(S.red)}FAIL${R}`} (Bun.deepEquals)`);
+}
+
 // Real subprocess benchmark (fewer iterations — spawning is expensive)
-console.log("\n  [subprocess] real Bun.spawn + read stderr (100 iterations)");
+console.log(`\n  ${D}[subprocess] real Bun.spawn + read stderr (100 iterations)${R}`);
 
 const r2subOld = await benchAsync("Response(proc.stderr)", async () => {
   const proc = Bun.spawn(["echo", "test"], { stdout: "pipe", stderr: "pipe" });
@@ -162,8 +220,7 @@ report("subprocess", r2subOld, r2subNew);
 // Bun.fileURLToPath converts file:// URLs to absolute filesystem paths.
 // Observed: correctly decodes percent-encoded characters (confirmed by test).
 
-console.log("\n═══ 3. URL.pathname vs Bun.fileURLToPath ═══");
-console.log(`   ref: https://bun.sh/docs/api/utils#bun-fileurltopath\n`);
+sectionHeader("3. URL.pathname vs Bun.fileURLToPath", "https://bun.sh/docs/api/utils#bun-fileurltopath");
 
 const URL_CASES = {
   simple: { base: "file:///Users/test/project/", relative: "./scan-worker.ts" },
@@ -175,13 +232,14 @@ const URL_CASES = {
 // simple: relative URL resolution
 {
   const { base, relative } = URL_CASES.simple;
-  console.log(`  [simple] new URL("${relative}", "${base}")`);
+  console.log(`  ${D}[simple] new URL("${relative}", "${base}")${R}`);
 
   const pathA = new URL(relative, base).pathname;
   const pathB = Bun.fileURLToPath(new URL(relative, base));
   console.log(`  URL.pathname:      ${pathA}`);
   console.log(`  fileURLToPath:     ${pathB}`);
-  console.log(`  match: ${pathA === pathB}\n`);
+  const match = pathA === pathB;
+  console.log(`  match: ${match ? `${o(S.green)}true${R}` : `${o(S.red)}false${R}`}\n`);
 
   const old = bench("URL.pathname", () => new URL(relative, base).pathname);
   const neo = bench("fileURLToPath", () => Bun.fileURLToPath(new URL(relative, base)));
@@ -191,12 +249,14 @@ const URL_CASES = {
 // spaces: percent-encoding correctness
 {
   const { url } = URL_CASES.spaces;
-  console.log(`\n  [spaces] "${url}"`);
+  console.log(`\n  ${D}[spaces] "${url}"${R}`);
 
   const pathA = new URL(url).pathname;
   const pathB = Bun.fileURLToPath(url);
-  console.log(`  URL.pathname:      ${pathA}  (decoded: ${pathA.includes(" ")})`);
-  console.log(`  fileURLToPath:     ${pathB}  (decoded: ${pathB.includes(" ")})`);
+  const decodedA = pathA.includes(" ");
+  const decodedB = pathB.includes(" ");
+  console.log(`  URL.pathname:      ${pathA}  (decoded: ${decodedA ? `${o(S.green)}true${R}` : `${o(S.red)}false${R}`})`);
+  console.log(`  fileURLToPath:     ${pathB}  (decoded: ${decodedB ? `${o(S.green)}true${R}` : `${o(S.red)}false${R}`})`);
 
   const old = bench("URL.pathname", () => new URL(url).pathname);
   const neo = bench("fileURLToPath", () => Bun.fileURLToPath(url));
@@ -206,7 +266,7 @@ const URL_CASES = {
 // unicode
 {
   const { url } = URL_CASES.unicode;
-  console.log(`\n  [unicode] "${url}"`);
+  console.log(`\n  ${D}[unicode] "${url}"${R}`);
 
   const pathA = new URL(url).pathname;
   const pathB = Bun.fileURLToPath(url);
@@ -218,13 +278,29 @@ const URL_CASES = {
   report("unicode", old, neo);
 }
 
+// deep: deeply nested path resolution
+{
+  const { base, relative } = URL_CASES.deep;
+  console.log(`\n  ${D}[deep] new URL("${relative}", "${base}")${R}`);
+
+  const pathA = new URL(relative, base).pathname;
+  const pathB = Bun.fileURLToPath(new URL(relative, base));
+  console.log(`  URL.pathname:      ${pathA}`);
+  console.log(`  fileURLToPath:     ${pathB}`);
+  const match = pathA === pathB;
+  console.log(`  match: ${match ? `${o(S.green)}true${R}` : `${o(S.red)}false${R}`}\n`);
+
+  const old = bench("URL.pathname", () => new URL(relative, base).pathname);
+  const neo = bench("fileURLToPath", () => Bun.fileURLToPath(new URL(relative, base)));
+  report("deep", old, neo);
+}
+
 // ── Bench 4: Bun.wrapAnsi ────────────────────────────────────────────
 // Ref: https://bun.sh/docs/api/utils#bun-wrapansi
 // Bun docs: 33-88x faster than wrap-ansi npm package.
 // Native ANSI-aware word wrapping with color preservation across line breaks.
 
-console.log("\n═══ 4. Bun.wrapAnsi ═══");
-console.log(`   ref: https://bun.sh/docs/api/utils#bun-wrapansi\n`);
+sectionHeader("4. Bun.wrapAnsi", "https://bun.sh/docs/api/utils#bun-wrapansi");
 
 const WRAP_COLS = 20;
 
@@ -245,7 +321,8 @@ WRAP_INPUTS.noTrimLong = "  " + WRAP_INPUTS.long + "  ";
   const wrapped = Bun.wrapAnsi(text, WRAP_COLS);
   const wrapLines = wrapped.split("\n");
   const allColored = wrapLines.every((l) => l.includes("\x1b[31m"));
-  console.log(`  Color preservation: ${allColored ? "pass" : "FAIL"} (${wrapLines.length} lines, all re-open red)`);
+  const passColor = allColored ? o(S.green) : o(S.red);
+  console.log(`  Color preservation: ${passColor}${allColored ? "pass" : "FAIL"}${R} (${wrapLines.length} lines, all re-open red)`);
 }
 
 // Size benchmarks (matching Bun v1.3.7 release notes cases)
@@ -257,15 +334,16 @@ const wrapCases: [string, string, Parameters<typeof Bun.wrapAnsi>[2]][] = [
   ["no trim long", WRAP_INPUTS.noTrimLong, { trim: false }],
 ];
 
+const wrapRows: { Case: string; Chars: number; Mean: string; Min: string; Max: string }[] = [];
 for (const [name, input, opts] of wrapCases) {
-  console.log(`  [${name}] (${input.length} chars)`);
   const r = bench(name, () => Bun.wrapAnsi(input, WRAP_COLS, opts));
-  console.log(`  Bun.wrapAnsi:  mean=${fmt(r.mean_ns)}  min=${fmt(r.min_ns)}  max=${fmt(r.max_ns)}`);
-  console.log();
+  wrapRows.push({ Case: name, Chars: input.length, Mean: fmt(r.mean_ns), Min: fmt(r.min_ns), Max: fmt(r.max_ns) });
 }
+// @ts-expect-error Bun.inspect.table accepts options as third arg
+console.log(Bun.inspect.table(wrapRows, ["Case", "Chars", "Mean", "Min", "Max"], { colors: useColor }));
 
 // Option variants (all on long input)
-console.log("  [option variants] (long input, 20 cols)");
+console.log(`  ${D}[option variants] (long input, 20 cols)${R}`);
 
 const optCases: [string, Parameters<typeof Bun.wrapAnsi>[2]][] = [
   ["default", undefined],
@@ -275,11 +353,13 @@ const optCases: [string, Parameters<typeof Bun.wrapAnsi>[2]][] = [
   ["ambiguousIsNarrow: false", { ambiguousIsNarrow: false }],
 ];
 
+const optRows: { Option: string; Mean: string; Min: string }[] = [];
 for (const [name, opts] of optCases) {
   const r = bench(name, () => Bun.wrapAnsi(WRAP_INPUTS.long, WRAP_COLS, opts));
-  console.log(`  ${name.padEnd(28)} mean=${fmt(r.mean_ns)}  min=${fmt(r.min_ns)}`);
+  optRows.push({ Option: name, Mean: fmt(r.mean_ns), Min: fmt(r.min_ns) });
 }
-console.log();
+// @ts-expect-error Bun.inspect.table accepts options as third arg
+console.log(Bun.inspect.table(optRows, ["Option", "Mean", "Min"], { colors: useColor }));
 
 // ── Load team member profile ─────────────────────────────────────────
 
@@ -311,19 +391,30 @@ let memberProfile: MemberProfile | null = null;
 
 // ── Summary ─────────────────────────────────────────────────────────
 
-console.log("\n═══ SUMMARY ═══");
-console.log(`Iterations: ${ITERATIONS} (sync), 5000 (stream), 100 (subprocess)`);
-console.log(`Warmup: ${WARMUP}`);
-console.log(`Bun version: ${Bun.version}`);
-console.log(`Platform: ${process.platform} ${process.arch}`);
-console.log(`Timestamp: ${new Date().toISOString()}`);
-console.log(`Timezone: ${Intl.DateTimeFormat().resolvedOptions().timeZone}`);
+sectionHeader("SUMMARY");
+
+const totalRuntime = (Bun.nanoseconds() - t0) / 1_000_000;
+
+const summaryRows: { Field: string; Value: string }[] = [
+  { Field: "Total runtime", Value: `${totalRuntime.toFixed(0)} ms` },
+  { Field: "Iterations", Value: `${ITERATIONS} (sync), 5000 (stream), 100 (subprocess)` },
+  { Field: "Warmup", Value: `${WARMUP}` },
+  { Field: "Bun version", Value: Bun.version },
+  { Field: "Platform", Value: `${process.platform} ${process.arch}` },
+  { Field: "Timestamp", Value: new Date().toISOString() },
+  { Field: "Timezone", Value: Intl.DateTimeFormat().resolvedOptions().timeZone },
+];
 
 if (memberProfile) {
-  console.log(`Member: ${memberKey} (${memberProfile.name})`);
-  console.log(`Machine: ${memberProfile.machine.cpu}, ${memberProfile.machine.cores} cores, ${memberProfile.machine.memory_gb} GB`);
-  console.log(`Timezone: ${memberProfile.timezone}`);
-  console.log(`Notes: ${memberProfile.notes || "(none)"}`);
+  summaryRows.push(
+    { Field: "Member", Value: `${memberKey} (${memberProfile.name})` },
+    { Field: "Machine", Value: `${memberProfile.machine.cpu}, ${memberProfile.machine.cores} cores, ${memberProfile.machine.memory_gb} GB` },
+    { Field: "Timezone (member)", Value: memberProfile.timezone },
+    { Field: "Notes", Value: memberProfile.notes || "(none)" },
+  );
 } else {
-  console.log(`Member: (unknown — run: bun run benchmarks/team-init.ts)`);
+  summaryRows.push({ Field: "Member", Value: "(unknown — run: bun run benchmarks/team-init.ts)" });
 }
+
+// @ts-expect-error Bun.inspect.table accepts options as third arg
+console.log(Bun.inspect.table(summaryRows, ["Field", "Value"], { colors: useColor }));
