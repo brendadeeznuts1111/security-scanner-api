@@ -1358,7 +1358,7 @@ describe('RSS feed helpers', () => {
 	// ── escapeXml ───────────────────────────────────────────────────────
 	test('escapeXml escapes &, <, >, ", \'', () => {
 		expect(escapeXml('Tom & Jerry <"friends"> aren\'t')).toBe(
-			'Tom &amp; Jerry &lt;&quot;friends&quot;&gt; aren&apos;t',
+			'Tom &amp; Jerry &lt;&quot;friends&quot;&gt; aren&#x27;t',
 		);
 		expect(escapeXml('clean text')).toBe('clean text');
 	});

@@ -1,11 +1,22 @@
 #!/usr/bin/env bun
 
 import {parseArgs} from 'node:util';
-import {readdir, appendFile} from 'node:fs/promises';
+import {readdir, appendFile, mkdir} from 'node:fs/promises';
 import {availableParallelism} from 'node:os';
+import {createHmac, createHash} from 'node:crypto';
 import {dns} from 'bun';
 import {z} from 'zod';
 import {BUN_SCANNER_COLUMNS} from './scan-columns';
+
+// ── Bun Secrets API type augmentation ─────────────────────────────────
+interface BunSecretsAPI {
+	get(service: string, name: string): Promise<string | null>;
+	set(service: string, name: string, value: string): Promise<void>;
+	delete(service: string, name: string): Promise<boolean>;
+}
+declare global {
+	var secrets: BunSecretsAPI | undefined;
+}
 
 // ── Broken-pipe guard ─────────────────────────────────────────────────
 // When piped to a command that closes early (e.g., `scan | head`, `scan | true`),
@@ -18,6 +29,12 @@ function handlePipeError(err: NodeJS.ErrnoException): void {
 }
 process.stdout.on('error', handlePipeError);
 process.stderr.on('error', handlePipeError);
+
+// ── Bun-only guard ──────────────────────────────────────────────────────
+if (typeof Bun === 'undefined') {
+	console.error('This CLI is Bun-only. Please run with: bun scan.ts');
+	process.exit(1);
+}
 
 // ── CLI flags ──────────────────────────────────────────────────────────
 const {values: flags, positionals} = parseArgs({
@@ -72,6 +89,9 @@ const {values: flags, positionals} = parseArgs({
 		'check-tokens': {type: 'boolean', default: false},
 		'rss': {type: 'boolean', default: false},
 		'advisory-feed': {type: 'string'},
+		'profile': {type: 'boolean', default: false},
+		'debug-tokens': {type: 'boolean', default: false},
+		'write-baseline': {type: 'boolean', default: false},
 	},
 	strict: true,
 });
@@ -85,6 +105,7 @@ if (flags.tz) {
 } else if (!process.env.TZ) {
 	process.env.TZ = Intl.DateTimeFormat().resolvedOptions().timeZone;
 }
+const _tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
 
 // ── ANSI helpers ───────────────────────────────────────────────────────
 const _useColor = (() => {
@@ -105,10 +126,228 @@ const c = {
 	red: _wrap('31'),
 };
 
+// ── Lightweight profiling (opt-in) ────────────────────────────────────
+const _profileEnabled =
+	!!flags.profile || Bun.env.BUN_SCAN_PROFILE === '1' || Bun.env.BUN_SCAN_PROFILE === 'true';
+const _profileTotals = new Map<string, number>();
+const _profileCounts = new Map<string, number>();
+const _profileProjectTotals = new Map<string, number>();
+const _profileProjectCounts = new Map<string, number>();
+let _profileStartNs: number | null = null;
+let _profileStartMem: NodeJS.MemoryUsage | null = null;
+let _profileSummary: {projectsScanned: number; scanMs: number; memoryDeltaBytes: number} | null = null;
+const PROFILE_BASELINE_PATH = `${import.meta.dir}/profile-baseline.json`;
+const PROFILE_BASELINE_KEY = 'profile-baseline.json';
+
+function recordProfile(label: string, ms: number): void {
+	_profileTotals.set(label, (_profileTotals.get(label) ?? 0) + ms);
+	_profileCounts.set(label, (_profileCounts.get(label) ?? 0) + 1);
+}
+
+function recordProjectProfile(label: string, ms: number): void {
+	_profileProjectTotals.set(label, (_profileProjectTotals.get(label) ?? 0) + ms);
+	_profileProjectCounts.set(label, (_profileProjectCounts.get(label) ?? 0) + 1);
+}
+
+async function time<T>(label: string, fn: () => Promise<T>): Promise<T> {
+	if (!_profileEnabled) return fn();
+	const start = Bun.nanoseconds();
+	const result = await fn();
+	const ms = (Bun.nanoseconds() - start) / 1e6;
+	recordProfile(label, ms);
+	return result;
+}
+
+async function timeProject<T>(label: string, fn: () => Promise<T>): Promise<T> {
+	if (!_profileEnabled) return fn();
+	const start = Bun.nanoseconds();
+	const result = await fn();
+	const ms = (Bun.nanoseconds() - start) / 1e6;
+	recordProjectProfile(label, ms);
+	return result;
+}
+
+function timeSync<T>(label: string, fn: () => T): T {
+	if (!_profileEnabled) return fn();
+	const start = Bun.nanoseconds();
+	const result = fn();
+	const ms = (Bun.nanoseconds() - start) / 1e6;
+	recordProfile(label, ms);
+	return result;
+}
+
+function printProfileSummary(): void {
+	if (!_profileEnabled || _profileTotals.size === 0) return;
+	console.log();
+	console.log(c.bold('  Profiling (ms)'));
+	console.log();
+	const rows = [..._profileTotals.entries()]
+		.map(([label, total]) => {
+			const count = _profileCounts.get(label) ?? 1;
+			return {
+				Label: label,
+				Total: total.toFixed(1),
+				Count: count,
+				Avg: (total / count).toFixed(1),
+			};
+		})
+		.sort((a, b) => Number(b.Total) - Number(a.Total));
+	console.log(Bun.inspect.table(rows, ['Label', 'Total', 'Count', 'Avg'], {colors: _useColor}));
+}
+
+function printProjectProfileSummary(): void {
+	if (!_profileEnabled || _profileProjectTotals.size === 0) return;
+	console.log();
+	console.log(c.bold('  Project Profiling (ms)'));
+	console.log();
+	const rows = [..._profileProjectTotals.entries()]
+		.map(([label, total]) => {
+			const count = _profileProjectCounts.get(label) ?? 1;
+			return {
+				Label: label,
+				Total: total.toFixed(1),
+				Count: count,
+				Avg: (total / count).toFixed(1),
+			};
+		})
+		.sort((a, b) => Number(b.Total) - Number(a.Total));
+	console.log(Bun.inspect.table(rows, ['Label', 'Total', 'Count', 'Avg'], {colors: _useColor}));
+}
+
+function pctDiff(current: number, baseline: number): number {
+	if (baseline === 0) return current === 0 ? 0 : 100;
+	return Math.abs((current - baseline) / baseline) * 100;
+}
+
+async function readProfileBaseline(): Promise<{
+	projectsScanned: number;
+	scanMs: number;
+	memoryDeltaBytes: number;
+} | null> {
+	try {
+		const cfg = getR2Config();
+		let raw: string | null = null;
+		if (cfg) {
+			const key = getProfileBaselineKey();
+			const res = await r2Fetch('GET', key);
+			if (res.status === 404) return null;
+			if (!res.ok) throw new Error(`R2 read failed: ${res.status} ${res.statusText}`);
+			raw = await res.text();
+		} else {
+			const file = Bun.file(PROFILE_BASELINE_PATH);
+			if (!(await file.exists())) return null;
+			raw = await file.text();
+		}
+		const parsed = JSON.parse(raw);
+		if (
+			typeof parsed?.projectsScanned === 'number' &&
+			typeof parsed?.scanMs === 'number' &&
+			typeof parsed?.memoryDeltaBytes === 'number'
+		) {
+			return parsed;
+		}
+	} catch {
+		/* ignore */
+	}
+	return null;
+}
+
+async function writeProfileBaseline(): Promise<void> {
+	if (!_profileEnabled || !_profileSummary || !flags['write-baseline']) return;
+	try {
+		const payload =
+			JSON.stringify(
+				{
+					projectsScanned: _profileSummary.projectsScanned,
+					scanMs: _profileSummary.scanMs,
+					memoryDeltaBytes: _profileSummary.memoryDeltaBytes,
+				},
+				null,
+				2,
+			) + '\n';
+		const cfg = getR2Config();
+		if (cfg) {
+			const key = getProfileBaselineKey();
+			const res = await r2Fetch('PUT', key, payload, 'application/json');
+			if (!res.ok) throw new Error(`R2 write failed: ${res.status} ${res.statusText}`);
+			console.log();
+			console.log(c.green(`  Wrote profile baseline to R2: ${key}`));
+			return;
+		}
+		const file = Bun.file(PROFILE_BASELINE_PATH);
+		await Bun.write(file, payload);
+		console.log();
+		console.log(c.green(`  Wrote profile baseline: ${PROFILE_BASELINE_PATH}`));
+	} catch (err) {
+		console.log();
+		console.error(c.red(`  Failed to write profile baseline: ${err instanceof Error ? err.message : String(err)}`));
+	}
+}
+
+function printProfileSummaryTable(): void {
+	if (!_profileEnabled || !_profileSummary) return;
+	console.log();
+	console.log(c.bold('  Profile Summary'));
+	console.log();
+	const rows = [
+		{Field: 'Projects', Value: _profileSummary.projectsScanned},
+		{Field: 'Elapsed', Value: `${_profileSummary.scanMs.toFixed(1)} ms`},
+		{
+			Field: 'Memory Δ',
+			Value: `${_profileSummary.memoryDeltaBytes >= 0 ? '+' : ''}${(_profileSummary.memoryDeltaBytes / 1024).toFixed(1)} KiB`,
+		},
+	];
+	console.log(Bun.inspect.table(rows, ['Field', 'Value'], {colors: _useColor}));
+}
+
+async function checkProfileRegression(): Promise<void> {
+	if (!_profileEnabled || !_profileSummary) return;
+	const baseline = await readProfileBaseline();
+	if (!baseline) {
+		console.log();
+		console.log(c.dim(`  Profile baseline not found: ${PROFILE_BASELINE_PATH}`));
+		return;
+	}
+
+	const driftProjects = pctDiff(_profileSummary.projectsScanned, baseline.projectsScanned);
+	const driftMs = pctDiff(_profileSummary.scanMs, baseline.scanMs);
+	const driftMem = pctDiff(_profileSummary.memoryDeltaBytes, baseline.memoryDeltaBytes);
+	const hasRegression = driftProjects > 10 || driftMs > 10 || driftMem > 10;
+
+	console.log();
+	console.log(c.bold(`  Profile Regression (${hasRegression ? c.red('REGRESSION') : c.green('OK')})`));
+	console.log();
+	const rows = [
+		{Metric: 'projectsScanned', Baseline: baseline.projectsScanned, Current: _profileSummary.projectsScanned, Drift: `${driftProjects.toFixed(1)}%`},
+		{Metric: 'scanMs', Baseline: baseline.scanMs, Current: _profileSummary.scanMs.toFixed(1), Drift: `${driftMs.toFixed(1)}%`},
+		{Metric: 'memoryDeltaBytes', Baseline: baseline.memoryDeltaBytes, Current: _profileSummary.memoryDeltaBytes, Drift: `${driftMem.toFixed(1)}%`},
+	];
+	console.log(Bun.inspect.table(rows, ['Metric', 'Baseline', 'Current', 'Drift'], {colors: _useColor}));
+
+	if (hasRegression && typeof Bun.openInEditor === 'function') {
+		Bun.openInEditor(import.meta.path, {line: 1});
+	}
+}
+
+if (_profileEnabled) {
+	process.on('beforeExit', () => {
+		printProfileSummary();
+		printProjectProfileSummary();
+		printProfileSummaryTable();
+		void (async () => {
+			await writeProfileBaseline();
+			await checkProfileRegression();
+		})();
+	});
+}
+
 /** Pad a string (possibly containing ANSI codes) to a target display width. */
 const _padEnd = (s: string, w: number) => s + ' '.repeat(Math.max(0, w - Bun.stringWidth(s)));
 const _padStart = (s: string, w: number) => ' '.repeat(Math.max(0, w - Bun.stringWidth(s))) + s;
 const pad2 = (n: number) => String(n).padStart(2, '0');
+const fmtDate = (d: Date) =>
+	`${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())} ${pad2(d.getHours())}:${pad2(d.getMinutes())}:${pad2(d.getSeconds())}`;
+const fmtStamp = (d = new Date()) => `${fmtDate(d)} ${_tz}${_tzExplicit ? ` (TZ=${process.env.TZ})` : ''}`;
 
 /** Extract the first meaningful error line from bun stderr, skipping .env diagnostics and version banners. */
 function extractBunError(stderr: string, fallback: string): string {
@@ -139,7 +378,7 @@ export const ThreatFeedItemSchema = z.object({
 
 export const ThreatFeedSchema = z.array(ThreatFeedItemSchema);
 
-export type ThreatFeedItem = z.infer<typeof ThreatFeedItemSchema>;
+type ThreatFeedItem = z.infer<typeof ThreatFeedItemSchema>;
 
 /** Validate a threat feed response. Throws on invalid data — installation should be cancelled. */
 export function validateThreatFeed(data: unknown): ThreatFeedItem[] {
@@ -255,7 +494,7 @@ export const BunInfoResponseSchema = z
 
 export type NpmPackument = z.infer<typeof BunInfoResponseSchema>;
 export type NpmPerson = z.infer<typeof NpmPersonSchema>;
-export type NpmDist = z.infer<typeof NpmDistSchema>;
+type NpmDist = z.infer<typeof NpmDistSchema>;
 
 // ── Feature flag helpers ──────────────────────────────────────────────
 
@@ -313,6 +552,123 @@ function parseRepoMeta(url: string): {host: string; owner: string} {
 	} catch {
 		return {host: '-', owner: '-'};
 	}
+}
+
+function slugifyTokenPart(raw: string): string {
+	const slug = raw
+		.toLowerCase()
+		.replace(/[^a-z0-9]+/g, '-')
+		.replace(/^-+|-+$/g, '');
+	return slug || 'default';
+}
+
+function projectTokenOrg(p: ProjectInfo): string {
+	if (p.name.startsWith('@')) {
+		const scope = p.name.split('/')[0]?.slice(1) ?? '';
+		if (scope) return slugifyTokenPart(scope);
+	}
+	if (p.repoOwner && p.repoOwner !== '-') return slugifyTokenPart(p.repoOwner);
+	return 'default';
+}
+
+function projectTokenProject(p: ProjectInfo): string {
+	let raw = p.name;
+	if (raw.startsWith('@')) raw = raw.split('/')[1] ?? p.folder;
+	if (!raw || raw === '-') raw = p.folder;
+	return slugifyTokenPart(raw);
+}
+
+function projectTokenName(p: ProjectInfo, suffix?: string): string {
+	const base = projectTokenProject(p);
+	if (!suffix) return base;
+	return `${base}-${slugifyTokenPart(suffix)}`;
+}
+
+function projectTokenService(p: ProjectInfo): string {
+	const org = projectTokenOrg(p);
+	const project = projectTokenProject(p);
+	return `com.vercel.cli.${org}.${project}`;
+}
+
+// ── R2 (S3-compatible) helpers for profile baseline ──────────────────
+type R2Config = {accountId: string; accessKeyId: string; secretAccessKey: string; bucketName: string};
+
+function getR2Config(): R2Config | null {
+	const accountId = Bun.env.R2_ACCOUNT_ID ?? '';
+	const accessKeyId = Bun.env.R2_ACCESS_KEY_ID ?? '';
+	const secretAccessKey = Bun.env.R2_SECRET_ACCESS_KEY ?? '';
+	const bucketName = Bun.env.R2_BUCKET_NAME ?? '';
+	if (!accountId || !accessKeyId || !secretAccessKey || !bucketName) return null;
+	return {accountId, accessKeyId, secretAccessKey, bucketName};
+}
+
+function getProfileBaselineKey(): string {
+	return Bun.env.R2_PROFILE_BASELINE_KEY ?? PROFILE_BASELINE_KEY;
+}
+
+function toAmzDate(d = new Date()): {amz: string; date: string} {
+	const y = d.getUTCFullYear();
+	const m = String(d.getUTCMonth() + 1).padStart(2, '0');
+	const day = String(d.getUTCDate()).padStart(2, '0');
+	const hh = String(d.getUTCHours()).padStart(2, '0');
+	const mm = String(d.getUTCMinutes()).padStart(2, '0');
+	const ss = String(d.getUTCSeconds()).padStart(2, '0');
+	return {amz: `${y}${m}${day}T${hh}${mm}${ss}Z`, date: `${y}${m}${day}`};
+}
+
+function hashSha256Hex(data: string | Uint8Array): string {
+	return createHash('sha256').update(data).digest('hex');
+}
+
+function hmacSha256(key: Buffer | string, data: string): Buffer {
+	return createHmac('sha256', key).update(data).digest();
+}
+
+function encodeR2Key(key: string): string {
+	return key
+		.split('/')
+		.map(part => encodeURIComponent(part))
+		.join('/');
+}
+
+async function r2Fetch(
+	method: 'GET' | 'PUT',
+	key: string,
+	body?: string,
+	contentType = 'application/json',
+): Promise<Response> {
+	const cfg = getR2Config();
+	if (!cfg) throw new Error('Missing R2 configuration');
+	const host = `${cfg.accountId}.r2.cloudflarestorage.com`;
+	const canonicalUri = `/${cfg.bucketName}/${encodeR2Key(key)}`;
+	const {amz, date} = toAmzDate();
+	const payload = body ?? '';
+	const payloadHash = hashSha256Hex(payload);
+	const canonicalHeaders = `host:${host}\nx-amz-content-sha256:${payloadHash}\nx-amz-date:${amz}\n`;
+	const signedHeaders = 'host;x-amz-content-sha256;x-amz-date';
+	const canonicalRequest = `${method}\n${canonicalUri}\n\n${canonicalHeaders}\n${signedHeaders}\n${payloadHash}`;
+	const scope = `${date}/auto/s3/aws4_request`;
+	const stringToSign = `AWS4-HMAC-SHA256\n${amz}\n${scope}\n${hashSha256Hex(canonicalRequest)}`;
+	const kDate = hmacSha256(`AWS4${cfg.secretAccessKey}`, date);
+	const kRegion = hmacSha256(kDate, 'auto');
+	const kService = hmacSha256(kRegion, 's3');
+	const kSigning = hmacSha256(kService, 'aws4_request');
+	const signature = hmacSha256(kSigning, stringToSign).toString('hex');
+	const authorization = `AWS4-HMAC-SHA256 Credential=${cfg.accessKeyId}/${scope}, SignedHeaders=${signedHeaders}, Signature=${signature}`;
+
+	const url = `https://${host}/${cfg.bucketName}/${encodeR2Key(key)}`;
+	const headers: Record<string, string> = {
+		'Authorization': authorization,
+		'x-amz-date': amz,
+		'x-amz-content-sha256': payloadHash,
+	};
+	if (method === 'PUT') headers['Content-Type'] = contentType;
+
+	return fetch(url, {
+		method,
+		headers,
+		body: method === 'PUT' ? payload : undefined,
+	});
 }
 
 /** Platform-aware CLI invocation command and optional PowerShell hint. */
@@ -427,7 +783,7 @@ export const ProjectInfoSchema = z.object({
 	devDeps: z.number(),
 	totalDeps: z.number(),
 	engine: z.string(),
-	lock: z.string(),
+	lock: z.enum(['bun.lock', 'bun.lockb', 'none']),
 	bunfig: z.boolean(),
 	workspace: z.boolean(),
 	keyDeps: z.array(z.string()),
@@ -449,8 +805,8 @@ export const ProjectInfoSchema = z.object({
 	exact: z.boolean(),
 	installOptional: z.boolean(),
 	installDev: z.boolean(),
-	installAuto: z.string(),
-	linker: z.string(),
+	installAuto: z.enum(['auto', 'force', 'disable', 'fallback', '-']),
+	linker: z.enum(['hoisted', 'isolated', '-']),
 	configVersion: z.number(),
 	backend: z.string(),
 	minimumReleaseAge: z.number(),
@@ -952,6 +1308,7 @@ const BUN_DEFAULT_TRUSTED = new Set([
 ]);
 
 const PROJECTS_ROOT = Bun.env.BUN_PLATFORM_HOME ?? '/Users/nolarose/Projects';
+const projectDir = (p: {folder: string}) => `${PROJECTS_ROOT}/${p.folder}`;
 
 // ── Keychain (Bun.secrets) ────────────────────────────────────────────
 export const BUN_KEYCHAIN_SERVICE = 'dev.bun.scanner';
@@ -963,7 +1320,7 @@ export function isValidTokenName(name: string): boolean {
 }
 
 export function validateTokenValue(value: string): {valid: true} | {valid: false; reason: string} {
-	if (!value || value.length === 0) return {valid: false, reason: 'token value is empty'};
+	if (value.length === 0) return {valid: false, reason: 'token value is empty'};
 	if (value.trim().length === 0) return {valid: false, reason: 'token value is only whitespace'};
 	if (value.length < 8) return {valid: false, reason: `token value is too short (${value.length} chars, minimum 8)`};
 	if (new Set(value).size === 1) return {valid: false, reason: 'token value is a single repeated character'};
@@ -1037,9 +1394,9 @@ function recordFailure(name: string, code: KeychainErr['code']): void {
 	m.lastFailCode = code;
 }
 
-export type KeychainOk<T> = {ok: true; value: T};
+type KeychainOk<T> = {ok: true; value: T};
 export type KeychainErr = {ok: false; code: 'NO_API' | 'ACCESS_DENIED' | 'NOT_FOUND' | 'OS_ERROR'; reason: string};
-export type KeychainResult<T> = KeychainOk<T> | KeychainErr;
+type KeychainResult<T> = KeychainOk<T> | KeychainErr;
 
 function keychainUnavailableErr(): KeychainErr {
 	const v = typeof Bun !== 'undefined' ? Bun.version : 'unknown';
@@ -1170,19 +1527,23 @@ async function securityMeta(name: string, service = BUN_KEYCHAIN_SERVICE): Promi
 }
 
 // -- dispatch: Bun.secrets → security CLI ----------------------------------
-const _hasBunSecrets = !!(globalThis as any).secrets?.get;
+const _hasBunSecrets = !!(globalThis.secrets?.get || (Bun as unknown as {secrets?: unknown}).secrets);
 
-export async function keychainGet(name: string): Promise<KeychainResult<string | null>> {
+export async function keychainGet(name: string, service = BUN_KEYCHAIN_SERVICE): Promise<KeychainResult<string | null>> {
 	let result: KeychainResult<string | null>;
 	if (_hasBunSecrets) {
 		try {
-			const value = (await (globalThis as any).secrets.get(BUN_KEYCHAIN_SERVICE, name)) ?? null;
+			// Prefer Bun.secrets if available; fallback to legacy globalThis.secrets
+			const bunSecrets = (Bun as unknown as {secrets?: BunSecretsAPI | undefined}).secrets;
+			const value = bunSecrets
+				? (await bunSecrets.get({service, name})) ?? null
+				: (await globalThis.secrets!.get(service, name)) ?? null;
 			result = {ok: true, value};
 		} catch (err) {
 			result = classifyKeychainError(err);
 		}
 	} else if (process.platform === 'darwin') {
-		result = await securityGet(name);
+		result = await securityGet(name, service);
 	} else {
 		result = keychainUnavailableErr();
 	}
@@ -1195,7 +1556,9 @@ export async function keychainSet(name: string, value: string): Promise<Keychain
 	let result: KeychainResult<void>;
 	if (_hasBunSecrets) {
 		try {
-			await (globalThis as any).secrets.set(BUN_KEYCHAIN_SERVICE, name, value);
+			const bunSecrets = (Bun as unknown as {secrets?: BunSecretsAPI | undefined}).secrets;
+			if (bunSecrets) await bunSecrets.set({service: BUN_KEYCHAIN_SERVICE, name}, value);
+			else await globalThis.secrets!.set(BUN_KEYCHAIN_SERVICE, name, value);
 			result = {ok: true, value: undefined};
 		} catch (err) {
 			result = classifyKeychainError(err);
@@ -1213,7 +1576,12 @@ export async function keychainDelete(name: string): Promise<KeychainResult<boole
 	let result: KeychainResult<boolean>;
 	if (_hasBunSecrets) {
 		try {
-			result = {ok: true, value: await (globalThis as any).secrets.delete(BUN_KEYCHAIN_SERVICE, name)};
+			const bunSecrets = (Bun as unknown as {secrets?: BunSecretsAPI | undefined}).secrets;
+			if (bunSecrets) {
+				result = {ok: true, value: await bunSecrets.delete({service: BUN_KEYCHAIN_SERVICE, name})};
+			} else {
+				result = {ok: true, value: await globalThis.secrets!.delete(BUN_KEYCHAIN_SERVICE, name)};
+			}
 		} catch (err) {
 			result = classifyKeychainError(err);
 		}
@@ -1388,7 +1756,7 @@ export const XrefEntrySchema = z.object({
 	lockHash: z.string().optional(),
 });
 
-export type XrefEntry = z.infer<typeof XrefEntrySchema>;
+type XrefEntry = z.infer<typeof XrefEntrySchema>;
 
 export const XrefSnapshotSchema = z.object({
 	timestamp: z.string(),
@@ -1400,7 +1768,7 @@ export const XrefSnapshotSchema = z.object({
 	totalProjects: z.number(),
 });
 
-export type XrefSnapshot = z.infer<typeof XrefSnapshotSchema>;
+type XrefSnapshot = z.infer<typeof XrefSnapshotSchema>;
 
 const SNAPSHOT_DIR = `${import.meta.dir}/.audit`;
 const SNAPSHOT_PATH = `${SNAPSHOT_DIR}/xref-snapshot.json`;
@@ -1408,6 +1776,12 @@ const TOKEN_AUDIT_PATH = `${SNAPSHOT_DIR}/token-events.jsonl`;
 export const BUN_TOKEN_AUDIT_RSS_PATH = `${SNAPSHOT_DIR}/token-events.rss.xml`;
 export const BUN_SCAN_RESULTS_RSS_PATH = `${SNAPSHOT_DIR}/scan-results.rss.xml`;
 export const BUN_ADVISORY_MATCHES_PATH = `${SNAPSHOT_DIR}/advisory-matches.jsonl`;
+let _snapshotDirReady = false;
+async function ensureSnapshotDir(): Promise<void> {
+	if (_snapshotDirReady) return;
+	await mkdir(SNAPSHOT_DIR, {recursive: true});
+	_snapshotDirReady = true;
+}
 
 type TokenEvent = 'store' | 'delete' | 'load' | 'load_skip' | 'store_fail' | 'delete_fail' | 'check_fail';
 
@@ -1418,8 +1792,8 @@ async function logTokenEvent(evt: {
 	detail?: string;
 }): Promise<void> {
 	try {
-		const {mkdir} = await import('node:fs/promises');
-		await mkdir(SNAPSHOT_DIR, {recursive: true});
+
+		await ensureSnapshotDir();
 		const entry = {
 			timestamp: new Date().toISOString(),
 			event: evt.event,
@@ -1437,18 +1811,13 @@ async function logTokenEvent(evt: {
 // ── XML / RSS helpers ──────────────────────────────────────────────────
 
 export function escapeXml(text: string): string {
-	return text
-		.replace(/&/g, '&amp;')
-		.replace(/</g, '&lt;')
-		.replace(/>/g, '&gt;')
-		.replace(/"/g, '&quot;')
-		.replace(/'/g, '&apos;');
+	return Bun.escapeHTML(text);
 }
 
 export function decodeXmlEntities(text: string): string {
 	return text
 		.replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g, '$1')
-		.replace(/&apos;/g, "'")
+		.replace(/&apos;|&#x27;/g, "'")
 		.replace(/&quot;/g, '"')
 		.replace(/&gt;/g, '>')
 		.replace(/&lt;/g, '<')
@@ -1496,10 +1865,12 @@ ${itemsXml}
 `;
 }
 
+type RssFeedItem = {title: string; link: string; description: string; pubDate: string};
+
 export function parseRssFeed(
 	xmlText: string,
-): Array<{title: string; link: string; description: string; pubDate: string}> {
-	const results: Array<{title: string; link: string; description: string; pubDate: string}> = [];
+): RssFeedItem[] {
+	const results: RssFeedItem[] = [];
 
 	// Try RSS 2.0 <item> elements
 	const itemRegex = /<item[\s>]([\s\S]*?)<\/item>/gi;
@@ -1575,12 +1946,12 @@ async function publishTokenEventsRss(): Promise<void> {
 			link: `file://${BUN_TOKEN_AUDIT_RSS_PATH}`,
 			items,
 		});
-		const {mkdir} = await import('node:fs/promises');
-		await mkdir(SNAPSHOT_DIR, {recursive: true});
+
+		await ensureSnapshotDir();
 		await Bun.write(BUN_TOKEN_AUDIT_RSS_PATH, xml);
 		console.log(`  RSS  ${BUN_TOKEN_AUDIT_RSS_PATH} (${items.length} events)`);
 	} catch (err) {
-		console.error('  Warning: failed to generate token events RSS:', (err as Error).message);
+		console.error('  Warning: failed to generate token events RSS:', err instanceof Error ? err.message : String(err));
 	}
 }
 
@@ -1629,22 +2000,23 @@ async function consumeAdvisoryFeed(feedUrl: string, projects: ProjectInfo[]): Pr
 			return;
 		}
 
-		console.log(`\n  Advisory matches (${matches.length}):`);
-		for (const m of matches) {
-			console.log(`    • ${m.advisory}`);
-			if (m.date) console.log(`      Date: ${m.date}`);
-			if (m.link) console.log(`      Link: ${m.link}`);
-			console.log(`      Packages: ${m.packages.join(', ')}`);
-			console.log(`      Projects: ${m.folders.join(', ')}`);
-		}
+		sectionHeader(`Advisory Matches (${matches.length})`);
+		const advisoryRows = matches.map(m => ({
+			Advisory: m.advisory,
+			Date: m.date || '-',
+			Link: m.link || '-',
+			Packages: m.packages.join(', '),
+			Projects: m.folders.join(', '),
+		}));
+		renderMatrix(advisoryRows, BUN_SCANNER_COLUMNS.ADVISORY_MATCHES);
 
-		const {mkdir} = await import('node:fs/promises');
-		await mkdir(SNAPSHOT_DIR, {recursive: true});
+
+		await ensureSnapshotDir();
 		const lines = matches.map(m => JSON.stringify({...m, fetchedAt: new Date().toISOString()})).join('\n') + '\n';
 		await appendFile(BUN_ADVISORY_MATCHES_PATH, lines);
 		console.log(`  Appended ${matches.length} match(es) to ${BUN_ADVISORY_MATCHES_PATH}`);
 	} catch (err) {
-		const msg = (err as Error).name === 'AbortError' ? 'request timed out' : (err as Error).message;
+		const msg = err instanceof Error ? (err.name === 'AbortError' ? 'request timed out' : err.message) : String(err);
 		console.error(`  Warning: advisory feed failed: ${msg}`);
 	}
 }
@@ -1690,24 +2062,22 @@ async function publishScanResultsRss(projects: ProjectInfo[]): Promise<void> {
 			link: `file://${BUN_SCAN_RESULTS_RSS_PATH}`,
 			items,
 		});
-		const {mkdir} = await import('node:fs/promises');
-		await mkdir(SNAPSHOT_DIR, {recursive: true});
+
+		await ensureSnapshotDir();
 		await Bun.write(BUN_SCAN_RESULTS_RSS_PATH, xml);
 		console.log(`  RSS  ${BUN_SCAN_RESULTS_RSS_PATH} (${items.length} project(s))`);
 	} catch (err) {
-		console.error('  Warning: failed to generate scan results RSS:', (err as Error).message);
+		console.error('  Warning: failed to generate scan results RSS:', err instanceof Error ? err.message : String(err));
 	}
 }
 
 async function saveXrefSnapshot(data: XrefEntry[], totalProjects: number): Promise<void> {
-	const {mkdir} = await import('node:fs/promises');
-	await mkdir(SNAPSHOT_DIR, {recursive: true});
+	await ensureSnapshotDir();
 	const now = new Date();
-	const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
 	const snapshot: XrefSnapshot = {
 		timestamp: now.toISOString(),
-		date: `${now.getFullYear()}-${pad2(now.getMonth() + 1)}-${pad2(now.getDate())} ${pad2(now.getHours())}:${pad2(now.getMinutes())}:${pad2(now.getSeconds())}`,
-		tz,
+		date: fmtDate(now),
+		tz: _tz,
 		tzOverride: _tzExplicit,
 		projects: data,
 		totalBunDefault: data.reduce((s, x) => s + x.bunDefault.length, 0),
@@ -1754,7 +2124,7 @@ async function scanXrefData(
 			}
 		}
 
-		const nmDir = `${PROJECTS_ROOT}/${p.folder}/node_modules`;
+		const nmDir = `${projectDir(p)}/node_modules`;
 		let entries: string[];
 		try {
 			entries = await readdir(nmDir);
@@ -1828,6 +2198,19 @@ type AuditField = (typeof AUDIT_FIELDS)[number];
 // ── Scan a single project directory ────────────────────────────────────
 export async function scanProject(dir: string): Promise<ProjectInfo> {
 	const folder = dir.split('/').pop()!;
+	const profTag = `project:${folder}`;
+	let profStart = 0;
+	const profMark = (label: string) => {
+		if (!_profileEnabled) return;
+		const now = Bun.nanoseconds();
+		if (profStart > 0) {
+			const ms = (now - profStart) / 1e6;
+			recordProjectProfile(`${profTag}:${label}`, ms);
+		}
+		profStart = now;
+	};
+	if (_profileEnabled) profStart = Bun.nanoseconds();
+
 	const base: ProjectInfo = {
 		folder,
 		name: folder,
@@ -1909,7 +2292,8 @@ export async function scanProject(dir: string): Promise<ProjectInfo> {
 	// package.json
 	let pkg: z.infer<typeof PackageJsonSchema> | null = null;
 	const pkgFile = Bun.file(`${dir}/package.json`);
-	if (await pkgFile.exists()) {
+	const pkgExists = await pkgFile.exists();
+	if (pkgExists) {
 		try {
 			const parsed = PackageJsonSchema.safeParse(await pkgFile.json());
 			if (parsed.success) {
@@ -1993,6 +2377,7 @@ export async function scanProject(dir: string): Promise<ProjectInfo> {
 			// malformed JSON — leave defaults
 		}
 	}
+	profMark('pkg');
 
 	// Git remote fallback when package.json has no repository
 	if (base.repo === '-') {
@@ -2016,26 +2401,27 @@ export async function scanProject(dir: string): Promise<ProjectInfo> {
 			/* no git */
 		}
 	}
+	profMark('git');
 
-	// .env file detection (Bun load order: .env.local → .env.[NODE_ENV] → .env)
+	// .env file detection + content read in a single I/O pass
+	// (Bun load order: .env.local → .env.[NODE_ENV] → .env)
 	const envCandidates = ['.env', '.env.local', '.env.development', '.env.production', '.env.test'];
-	const envChecks = await Promise.all(envCandidates.map(f => Bun.file(`${dir}/${f}`).exists()));
-	base.envFiles = envCandidates.filter((_, i) => envChecks[i]);
-
-	// Scan .env files for TZ= (Bun load order: .env.local > .env.NODE_ENV > .env — last write wins)
-	if (base.envFiles.length > 0) {
-		const contents = await Promise.all(
-			base.envFiles.map(f =>
-				Bun.file(`${dir}/${f}`)
-					.text()
-					.catch(() => ''),
-			),
-		);
-		const envTz = parseTzFromEnv(contents);
+	const envResults = await Promise.all(
+		envCandidates.map(f =>
+			Bun.file(`${dir}/${f}`)
+				.text()
+				.catch(() => null),
+		),
+	);
+	base.envFiles = envCandidates.filter((_, i) => envResults[i] !== null);
+	const envContents = envResults.filter((c): c is string => c !== null);
+	if (envContents.length > 0) {
+		const envTz = parseTzFromEnv(envContents);
 		if (envTz !== '-') base.projectTz = envTz;
-		const envDns = parseEnvVar(contents, 'BUN_CONFIG_DNS_TIME_TO_LIVE_SECONDS');
+		const envDns = parseEnvVar(envContents, 'BUN_CONFIG_DNS_TIME_TO_LIVE_SECONDS');
 		if (envDns !== '-') base.projectDnsTtl = envDns;
 	}
+	profMark('env');
 
 	// Lock file detection
 	const [hasLock, hasLockb] = await Promise.all([
@@ -2063,6 +2449,7 @@ export async function scanProject(dir: string): Promise<ProjectInfo> {
 			/* unreadable */
 		}
 	}
+	profMark('lock');
 
 	// bunfig.toml — detect presence, parse registry, scopes, and [install] options
 	const bunfigFile = Bun.file(`${dir}/bunfig.toml`);
@@ -2198,6 +2585,7 @@ export async function scanProject(dir: string): Promise<ProjectInfo> {
 			}
 		} catch {}
 	}
+	profMark('bunfig');
 
 	// Fallback: package.json publishConfig.registry
 	if (base.registry === '-' && pkg) {
@@ -2221,10 +2609,12 @@ export async function scanProject(dir: string): Promise<ProjectInfo> {
 			}
 		} catch {}
 	}
+	profMark('npmrc');
 
 	// bin/ directory detection ($PROJECT_HOME/bin)
 	const binEntries = await readdir(`${dir}/bin`).catch(() => null);
 	base.hasBinDir = binEntries !== null && binEntries.length > 0;
+	profMark('bin');
 
 	return base;
 }
@@ -2348,7 +2738,22 @@ async function scanProjectsViaIPC(dirs: string[]): Promise<ProjectInfo[]> {
 }
 
 // ── Filter matching (globs + boolean field expressions) ────────────────
-const BOOL_FIELDS = new Set<string>([
+type BoolFieldName =
+	| 'bunfig'
+	| 'workspace'
+	| 'authReady'
+	| 'hasNpmrc'
+	| 'hasBinDir'
+	| 'hasPkg'
+	| 'resilient'
+	| 'frozenLockfile'
+	| 'production'
+	| 'exact'
+	| 'saveTextLockfile'
+	| 'cacheDisabled'
+	| 'linkWorkspacePackages';
+
+const BOOL_FIELDS = new Set<BoolFieldName | 'scoped'>([
 	'bunfig',
 	'workspace',
 	'authReady',
@@ -2365,6 +2770,7 @@ const BOOL_FIELDS = new Set<string>([
 	'linkWorkspacePackages',
 ]);
 
+const _globCache = new Map<string, InstanceType<typeof Bun.Glob>>();
 function matchFilter(p: ProjectInfo, pattern: string): boolean {
 	// Boolean field expression: "authReady", "!authReady", "\!hasNpmrc", etc.
 	// Strip shell-escaped backslash before !
@@ -2372,17 +2778,21 @@ function matchFilter(p: ProjectInfo, pattern: string): boolean {
 	const negated = cleaned.startsWith('!');
 	const field = negated ? cleaned.slice(1) : cleaned;
 	if (BOOL_FIELDS.has(field)) {
-		const val = field === 'scoped' ? p.scopes.length > 0 : !!p[field as keyof ProjectInfo];
+		const val = field === 'scoped' ? p.scopes.length > 0 : !!p[field as BoolFieldName];
 		return negated ? !val : val;
 	}
 
 	// Glob match against folder or name
-	const glob = new Bun.Glob(pattern);
+	let glob = _globCache.get(pattern);
+	if (!glob) {
+		glob = new Bun.Glob(pattern);
+		_globCache.set(pattern, glob);
+	}
 	return glob.match(p.folder) || glob.match(p.name);
 }
 
 // ── Deep inspect view ──────────────────────────────────────────────────
-function inspectProject(p: ProjectInfo) {
+function inspectProject(p: ProjectInfo): void {
 	const line = (label: string, value: string | number | boolean) =>
 		console.log(`  ${c.cyan(label.padEnd(16))} ${value}`);
 
@@ -2494,7 +2904,7 @@ function inspectProject(p: ProjectInfo) {
 			'Logging',
 			p.verbose ? c.yellow('verbose (lifecycle scripts visible)') : p.silent ? c.dim('silent') : c.dim('default'),
 		);
-		const cpuCount = navigator?.hardwareConcurrency ?? 0;
+		const cpuCount = availableParallelism();
 		const defaultScriptConc = cpuCount > 0 ? cpuCount * 2 : 'cpu\u00d72';
 		line(
 			'Scripts Conc.',
@@ -2572,7 +2982,11 @@ function inspectProject(p: ProjectInfo) {
 }
 
 // ── Table rendering ────────────────────────────────────────────────────
-function renderTable(projects: ProjectInfo[], detail: boolean) {
+function renderTable(
+	projects: ProjectInfo[],
+	detail: boolean,
+	tokenStatusByFolder: Map<string, string> | null,
+) {
 	const columnDefs = BUN_SCANNER_COLUMNS.PROJECT_SCAN;
 
 	const columnValueMap: Record<string, (p: ProjectInfo, idx: number) => string | number> = {
@@ -2584,6 +2998,7 @@ function renderTable(projects: ProjectInfo[], detail: boolean) {
 		bunVersion: p => p.engine,
 		lockfile: p => p.lock,
 		registry: p => (p.registry !== '-' ? p.registry : '-'),
+		token: p => tokenStatusByFolder?.get(p.folder) ?? '-',
 		workspaces: p => (p.workspacesList.length ? p.workspacesList.join(', ') : '-'),
 		hasTests: p => (p.hasTests ? 'yes' : '-'),
 		workspace: p => (p.workspace ? 'yes' : '-'),
@@ -2616,8 +3031,23 @@ function renderTable(projects: ProjectInfo[], detail: boolean) {
 	console.log(Bun.inspect.table(rows, headers, {colors: _useColor}));
 }
 
+function renderMatrix(
+	rows: Record<string, string | number>[],
+	columns: ReadonlyArray<{readonly key: string; readonly header: string}>,
+): void {
+	console.log(Bun.inspect.table(rows, columns.map(c => c.header), {colors: _useColor}));
+}
+
+function sectionHeader(title: string): void {
+	console.log();
+	console.log(`  ${c.bold(c.cyan(title))}${c.dim('  ' + fmtStamp())}`);
+}
+
 // ── Sort comparator ────────────────────────────────────────────────────
-function sortProjects(projects: ProjectInfo[], key: string): ProjectInfo[] {
+type SortKey = 'name' | 'totalDeps' | 'deps' | 'version' | 'lock';
+const VALID_SORT_KEYS = new Set<SortKey>(['name', 'totalDeps', 'deps', 'version', 'lock']);
+
+function sortProjects(projects: ProjectInfo[], key: SortKey): ProjectInfo[] {
 	const sorted = [...projects];
 	switch (key) {
 		case 'name':
@@ -2633,9 +3063,11 @@ function sortProjects(projects: ProjectInfo[], key: string): ProjectInfo[] {
 			});
 		case 'lock':
 			return sorted.sort((a, b) => a.lock.localeCompare(b.lock));
-		default:
-			console.error(c.yellow(`Unknown sort key: ${key}. Using default order.`));
+		default: {
+			const _exhaustive: never = key;
+			console.error(c.yellow(`Unknown sort key: ${_exhaustive}. Using default order.`));
 			return sorted;
+		}
 	}
 }
 
@@ -2651,9 +3083,25 @@ function getMissing(p: ProjectInfo): AuditField[] {
 	return missing;
 }
 
-async function renderAudit(projects: ProjectInfo[]) {
+async function renderAudit(projects: ProjectInfo[]): Promise<void> {
 	const withPkg = projects.filter(p => p.hasPkg);
 	const withoutPkg = projects.filter(p => !p.hasPkg);
+
+	if (withPkg.length === 0) {
+		sectionHeader('Metadata Audit');
+		console.log();
+		console.log(c.yellow('  No projects with package.json found.'));
+		if (withoutPkg.length > 0) {
+			console.log();
+			console.log(
+				c.dim(
+					`  ${withoutPkg.length} directories without package.json: ${withoutPkg.map(p => p.folder).join(', ')}`,
+				),
+			);
+		}
+		console.log();
+		return;
+	}
 
 	// Per-field totals
 	const totals: Record<string, number> = {};
@@ -2673,17 +3121,11 @@ async function renderAudit(projects: ProjectInfo[]) {
 		}
 	}
 
-	const auditNow = new Date();
-	const auditTz = Intl.DateTimeFormat().resolvedOptions().timeZone;
-	const auditTime = `${auditNow.getFullYear()}-${pad2(auditNow.getMonth() + 1)}-${pad2(auditNow.getDate())} ${pad2(auditNow.getHours())}:${pad2(auditNow.getMinutes())}:${pad2(auditNow.getSeconds())} ${auditTz}${_tzExplicit ? ` (TZ=${process.env.TZ})` : ''}`;
-
-	console.log();
-	console.log(c.bold(c.cyan('  Metadata Audit')));
-	console.log(c.dim(`  ${auditTime}`));
+	sectionHeader('Metadata Audit');
 	console.log();
 
 	// Summary counts
-	console.log(c.bold('  Field coverage across ' + withPkg.length + ' projects with package.json:'));
+	sectionHeader(`Field Coverage (${withPkg.length} projects)`);
 	console.log();
 	for (const f of AUDIT_FIELDS) {
 		const present = withPkg.length - totals[f];
@@ -2745,8 +3187,7 @@ async function renderAudit(projects: ProjectInfo[]) {
 		{key: 'DO_NOT_TRACK', desc: 'disable crash reports & telemetry', recommend: '1'},
 	];
 
-	console.log();
-	console.log(c.bold('  Global overrides:'));
+	sectionHeader('Global Overrides');
 	console.log();
 	const PAD = 42;
 	for (const {key, desc, offLabel, recommend} of BUN_ENV_VARS) {
@@ -2774,8 +3215,7 @@ async function renderAudit(projects: ProjectInfo[]) {
 	}
 
 	// DNS cache stats
-	console.log();
-	console.log(c.bold('  DNS cache:'));
+	sectionHeader('DNS Cache');
 	console.log();
 	const dnsStats = dns.getCacheStats();
 	const dnsRows = [
@@ -2807,7 +3247,7 @@ async function renderAudit(projects: ProjectInfo[]) {
 
 	// dns-prefetch.ts coverage
 	const prefetchChecks = await Promise.all(
-		withPkg.map(p => Bun.file(`${PROJECTS_ROOT}/${p.folder}/dns-prefetch.ts`).exists()),
+		withPkg.map(p => Bun.file(`${projectDir(p)}/dns-prefetch.ts`).exists()),
 	);
 	const prefetchCount = prefetchChecks.filter(Boolean).length;
 	const prefetchPct = ((prefetchCount / withPkg.length) * 100).toFixed(0);
@@ -2822,9 +3262,7 @@ async function renderAudit(projects: ProjectInfo[]) {
 	);
 
 	// Infrastructure readiness
-	console.log();
-	console.log(c.bold('  Infrastructure readiness:'));
-	console.log();
+	sectionHeader('Infrastructure Readiness');
 	const withNpmrc = withPkg.filter(p => p.hasNpmrc).length;
 	const withAuth = withPkg.filter(p => p.authReady).length;
 	const withScopes = withPkg.filter(p => p.scopes.length > 0).length;
@@ -2841,41 +3279,33 @@ async function renderAudit(projects: ProjectInfo[]) {
 	// Lifecycle security — default-secure is green
 	const defaultSecure = withPkg.filter(p => p.trustedDeps.length === 0).length;
 	const withTrusted = withPkg.length - defaultSecure;
-	for (const {label, count, desc} of infra) {
-		const pct = ((count / withPkg.length) * 100).toFixed(0);
-		const bar =
-			count === withPkg.length
-				? c.green('OK')
-				: count === 0
-					? c.red(`${count}/${withPkg.length}`)
-					: c.yellow(`${count}/${withPkg.length}`);
-		console.log(
-			`    ${c.cyan(label.padEnd(14))} ${String(count).padStart(2)}/${withPkg.length}  (${pct}%)  ${bar}  ${c.dim(desc)}`,
-		);
-	}
-
-	// Array field totals
+	// Array field totals — fold into infra rows
 	const arrayStats = {
 		trustedDeps: withPkg.reduce((sum, p) => sum + p.trustedDeps.length, 0),
 		nativeDeps: withPkg.reduce((sum, p) => sum + p.nativeDeps.length, 0),
 		scopes: withPkg.reduce((sum, p) => sum + p.scopes.length, 0),
 	};
-	console.log(
-		`    ${c.cyan('trustedDeps'.padEnd(14))} ${c.green(String(arrayStats.trustedDeps))} total across all projects`,
+
+	const infraRows = infra.map(({label, count, desc}) => {
+		const pct = ((count / withPkg.length) * 100).toFixed(0);
+		const status = count === withPkg.length ? 'OK' : count === 0 ? `${count}/${withPkg.length}` : `${count}/${withPkg.length}`;
+		return {Field: label, Count: `${count}/${withPkg.length}`, '%': `${pct}%`, Status: status, Description: desc};
+	});
+	infraRows.push(
+		{Field: 'trustedDeps', Count: String(arrayStats.trustedDeps), '%': '', Status: '', Description: 'total across all projects'},
+		{Field: 'nativeDeps', Count: String(arrayStats.nativeDeps), '%': '', Status: '', Description: 'detected'},
+		{Field: 'scopes', Count: String(arrayStats.scopes), '%': '', Status: '', Description: 'total scope registrations'},
 	);
-	console.log(`    ${c.cyan('nativeDeps'.padEnd(14))} ${c.green(String(arrayStats.nativeDeps))} detected`);
-	console.log(`    ${c.cyan('scopes'.padEnd(14))} ${c.green(String(arrayStats.scopes))} total scope registrations`);
+	renderMatrix(infraRows, BUN_SCANNER_COLUMNS.INFRA_READINESS);
 
 	// Token sources
-	console.log();
-	console.log(c.bold('  Token sources:'));
-	console.log();
-	for (const tkn of BUN_KEYCHAIN_TOKEN_NAMES) {
+	sectionHeader('Token Sources');
+	const tokenRows = BUN_KEYCHAIN_TOKEN_NAMES.map(tkn => {
 		const src = tokenSource(tkn);
-		const colored = src === 'env' ? c.green(src) : src === 'keychain' ? c.cyan(src) : c.yellow(src);
-		const hint = src === 'not set' ? c.dim(`  (--store-token ${tkn})`) : '';
-		console.log(`    ${c.cyan(tkn.padEnd(24))} ${colored}${hint}`);
-	}
+		const hint = src === 'not set' ? `(--store-token ${tkn})` : '';
+		return {Token: tkn, Source: src, Hint: hint};
+	});
+	console.log(Bun.inspect.table(tokenRows, ['Token', 'Source', 'Hint'], {colors: _useColor}));
 
 	// Dependency overrides / resolutions
 	const withOverrides = withPkg.filter(p => Object.keys(p.overrides).length > 0);
@@ -2883,8 +3313,7 @@ async function renderAudit(projects: ProjectInfo[]) {
 	const totalOverrideCount = withOverrides.reduce((n, p) => n + Object.keys(p.overrides).length, 0);
 	const totalResolutionCount = withResolutions.reduce((n, p) => n + Object.keys(p.resolutions).length, 0);
 	if (withOverrides.length > 0 || withResolutions.length > 0) {
-		console.log();
-		console.log(c.bold('  Dependency overrides:'));
+		sectionHeader('Dependency Overrides');
 		console.log();
 		if (withOverrides.length > 0) {
 			console.log(
@@ -2934,8 +3363,7 @@ async function renderAudit(projects: ProjectInfo[]) {
 	const totalPeerCount = withPeers.reduce((n, p) => n + p.peerDeps.length, 0);
 	const totalOptionalCount = withOptionalPeers.reduce((n, p) => n + p.peerDepsMeta.length, 0);
 	if (withPeers.length > 0) {
-		console.log();
-		console.log(c.bold('  Peer dependencies:'));
+		sectionHeader('Peer Dependencies');
 		console.log();
 		console.log(
 			`    ${c.cyan('declared'.padEnd(14))} ${c.green(String(withPeers.length))} project(s), ${totalPeerCount} peer(s) total`,
@@ -2960,8 +3388,7 @@ async function renderAudit(projects: ProjectInfo[]) {
 			list.push(p.folder);
 			tzGroups.set(p.projectTz, list);
 		}
-		console.log();
-		console.log(c.bold('  Project timezones (.env TZ):'));
+		sectionHeader('Project Timezones (.env TZ)');
 		console.log();
 		for (const [tz, folders] of [...tzGroups.entries()].sort((a, b) => b[1].length - a[1].length)) {
 			const label = tz === 'UTC' ? `${tz} (default)` : tz;
@@ -2979,8 +3406,7 @@ async function renderAudit(projects: ProjectInfo[]) {
 			list.push(p.folder);
 			ttlGroups.set(p.projectDnsTtl, list);
 		}
-		console.log();
-		console.log(c.bold('  DNS cache TTL (.env BUN_CONFIG_DNS_TIME_TO_LIVE_SECONDS):'));
+		sectionHeader('DNS Cache TTL');
 		console.log();
 		for (const [ttl, folders] of [...ttlGroups.entries()].sort((a, b) => Number(a) - Number(b))) {
 			console.log(
@@ -2993,9 +3419,7 @@ async function renderAudit(projects: ProjectInfo[]) {
 	}
 
 	// Lifecycle security posture — scan node_modules for per-hook metrics
-	console.log();
-	console.log(c.bold('  Lifecycle security:'));
-	console.log();
+	sectionHeader('Lifecycle Security');
 	const envOverride = isFeatureFlagActive(Bun.env.BUN_FEATURE_FLAG_DISABLE_IGNORE_SCRIPTS);
 
 	// Scan node_modules for actual lifecycle scripts per hook
@@ -3009,7 +3433,7 @@ async function renderAudit(projects: ProjectInfo[]) {
 	const xrefData: XrefEntry[] = [];
 
 	for (const p of withPkg) {
-		const nmDir = `${PROJECTS_ROOT}/${p.folder}/node_modules`;
+		const nmDir = `${projectDir(p)}/node_modules`;
 		let entries: string[] = [];
 		try {
 			entries = await readdir(nmDir);
@@ -3135,27 +3559,22 @@ async function renderAudit(projects: ProjectInfo[]) {
 		},
 	};
 
-	console.log();
-	// Header row
-	console.log(
-		`    ${c.cyan('Hook'.padEnd(16))} ${'Total'.padStart(5)}  ${'Trust'.padStart(5)}  ${'Block'.padStart(5)}  ${'Secure'.padStart(6)}  ${'Saved'.padStart(7)}  ${'Risk'.padStart(4)}  ${'Status'.padEnd(12)}  ${'Native'.padStart(6)}  ${'Cov%'.padStart(4)}  Owner`,
-	);
+	// Build lifecycle hook rows
+	const hookRows: Record<string, string | number>[] = [];
 
 	// Default posture row
 	if (envOverride) {
-		console.log(
-			`    ${c.cyan('default'.padEnd(16))} ${_padStart(c.dim('-'), 5)}  ${_padStart(c.dim('-'), 5)}  ${_padStart(c.dim('-'), 5)}  ${_padStart(c.dim('-'), 6)}  ${_padStart(c.dim('-'), 7)}  ${c.red('High')}  ${_padEnd(c.red('OPEN'), 22)}  ${_padStart(c.dim('-'), 6)}  ${c.dim('-')}  ${c.dim('OVERRIDE')}`,
-		);
-		console.log(
-			`    ${' '.repeat(16)} ${c.red('-> WARNING: DISABLE_IGNORE_SCRIPTS is set — all lifecycle scripts run globally')}`,
-		);
+		hookRows.push({
+			Hook: 'default', Total: '-', Trust: '-', Block: '-', Secure: '-', Saved: '-',
+			Risk: 'High', Status: 'OPEN', Native: '-', 'Cov%': '-', Owner: 'OVERRIDE',
+			Action: 'WARNING: DISABLE_IGNORE_SCRIPTS is set — all lifecycle scripts run globally',
+		});
 	} else {
-		console.log(
-			`    ${c.cyan('default'.padEnd(16))} ${_padStart(c.dim('-'), 5)}  ${_padStart(c.dim('-'), 5)}  ${_padStart(c.dim('-'), 5)}  ${'100%'.padStart(6)}  ${_padStart(c.dim('-'), 7)}  ${c.dim('Min')}  ${_padEnd(c.green('Blocked'), 22)}  ${_padStart(c.dim('-'), 6)}  ${c.dim('-')}  ${c.dim('Bun Runtime')}`,
-		);
-		console.log(
-			`    ${' '.repeat(16)} ${c.dim('-> Default-secure: all lifecycle scripts blocked unless in trustedDependencies')}`,
-		);
+		hookRows.push({
+			Hook: 'default', Total: '-', Trust: '-', Block: '-', Secure: '100%', Saved: '-',
+			Risk: 'Min', Status: 'Blocked', Native: '-', 'Cov%': '-', Owner: 'Bun Runtime',
+			Action: 'Default-secure: all lifecycle scripts blocked unless in trustedDependencies',
+		});
 	}
 
 	let totalTimeSaved = 0;
@@ -3171,7 +3590,6 @@ async function renderAudit(projects: ProjectInfo[]) {
 				: savedMs >= 60000
 					? `${(savedMs / 60000).toFixed(1)}m`
 					: `${(savedMs / 1000).toFixed(1)}s`;
-		// Pad raw values BEFORE wrapping in ANSI colors (escape codes break padStart/padEnd)
 		const riskRaw =
 			found === 0
 				? 'Min'
@@ -3182,9 +3600,6 @@ async function renderAudit(projects: ProjectInfo[]) {
 						: blocked === found
 							? 'Low'
 							: 'Min';
-		const riskColor = riskRaw === 'Med' ? c.yellow : riskRaw === 'Low' ? c.green : c.dim;
-		const risk = riskColor(riskRaw.padStart(4));
-
 		const statusRaw =
 			found === 0 && h === 'prepublishOnly'
 				? 'Ready'
@@ -3195,33 +3610,24 @@ async function renderAudit(projects: ProjectInfo[]) {
 						: trusted === found
 							? 'Verified'
 							: 'Inactive';
-		const statusColor = statusRaw === 'Ready' ? c.cyan : statusRaw === 'Inactive' ? c.dim : c.green;
-		const status = statusColor(statusRaw.padEnd(14));
-
-		const nativeRaw = nativeDetected === 0 ? '-' : String(nativeDetected);
-		const nativeStr = (nativeDetected === 0 ? c.dim : (s: string) => s)(nativeRaw.padStart(6));
-
 		const nativeCovRaw =
 			nativeDetected === 0
 				? '-'
 				: nativeTrusted === nativeDetected
 					? '100%'
 					: `${((nativeTrusted / nativeDetected) * 100).toFixed(0)}%`;
-		const nativeCovColor = nativeDetected === 0 ? c.dim : nativeTrusted === nativeDetected ? c.green : c.yellow;
-		const nativeCov = nativeCovColor(nativeCovRaw.padStart(4));
-
 		const meta = HOOK_META[h];
-		const owner = meta.owner(hookTotals[h]);
-		console.log(
-			`    ${c.cyan(h.padEnd(16))} ${String(found).padStart(5)}  ${String(trusted).padStart(5)}  ${String(blocked).padStart(5)}  ${pctSecure.padStart(6)}  ${savedStr.padStart(7)}  ${risk}  ${status}  ${nativeStr}  ${nativeCov}  ${c.dim(owner)}`,
-		);
-		// Action on next line, indented
-		const action = meta.action(hookTotals[h]);
-		console.log(`    ${' '.repeat(16)} ${c.dim(`-> ${action}`)}`);
+		hookRows.push({
+			Hook: h, Total: found, Trust: trusted, Block: blocked, Secure: pctSecure,
+			Saved: savedStr, Risk: riskRaw, Status: statusRaw,
+			Native: nativeDetected === 0 ? '-' : nativeDetected, 'Cov%': nativeCovRaw,
+			Owner: meta.owner(hookTotals[h]), Action: meta.action(hookTotals[h]),
+		});
 	}
+
+	// Totals row
 	const totalSavedStr =
 		totalTimeSaved >= 60000 ? `${(totalTimeSaved / 60000).toFixed(1)}m` : `${(totalTimeSaved / 1000).toFixed(1)}s`;
-	console.log(`    ${c.dim('─'.repeat(110))}`);
 	const allFound = LIFECYCLE_HOOKS.reduce((s, h) => s + hookTotals[h].found, 0);
 	const allBlocked = LIFECYCLE_HOOKS.reduce((s, h) => s + hookTotals[h].blocked, 0);
 	const allTrusted = LIFECYCLE_HOOKS.reduce((s, h) => s + hookTotals[h].trusted, 0);
@@ -3229,9 +3635,13 @@ async function renderAudit(projects: ProjectInfo[]) {
 	const allNativeTrusted = LIFECYCLE_HOOKS.reduce((s, h) => s + hookTotals[h].nativeTrusted, 0);
 	const totalPct = allFound === 0 ? '100%' : `${((allTrusted / allFound) * 100).toFixed(0)}%`;
 	const totalNativeCov = allNative === 0 ? '-' : `${((allNativeTrusted / allNative) * 100).toFixed(0)}%`;
-	console.log(
-		`    ${c.bold('total'.padEnd(16))} ${String(allFound).padStart(5)}  ${String(allTrusted).padStart(5)}  ${String(allBlocked).padStart(5)}  ${totalPct.padStart(6)}  ${totalSavedStr.padStart(7)}  ${c.dim('      ')}  ${c.dim('              ')}  ${String(allNative).padStart(6)}  ${totalNativeCov}  ${c.dim('100% managed')}`,
-	);
+	hookRows.push({
+		Hook: 'total', Total: allFound, Trust: allTrusted, Block: allBlocked, Secure: totalPct,
+		Saved: totalSavedStr, Risk: '', Status: '', Native: allNative, 'Cov%': totalNativeCov,
+		Owner: '100% managed', Action: '',
+	});
+
+	renderMatrix(hookRows, BUN_SCANNER_COLUMNS.LIFECYCLE_HOOKS);
 
 	console.log();
 	console.log(
@@ -3353,8 +3763,7 @@ async function renderAudit(projects: ProjectInfo[]) {
 	const globalBunfigFile = Bun.file(globalBunfigPath);
 	const hasGlobalBunfig = await globalBunfigFile.exists();
 
-	console.log();
-	console.log(c.bold('  Global bunfig:'));
+	sectionHeader('Global bunfig');
 	console.log();
 	if (hasGlobalBunfig) {
 		try {
@@ -3385,9 +3794,7 @@ async function renderAudit(projects: ProjectInfo[]) {
 
 	// bunfig [install] coverage across projects
 	const withBunfig = withPkg.filter(p => p.bunfig);
-	console.log();
-	console.log(c.bold(`  bunfig [install] coverage (${withBunfig.length} projects with bunfig.toml):`));
-	console.log();
+	sectionHeader(`bunfig Coverage (${withBunfig.length} projects)`);
 	const installStats: {label: string; count: number; desc: string}[] = [
 		{
 			label: 'auto',
@@ -3493,37 +3900,30 @@ async function renderAudit(projects: ProjectInfo[]) {
 			desc: 'peer auto-install disabled (default: on)',
 		},
 	];
-	for (const {label, count, desc} of installStats) {
-		const display = count > 0 ? c.green(`${count}/${withBunfig.length}`) : c.dim(`${count}/${withBunfig.length}`);
-		console.log(`    ${c.cyan(label.padEnd(18))} ${display}  ${c.dim(desc)}`);
-	}
-
-	// bunfig [run] coverage
+	// bunfig [run] coverage — merge into installStats rows
 	const withRunShell = withBunfig.filter(p => p.runShell !== '-');
 	const withRunBun = withBunfig.filter(p => p.runBun);
 	const withRunSilent = withBunfig.filter(p => p.runSilent);
 	const hasAnyRun = withRunShell.length > 0 || withRunBun.length > 0 || withRunSilent.length > 0;
 	if (hasAnyRun) {
-		console.log();
-		console.log(c.bold(`  bunfig [run] coverage:`));
-		console.log();
-		const runStats: {label: string; count: number; desc: string}[] = [
-			{label: 'shell', count: withRunShell.length, desc: 'run.shell ("system" | "bun")'},
-			{label: 'bun', count: withRunBun.length, desc: 'run.bun (node → bun alias)'},
-			{label: 'silent', count: withRunSilent.length, desc: 'run.silent (suppress command output)'},
-		];
-		for (const {label, count, desc} of runStats) {
-			const display =
-				count > 0 ? c.green(`${count}/${withBunfig.length}`) : c.dim(`${count}/${withBunfig.length}`);
-			console.log(`    ${c.cyan(label.padEnd(18))} ${display}  ${c.dim(desc)}`);
-		}
+		installStats.push(
+			{label: '[run] shell', count: withRunShell.length, desc: 'run.shell ("system" | "bun")'},
+			{label: '[run] bun', count: withRunBun.length, desc: 'run.bun (node → bun alias)'},
+			{label: '[run] silent', count: withRunSilent.length, desc: 'run.silent (suppress command output)'},
+		);
 	}
+
+	const bunfigRows = installStats.map(s => ({
+		Setting: s.label,
+		Count: `${s.count}/${withBunfig.length}`,
+		Description: s.desc,
+	}));
+	renderMatrix(bunfigRows, BUN_SCANNER_COLUMNS.BUNFIG_COVERAGE);
 
 	// bunfig [debug] coverage
 	const withDebugEditor = withBunfig.filter(p => p.debugEditor !== '-');
 	if (withDebugEditor.length > 0) {
-		console.log();
-		console.log(c.bold(`  bunfig [debug] coverage:`));
+		sectionHeader('bunfig [debug] Coverage');
 		console.log();
 		const display = c.green(`${withDebugEditor.length}/${withBunfig.length}`);
 		console.log(`    ${c.cyan('editor'.padEnd(18))} ${display}  ${c.dim('debug.editor (Bun.openInEditor)')}`);
@@ -3621,7 +4021,7 @@ async function renderAudit(projects: ProjectInfo[]) {
 }
 
 // ── Fix: write missing defaults + init missing package.json ─────────────
-async function fixProjects(projects: ProjectInfo[], dryRun: boolean) {
+async function fixProjects(projects: ProjectInfo[], dryRun: boolean): Promise<void> {
 	const patchable = projects.filter(p => p.hasPkg && (p.author === '-' || p.license === '-'));
 	const initable = projects.filter(p => !p.hasPkg);
 
@@ -3642,7 +4042,7 @@ async function fixProjects(projects: ProjectInfo[], dryRun: boolean) {
 
 		let patched = 0;
 		for (const p of patchable) {
-			const pkgPath = `${PROJECTS_ROOT}/${p.folder}/package.json`;
+			const pkgPath = `${projectDir(p)}/package.json`;
 			try {
 				const pkg = await Bun.file(pkgPath).json();
 				const changes: string[] = [];
@@ -3681,7 +4081,7 @@ async function fixProjects(projects: ProjectInfo[], dryRun: boolean) {
 
 		let inited = 0;
 		for (const p of initable) {
-			const dir = `${PROJECTS_ROOT}/${p.folder}`;
+			const dir = projectDir(p);
 			const pkgPath = `${dir}/package.json`;
 			const pkg = {
 				name: p.folder,
@@ -3729,7 +4129,7 @@ async function fixProjects(projects: ProjectInfo[], dryRun: boolean) {
 }
 
 // ── Fix Engine: unify engines.bun across all projects ──────────────────
-async function fixEngine(projects: ProjectInfo[], dryRun: boolean) {
+async function fixEngine(projects: ProjectInfo[], dryRun: boolean): Promise<void> {
 	const bunVersion = Bun.version;
 	const target = `>=${bunVersion}`;
 	const withPkg = projects.filter(p => p.hasPkg);
@@ -3748,7 +4148,7 @@ async function fixEngine(projects: ProjectInfo[], dryRun: boolean) {
 	let updated = 0;
 
 	for (const p of needsFix) {
-		const pkgPath = `${PROJECTS_ROOT}/${p.folder}/package.json`;
+		const pkgPath = `${projectDir(p)}/package.json`;
 		try {
 			const pkg = await Bun.file(pkgPath).json();
 			const old = pkg.engines?.bun ?? '(none)';
@@ -3781,7 +4181,7 @@ async function fixEngine(projects: ProjectInfo[], dryRun: boolean) {
 }
 
 // ── Fix DNS: TTL recommendation + per-project dns-prefetch.ts ─────────
-async function fixDns(projects: ProjectInfo[], dryRun: boolean) {
+async function fixDns(projects: ProjectInfo[], dryRun: boolean): Promise<void> {
 	const withPkg = projects.filter(p => p.hasPkg);
 
 	console.log();
@@ -3821,7 +4221,7 @@ async function fixDns(projects: ProjectInfo[], dryRun: boolean) {
 	let skipped = 0;
 
 	for (const p of withPkg) {
-		const dir = `${PROJECTS_ROOT}/${p.folder}`;
+		const dir = projectDir(p);
 		const domains = new Set<string>();
 
 		// Extract from bunfig.toml
@@ -3857,7 +4257,7 @@ async function fixDns(projects: ProjectInfo[], dryRun: boolean) {
 					} catch {}
 				}
 				// scoped registries
-				for (const m of npmrc.matchAll(/^@\w+:registry\s*=\s*(.+)$/gm)) {
+				for (const m of npmrc.matchAll(/^@[^:\s]+:registry\s*=\s*(.+)$/gm)) {
 					try {
 						domains.add(new URL(m[1].trim()).hostname);
 					} catch {}
@@ -3928,7 +4328,7 @@ async function fixDns(projects: ProjectInfo[], dryRun: boolean) {
 
 // ── Fix Scopes: inject [install.scopes] into bunfig.toml ─────────────
 // Usage: --fix-scopes https://npm.factory-wager.com @factorywager @duoplus
-async function fixScopes(projects: ProjectInfo[], registryUrl: string, scopeNames: string[], dryRun: boolean) {
+async function fixScopes(projects: ProjectInfo[], registryUrl: string, scopeNames: string[], dryRun: boolean): Promise<void> {
 	const url = (registryUrl.startsWith('http') ? registryUrl : `https://${registryUrl}`).replace(/\/+$/, '') + '/';
 	const withPkg = projects.filter(p => p.hasPkg);
 
@@ -3946,7 +4346,7 @@ async function fixScopes(projects: ProjectInfo[], registryUrl: string, scopeName
 	let created = 0;
 
 	for (const p of withPkg) {
-		const dir = `${PROJECTS_ROOT}/${p.folder}`;
+		const dir = projectDir(p);
 		const bunfigPath = `${dir}/bunfig.toml`;
 		const bunfigFile = Bun.file(bunfigPath);
 		const exists = await bunfigFile.exists();
@@ -4008,7 +4408,7 @@ async function fixScopes(projects: ProjectInfo[], registryUrl: string, scopeName
 
 // ── Fix Npmrc: rewrite .npmrc with scoped v1.3.5+ template ───────────
 // Usage: --fix-npmrc https://npm.factory-wager.com @factorywager @duoplus
-async function fixNpmrc(projects: ProjectInfo[], registryUrl: string, scopeNames: string[], dryRun: boolean) {
+async function fixNpmrc(projects: ProjectInfo[], registryUrl: string, scopeNames: string[], dryRun: boolean): Promise<void> {
 	const url = (registryUrl.startsWith('http') ? registryUrl : `https://${registryUrl}`).replace(/\/+$/, '') + '/';
 	const display = url.replace(/^https?:\/\//, '');
 	const withPkg = projects.filter(p => p.hasPkg);
@@ -4036,7 +4436,7 @@ async function fixNpmrc(projects: ProjectInfo[], registryUrl: string, scopeNames
 	let created = 0;
 
 	for (const p of withPkg) {
-		const dir = `${PROJECTS_ROOT}/${p.folder}`;
+		const dir = projectDir(p);
 		const npmrcPath = `${dir}/.npmrc`;
 		const npmrcFile = Bun.file(npmrcPath);
 		const exists = await npmrcFile.exists();
@@ -4076,7 +4476,7 @@ async function fixNpmrc(projects: ProjectInfo[], registryUrl: string, scopeNames
 
 // ── Fix Registry: unify registry across all projects ─────────────────
 // Updates: bunfig.toml [install] + [publish], package.json publishConfig, .npmrc auth
-async function fixRegistry(projects: ProjectInfo[], registryUrl: string, dryRun: boolean) {
+async function fixRegistry(projects: ProjectInfo[], registryUrl: string, dryRun: boolean): Promise<void> {
 	// Normalize: ensure https:// prefix, strip trailing slash
 	const url = (registryUrl.startsWith('http') ? registryUrl : `https://${registryUrl}`).replace(/\/+$/, '');
 	const display = url.replace(/^https?:\/\//, '');
@@ -4093,7 +4493,7 @@ async function fixRegistry(projects: ProjectInfo[], registryUrl: string, dryRun:
 	let updatedNpmrc = 0;
 
 	for (const p of withPkg) {
-		const dir = `${PROJECTS_ROOT}/${p.folder}`;
+		const dir = projectDir(p);
 		const changes: string[] = [];
 
 		// ── 1. package.json publishConfig.registry ──────────────
@@ -4223,7 +4623,7 @@ async function fixRegistry(projects: ProjectInfo[], registryUrl: string, dryRun:
 // Scans node_modules for packages with lifecycle scripts, heuristic-matches
 // native dep patterns, and writes to package.json trustedDependencies.
 
-async function fixTrusted(projects: ProjectInfo[], dryRun: boolean) {
+async function fixTrusted(projects: ProjectInfo[], dryRun: boolean): Promise<void> {
 	const withPkg = projects.filter(p => p.hasPkg);
 
 	console.log();
@@ -4236,7 +4636,7 @@ async function fixTrusted(projects: ProjectInfo[], dryRun: boolean) {
 	let totalDetected = 0;
 
 	for (const p of withPkg) {
-		const dir = `${PROJECTS_ROOT}/${p.folder}`;
+		const dir = projectDir(p);
 		const nmDir = `${dir}/node_modules`;
 		let entries: string[] = [];
 		try {
@@ -4318,7 +4718,7 @@ async function fixTrusted(projects: ProjectInfo[], dryRun: boolean) {
 }
 
 // ── Why: run `bun why <pkg>` across all projects ───────────────────────
-async function whyAcrossProjects(projects: ProjectInfo[], pkg: string, opts: {top?: boolean; depth?: string}) {
+async function whyAcrossProjects(projects: ProjectInfo[], pkg: string, opts: {top?: boolean; depth?: string}): Promise<void> {
 	const withLock = projects.filter(p => p.lock !== 'none');
 
 	const flagParts: string[] = [];
@@ -4337,7 +4737,7 @@ async function whyAcrossProjects(projects: ProjectInfo[], pkg: string, opts: {to
 
 	const whyResults = await Promise.all(
 		withLock.map(async p => {
-			const dir = `${PROJECTS_ROOT}/${p.folder}`;
+			const dir = projectDir(p);
 			const args = ['bun', 'why', pkg];
 			if (opts.top) args.push('--top');
 			if (opts.depth) args.push('--depth', opts.depth);
@@ -4443,7 +4843,7 @@ type OutdatedOpts = {
 	wf?: string[];
 };
 
-async function outdatedAcrossProjects(projects: ProjectInfo[], opts: OutdatedOpts) {
+async function outdatedAcrossProjects(projects: ProjectInfo[], opts: OutdatedOpts): Promise<void> {
 	// With -r (catalog) or --wf, only scan workspace roots; otherwise all projects with locks
 	const candidates =
 		opts.catalog || opts.wf?.length
@@ -4474,7 +4874,7 @@ async function outdatedAcrossProjects(projects: ProjectInfo[], opts: OutdatedOpt
 
 	const outdatedResults = await Promise.all(
 		candidates.map(async p => {
-			const dir = `${PROJECTS_ROOT}/${p.folder}`;
+			const dir = projectDir(p);
 
 			// bun ≤1.3 breaks with multiple --filter flags — run separate calls and merge
 			const wfList = opts.wf?.length ? opts.wf : [undefined];
@@ -4609,7 +5009,7 @@ async function outdatedAcrossProjects(projects: ProjectInfo[], opts: OutdatedOpt
 // ── Update: run `bun update` across all projects ───────────────────────
 type UpdateOpts = {dryRun: boolean; patch?: boolean; minor?: boolean};
 
-async function updateAcrossProjects(projects: ProjectInfo[], opts: UpdateOpts) {
+async function updateAcrossProjects(projects: ProjectInfo[], opts: UpdateOpts): Promise<void> {
 	const {dryRun, patch, minor} = opts;
 	const semverFilter = patch ? 'patch' : minor ? 'minor' : null;
 	const withLock = projects.filter(p => p.lock !== 'none');
@@ -4633,7 +5033,7 @@ async function updateAcrossProjects(projects: ProjectInfo[], opts: UpdateOpts) {
 
 	const discoveryResults = await Promise.all(
 		withLock.map(async p => {
-			const dir = `${PROJECTS_ROOT}/${p.folder}`;
+			const dir = projectDir(p);
 			const checkProc = Bun.spawn(['bun', 'outdated'], {cwd: dir, stdout: 'pipe', stderr: 'pipe'});
 			await checkProc.exited;
 			const checkOut = await checkProc.stdout.text();
@@ -4763,7 +5163,7 @@ async function updateAcrossProjects(projects: ProjectInfo[], opts: UpdateOpts) {
 	for (const {project: p, pkgs, names} of plans) {
 		if (interrupted) break;
 
-		const dir = `${PROJECTS_ROOT}/${p.folder}`;
+		const dir = projectDir(p);
 
 		// Exact-pinned projects need `bun add -E pkg@version` since `bun update` respects the pinned range.
 		// Group by dep type so dev/optional/peer deps stay in the correct section.
@@ -4880,7 +5280,7 @@ async function updateAcrossProjects(projects: ProjectInfo[], opts: UpdateOpts) {
 }
 
 // ── Verify: run `bun install --frozen-lockfile` across projects ──────
-async function verifyLockfiles(projects: ProjectInfo[]) {
+async function verifyLockfiles(projects: ProjectInfo[]): Promise<void> {
 	const withLock = projects.filter(p => p.lock !== 'none');
 
 	console.log();
@@ -4895,7 +5295,7 @@ async function verifyLockfiles(projects: ProjectInfo[]) {
 
 	const verifyResults = await Promise.all(
 		withLock.map(async p => {
-			const dir = `${PROJECTS_ROOT}/${p.folder}`;
+			const dir = projectDir(p);
 			const proc = Bun.spawn(['bun', 'install', '--frozen-lockfile'], {cwd: dir, stdout: 'pipe', stderr: 'pipe'});
 			const exitCode = await proc.exited;
 			const stderr = exitCode !== 0 ? await proc.stderr.text() : '';
@@ -4931,10 +5331,10 @@ async function verifyLockfiles(projects: ProjectInfo[]) {
 }
 
 // ── Info: run `bun info <pkg>` and show registry metadata ────────────
-async function infoPackage(pkg: string, projects: ProjectInfo[], jsonOut: boolean, property?: string) {
+async function infoPackage(pkg: string, projects: ProjectInfo[], jsonOut: boolean, property?: string): Promise<void> {
 	// Run bun info from a dir that has package.json (bun requires it)
 	const firstWithPkg = projects.find(p => p.hasPkg);
-	const cwd = firstWithPkg ? `${PROJECTS_ROOT}/${firstWithPkg.folder}` : PROJECTS_ROOT;
+	const cwd = firstWithPkg ? projectDir(firstWithPkg) : PROJECTS_ROOT;
 
 	// If a specific property is requested, run bun info <pkg> <property> directly
 	if (property) {
@@ -5052,7 +5452,7 @@ async function infoPackage(pkg: string, projects: ProjectInfo[], jsonOut: boolea
 				.filter(p => p.hasPkg)
 				.map(async p => {
 					try {
-						const pkgJson = await Bun.file(`${PROJECTS_ROOT}/${p.folder}/package.json`).json();
+						const pkgJson = await Bun.file(`${projectDir(p)}/package.json`).json();
 						const allDeps = {...pkgJson.dependencies, ...pkgJson.devDependencies};
 						if (allDeps[bareName]) return `${p.folder} ${c.dim(allDeps[bareName])}`;
 					} catch {}
@@ -5073,7 +5473,7 @@ async function infoPackage(pkg: string, projects: ProjectInfo[], jsonOut: boolea
 }
 
 // ── Main ───────────────────────────────────────────────────────────────
-async function main() {
+async function main(): Promise<void> {
 	// Windows + mise function wrapper: if mise is active but MISE_SHELL isn't set,
 	// the PowerShell function wrapper may be mangling argv before bun sees it
 	if (shouldWarnMise(process.platform, Bun.env.MISE_SHELL)) {
@@ -5143,6 +5543,9 @@ ${c.bold('  Other:')}
     ${c.cyan('--depth')} <N>                        Depth for --why
     ${c.cyan('--top')}                              Top-level only for --why
     ${c.cyan('--no-ipc')}                           Disable parallel IPC scanning (use Promise.all)
+    ${c.cyan('--profile')}                          Emit timing summary (or set BUN_SCAN_PROFILE=1)
+    ${c.cyan('--debug-tokens')}                     Print per-project token service/name pairs
+    ${c.cyan('--write-baseline')}                   Write profile baseline (R2 if configured)
     ${c.cyan('-h, --help')}                         Show this help
 `);
 		return;
@@ -5351,50 +5754,70 @@ ${c.bold('  Other:')}
 
 	await autoLoadKeychainTokens();
 
+	if (_profileEnabled) {
+		_profileStartNs = Bun.nanoseconds();
+		_profileStartMem = process.memoryUsage();
+	}
+
 	const t0 = Bun.nanoseconds();
 
 	// Discover project directories (top-level only)
-	const entries = await readdir(PROJECTS_ROOT, {withFileTypes: true});
-	const dirs = entries
-		.filter(e => e.isDirectory() && !e.name.startsWith('.') && e.name !== 'scanner')
-		.map(e => `${PROJECTS_ROOT}/${e.name}`);
+	const dirs = await time('fs:discover-projects', async () => {
+		const entries = await readdir(PROJECTS_ROOT, {withFileTypes: true});
+		return entries
+			.filter(e => e.isDirectory() && !e.name.startsWith('.') && e.name !== 'scanner')
+			.map(e => `${PROJECTS_ROOT}/${e.name}`);
+	});
 
 	// Scan all — IPC worker pool for true parallelism, fallback to Promise.all
-	let projects: ProjectInfo[];
-	if (flags['no-ipc']) {
-		projects = await Promise.all(dirs.map(scanProject));
-	} else {
-		try {
-			projects = await scanProjectsViaIPC(dirs);
-		} catch {
+	let projects: ProjectInfo[] = [];
+	await time('scan:projects', async () => {
+		if (flags['no-ipc']) {
 			projects = await Promise.all(dirs.map(scanProject));
+		} else {
+			try {
+				projects = await scanProjectsViaIPC(dirs);
+			} catch {
+				projects = await Promise.all(dirs.map(scanProject));
+			}
 		}
-	}
+	});
 
 	// ── Filters ──────────────────────────────────────────────────────
-	if (flags['with-bunfig']) {
-		projects = projects.filter(p => p.bunfig);
-	}
-	if (flags.workspaces) {
-		projects = projects.filter(p => p.workspace);
-	}
-	if (flags['without-pkg']) {
-		projects = projects.filter(p => !p.hasPkg);
-	}
-	if (flags.filter) {
-		projects = projects.filter(p => matchFilter(p, flags.filter!));
-	}
+	timeSync('filter:projects', () => {
+		if (flags['with-bunfig']) {
+			projects = projects.filter(p => p.bunfig);
+		}
+		if (flags.workspaces) {
+			projects = projects.filter(p => p.workspace);
+		}
+		if (flags['without-pkg']) {
+			projects = projects.filter(p => !p.hasPkg);
+		}
+		if (flags.filter) {
+			projects = projects.filter(p => matchFilter(p, flags.filter!));
+		}
+	});
 
 	// ── Sort ─────────────────────────────────────────────────────────
-	if (flags.sort) {
-		projects = sortProjects(projects, flags.sort);
-	} else {
-		projects.sort((a, b) => a.folder.localeCompare(b.folder));
-	}
+	timeSync('sort:projects', () => {
+		if (flags.sort) {
+			const sortKey = flags.sort;
+			if (!VALID_SORT_KEYS.has(sortKey as SortKey)) {
+				console.error(c.yellow(`Unknown sort key: ${sortKey}. Using default order.`));
+			} else {
+				projects = sortProjects(projects, sortKey as SortKey);
+			}
+		} else {
+			projects.sort((a, b) => a.folder.localeCompare(b.folder));
+		}
+	});
+
+	const dryRun = !!flags['dry-run'];
 
 	// ── Path mode: emit shell export for projects with bin/ ────────
 	if (flags.path) {
-		const binDirs = projects.filter(p => p.hasBinDir).map(p => `${PROJECTS_ROOT}/${p.folder}/bin`);
+		const binDirs = projects.filter(p => p.hasBinDir).map(p => `${projectDir(p)}/bin`);
 
 		if (binDirs.length === 0) {
 			console.error('No projects with bin/ directories found.');
@@ -5429,10 +5852,10 @@ ${c.bold('  Other:')}
 
 	// ── Snapshot-only mode (no full audit) ─────────────────────────
 	if (flags.snapshot && !flags.audit) {
-		const prevSnap = await loadXrefSnapshot();
-		const {entries: xrefResult, skipped} = await scanXrefData(projects, prevSnap);
+		const prevSnap = await time('xref:load-snapshot', () => loadXrefSnapshot());
+		const {entries: xrefResult, skipped} = await time('xref:scan', () => scanXrefData(projects, prevSnap));
 		const withPkg = projects.filter(p => p.hasPkg);
-		await saveXrefSnapshot(xrefResult, withPkg.length);
+		await time('xref:save-snapshot', () => saveXrefSnapshot(xrefResult, withPkg.length));
 		console.log(
 			`  Snapshot saved to .audit/xref-snapshot.json (${xrefResult.length} projects${skipped > 0 ? `, ${skipped} unchanged` : ''})`,
 		);
@@ -5442,13 +5865,13 @@ ${c.bold('  Other:')}
 	// ── Compare-only mode (no full audit) ──────────────────────────
 	if (flags.compare && !flags.audit) {
 		const snapshotPath = flags['audit-compare'] ?? undefined;
-		const prevSnapshot = await loadXrefSnapshot(snapshotPath);
+		const prevSnapshot = await time('xref:load-snapshot', () => loadXrefSnapshot(snapshotPath));
 		if (!prevSnapshot) {
 			const label = snapshotPath ?? '.audit/xref-snapshot.json';
 			console.log(`  No snapshot found at ${label} — run --audit or --snapshot first.`);
 			process.exit(1);
 		}
-		const {entries: cmpXrefData} = await scanXrefData(projects, prevSnapshot);
+		const {entries: cmpXrefData} = await time('xref:scan', () => scanXrefData(projects, prevSnapshot));
 
 		const prevMap = new Map<string, XrefEntry>();
 		for (const p of prevSnapshot.projects) prevMap.set(p.folder, p);
@@ -5496,32 +5919,32 @@ ${c.bold('  Other:')}
 
 	// ── Audit mode ──────────────────────────────────────────────────
 	if (flags.audit) {
-		await renderAudit(projects);
+		await time('mode:audit', () => renderAudit(projects));
 		if (flags.rss) {
-			await publishTokenEventsRss();
-			await publishScanResultsRss(projects);
+			await time('rss:token-events', () => publishTokenEventsRss());
+			await time('rss:scan-results', () => publishScanResultsRss(projects));
 		}
 		if (flags['advisory-feed']) {
-			await consumeAdvisoryFeed(flags['advisory-feed'], projects);
+			await time('advisory:consume', () => consumeAdvisoryFeed(flags['advisory-feed'], projects));
 		}
 		return;
 	}
 
 	// ── Fix mode ───────────────────────────────────────────────────
 	if (flags.fix) {
-		await fixProjects(projects, !!flags['dry-run']);
+		await time('mode:fix', () => fixProjects(projects, dryRun));
 		return;
 	}
 
 	// ── Fix engine mode ────────────────────────────────────────────
 	if (flags['fix-engine']) {
-		await fixEngine(projects, !!flags['dry-run']);
+		await time('mode:fix-engine', () => fixEngine(projects, dryRun));
 		return;
 	}
 
 	// ── Fix trusted mode ──────────────────────────────────────────
 	if (flags['fix-trusted']) {
-		await fixTrusted(projects, !!flags['dry-run']);
+		await time('mode:fix-trusted', () => fixTrusted(projects, dryRun));
 		return;
 	}
 
@@ -5530,7 +5953,6 @@ ${c.bold('  Other:')}
 		const templatePath = `${PROJECTS_ROOT}/scanner/.env.template`;
 		const file = Bun.file(templatePath);
 		let content = (await file.exists()) ? await file.text() : '';
-		const dryRun = !!flags['dry-run'];
 		let changed = false;
 
 		// Promote transpiler cache from commented recommendation to active value
@@ -5602,13 +6024,12 @@ ${c.bold('  Other:')}
 	}
 	// ── Fix DNS mode ───────────────────────────────────────────────
 	if (flags['fix-dns']) {
-		await fixDns(projects, !!flags['dry-run']);
+		await fixDns(projects, dryRun);
 		return;
 	}
 
 	// ── Fix DNS TTL mode ──────────────────────────────────────────
 	if (flags['fix-dns-ttl']) {
-		const dry = !!flags['dry-run'];
 		const ttlVal = '5';
 		const envKey = 'BUN_CONFIG_DNS_TIME_TO_LIVE_SECONDS';
 		const missing = projects.filter(p => p.hasPkg && p.projectDnsTtl === '-');
@@ -5619,8 +6040,8 @@ ${c.bold('  Other:')}
 		console.log(c.bold(`  Setting ${envKey}=${ttlVal} in ${missing.length} project .env files:`));
 		console.log();
 		for (const p of missing) {
-			const envPath = `${PROJECTS_ROOT}/${p.folder}/.env`;
-			if (dry) {
+			const envPath = `${projectDir(p)}/.env`;
+			if (dryRun) {
 				console.log(`    ${c.dim('dry-run')} ${p.folder}/.env  +${envKey}=${ttlVal}`);
 				continue;
 			}
@@ -5631,13 +6052,13 @@ ${c.bold('  Other:')}
 			await Bun.write(envPath, content);
 			console.log(`    ${c.green('✓')} ${p.folder}/.env`);
 		}
-		if (!dry) console.log(c.green(`\n  Done — ${missing.length} projects updated.`));
+		if (!dryRun) console.log(c.green(`\n  Done — ${missing.length} projects updated.`));
 		return;
 	}
 
 	// ── Fix registry mode ─────────────────────────────────────────
 	if (flags['fix-registry']) {
-		await fixRegistry(projects, flags['fix-registry'], !!flags['dry-run']);
+		await fixRegistry(projects, flags['fix-registry'], dryRun);
 		return;
 	}
 
@@ -5649,7 +6070,7 @@ ${c.bold('  Other:')}
 			console.log(c.red('\n  Usage: --fix-scopes <registry-url> @scope1 @scope2 ...\n'));
 			return;
 		}
-		await fixScopes(projects, flags['fix-scopes'], scopeNames, !!flags['dry-run']);
+		await fixScopes(projects, flags['fix-scopes'], scopeNames, dryRun);
 		return;
 	}
 
@@ -5661,7 +6082,7 @@ ${c.bold('  Other:')}
 			console.log(c.red('\n  Usage: --fix-npmrc <registry-url> @scope1 @scope2 ...\n'));
 			return;
 		}
-		await fixNpmrc(projects, flags['fix-npmrc'], scopeNames, !!flags['dry-run']);
+		await fixNpmrc(projects, flags['fix-npmrc'], scopeNames, dryRun);
 		return;
 	}
 
@@ -5687,7 +6108,7 @@ ${c.bold('  Other:')}
 	// ── Update mode ──────────────────────────────────────────────
 	if (flags.update) {
 		await updateAcrossProjects(projects, {
-			dryRun: !!flags['dry-run'],
+			dryRun,
 			patch: !!flags.patch,
 			minor: !!flags.minor,
 		});
@@ -5730,24 +6151,64 @@ ${c.bold('  Other:')}
 		return;
 	}
 
+	const tokenStatusByFolder = await time('tokens:project', async () => {
+		const pairs = await Promise.all(
+			projects.map(async p => {
+				const service = projectTokenService(p);
+				const tokenName = projectTokenName(p);
+				const res = await keychainGet(tokenName, service);
+				let status = 'missing';
+				if (res.ok) {
+					status = res.value ? 'keychain' : 'missing';
+				} else {
+					status =
+						res.code === 'NO_API'
+							? 'unsupported'
+							: res.code === 'ACCESS_DENIED'
+								? 'denied'
+								: 'error';
+				}
+				return [p.folder, status] as const;
+			}),
+		);
+		return new Map(pairs);
+	});
+
+	if (flags['debug-tokens']) {
+		console.log();
+		console.log(c.bold('  Token Debug (service/name)'));
+		console.log();
+		for (const p of projects) {
+			const service = projectTokenService(p);
+			const tokenName = projectTokenName(p);
+			console.log(`    ${c.cyan(p.folder.padEnd(28))} ${service} / ${tokenName}`);
+		}
+	}
+
 	const elapsed = ((Bun.nanoseconds() - t0) / 1e6).toFixed(1);
+	if (_profileEnabled && _profileStartNs !== null && _profileStartMem) {
+		const endMem = process.memoryUsage();
+		_profileSummary = {
+			projectsScanned: projects.length,
+			scanMs: Number(elapsed),
+			memoryDeltaBytes: endMem.rss - _profileStartMem.rss,
+		};
+	}
 	console.log();
 	const now = new Date();
-	const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
-	const scanTime = `${now.getFullYear()}-${pad2(now.getMonth() + 1)}-${pad2(now.getDate())} ${pad2(now.getHours())}:${pad2(now.getMinutes())}:${pad2(now.getSeconds())} ${tz}${_tzExplicit ? ` (TZ=${process.env.TZ})` : ''}`;
+	const scanTime = fmtStamp(now);
 	const _commitHash = getGitCommitHash();
-	const _commitShort = _commitHash ? _commitHash.slice(0, 9) : '';
 	console.log(
 		c.bold(
 			c.cyan(
-				`  Project Scanner — ${projects.length} projects scanned in ${elapsed}ms (bun ${Bun.version} ${Bun.revision.slice(0, 9)}${_commitShort ? ` ${_commitShort}` : ''})`,
+				`  Project Scanner — ${projects.length} projects scanned in ${elapsed}ms (bun ${Bun.version} ${Bun.revision.slice(0, 9)}${_commitHash ? ` ${_commitHash.slice(0, 9)}` : ''})`,
 			),
 		),
 	);
 	console.log(c.dim(`  ${scanTime}`));
 	console.log();
 
-	renderTable(projects, !!flags.detail);
+	renderTable(projects, !!flags.detail, tokenStatusByFolder);
 
 	// ── Inline xref delta (default mode) ────────────────────────────
 	const prevSnapshot = await loadXrefSnapshot(flags['audit-compare'] ?? undefined);
@@ -5794,11 +6255,10 @@ ${c.bold('  Other:')}
 		// ── Audit log entry ────────────────────────────────────────────
 		const auditLogPath = `${SNAPSHOT_DIR}/audit.jsonl`;
 		const logNow = new Date();
-		const logTz = Intl.DateTimeFormat().resolvedOptions().timeZone;
 		const entry = {
 			timestamp: logNow.toISOString(),
-			date: `${logNow.getFullYear()}-${pad2(logNow.getMonth() + 1)}-${pad2(logNow.getDate())} ${pad2(logNow.getHours())}:${pad2(logNow.getMinutes())}:${pad2(logNow.getSeconds())}`,
-			tz: logTz,
+			date: fmtDate(logNow),
+			tz: _tz,
 			tzOverride: _tzExplicit,
 			scanDuration: elapsed,
 			projectsScanned: projects.length,
@@ -5808,8 +6268,8 @@ ${c.bold('  Other:')}
 			user: Bun.env.USER ?? 'unknown',
 			cwd: import.meta.dir,
 		};
-		const {mkdir} = await import('node:fs/promises');
-		await mkdir(SNAPSHOT_DIR, {recursive: true});
+
+		await ensureSnapshotDir();
 		await appendFile(auditLogPath, JSON.stringify(entry) + '\n');
 	}
 

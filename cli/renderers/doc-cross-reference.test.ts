@@ -579,7 +579,7 @@ describe('DocumentationScanner', () => {
 
 describe('Cross-reference consistency', () => {
 	test('every catalog API with provenance is in a valid version', () => {
-		const versions = new Set(['<1.2', '1.2.0', '1.3.0', '1.3.4', '1.3.5', '1.3.6', '1.3.8']);
+		const versions = new Set(['<1.2', '1.2.0', '1.3.0', '1.3.4', '1.3.5', '1.3.6', '1.3.7', '1.3.8']);
 		for (const version of Object.values(BUN_API_PROVENANCE)) {
 			expect(versions).toContain(version);
 		}

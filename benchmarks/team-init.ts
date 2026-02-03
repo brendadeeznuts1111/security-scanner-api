@@ -8,25 +8,34 @@
  *   bun run benchmarks/team-init.ts --name "Nola Rose" --email "nola@example.com" --notes "M3 Max, plugged in"
  *   bun run benchmarks/team-init.ts                    # uses defaults or existing values
  *   bun run benchmarks/team-init.ts --check            # validate all profiles in .benchrc.json
- *   bun run benchmarks/team-init.ts --fix              # auto-fix correctable issues in .benchrc.json
+ *   bun run benchmarks/team-init.ts --fix              # interactive fix (y/n/a/q per member)
+ *   bun run benchmarks/team-init.ts --fix --yes        # auto-apply all fixes (no prompts)
+ *   bun run benchmarks/team-init.ts --metrics          # append process metrics with R-score
+ *   bun run benchmarks/team-init.ts --metrics --verbose # include per-metric latency column
+ *   bun run benchmarks/team-init.ts --console-depth 4  # set inspect depth for this run
+ *
+ * Configuration (bunfig.toml):
+ *   [console]
+ *   depth = 4          # persistent inspect depth (overridden by --console-depth)
  *
  * The .benchrc.json file is shared across the team (committed to git).
  */
 
 import * as os from 'os';
+import { runRiskDiagnostic } from './diagnostic-risk.ts';
 
 const BENCHRC_PATH = `${import.meta.dir}/../.benchrc.json`;
 
-// ── ANSI helpers ────────────────────────────────────────────────────
+// ── ANSI helpers (Bun.color for colors, manual for text attributes) ─
 
 const useColor = Bun.enableANSIColors && !!process.stdout.isTTY;
-const B = useColor ? '\x1b[1m' : '';
-const D = useColor ? '\x1b[2m' : '';
-const R = useColor ? '\x1b[0m' : '';
-const cRed = useColor ? '\x1b[31m' : '';
-const cGreen = useColor ? '\x1b[32m' : '';
-const cYellow = useColor ? '\x1b[33m' : '';
-const cCyan = useColor ? '\x1b[36m' : '';
+const B = useColor ? '\x1b[1m' : '';      // bold
+const D = useColor ? '\x1b[2m' : '';      // dim
+const R = useColor ? '\x1b[0m' : '';      // reset
+const cRed = useColor ? Bun.color('red', 'ansi') : '';
+const cGreen = useColor ? Bun.color('green', 'ansi') : '';
+const cYellow = useColor ? Bun.color('yellow', 'ansi') : '';
+const cCyan = useColor ? Bun.color('cyan', 'ansi') : '';
 
 // ── Parse CLI args ──────────────────────────────────────────────────
 
@@ -38,6 +47,21 @@ function parseCliArgs(argv: string[]): Record<string, string> {
 			args.check = 'true';
 		} else if (arg === '--fix') {
 			args.fix = 'true';
+		} else if (arg === '--yes' || arg === '-y') {
+			args.yes = 'true';
+		} else if (arg === '--metrics') {
+			args.metrics = 'true';
+		} else if (arg === '--verbose') {
+			args.verbose = 'true';
+		} else if (arg === '--console-depth' && i + 1 < argv.length) {
+			const v = Number(argv[i + 1]);
+			if (Number.isInteger(v) && v >= 0) {
+				args['console-depth'] = String(v);
+			} else {
+				console.error(`--console-depth requires a non-negative integer, got "${argv[i + 1]}"`);
+				process.exit(1);
+			}
+			i++;
 		} else if (arg.startsWith('--') && i + 1 < argv.length) {
 			args[arg.slice(2)] = argv[i + 1];
 			i++;
@@ -48,6 +72,86 @@ function parseCliArgs(argv: string[]): Record<string, string> {
 
 const cliArgs = parseCliArgs(Bun.argv.slice(2));
 
+// ── Resolve console depth (CLI flag > bunfig.toml > undefined) ──────
+
+async function readBunfigDepth(): Promise<number | undefined> {
+	const bunfigPath = `${import.meta.dir}/../bunfig.toml`;
+	const file = Bun.file(bunfigPath);
+	if (!(await file.exists())) return undefined;
+	try {
+		const text = await file.text();
+		// Look for [console] section, then depth = <number>
+		const sectionMatch = text.match(/\[console\]\s*\n((?:[^\[]*\n?)*)/);
+		if (!sectionMatch) return undefined;
+		const depthMatch = sectionMatch[1].match(/^\s*depth\s*=\s*(\d+)/m);
+		if (!depthMatch) return undefined;
+		return Number(depthMatch[1]);
+	} catch {
+		return undefined;
+	}
+}
+
+const bunfigDepth = await readBunfigDepth();
+const consoleDepth: number | undefined = cliArgs['console-depth'] != null
+	? Number(cliArgs['console-depth'])
+	: bunfigDepth;
+
+/** Options object for Bun.inspect.table — includes depth when set */
+const inspectOpts: {colors: boolean; depth?: number} = {colors: useColor};
+if (consoleDepth != null) inspectOpts.depth = consoleDepth;
+
+// ── Process metrics (--metrics) ─────────────────────────────────────
+
+function printMetrics(): void {
+	if (!cliArgs.metrics) return;
+	console.log(`\n${B}Process Metrics${R}`);
+	runRiskDiagnostic({
+		mode: cliArgs.verbose ? 'verbose' : 'default',
+		colors: useColor,
+	});
+}
+
+// ── Interactive stdin (console as AsyncIterable) ────────────────────
+
+const isTTY = !!process.stdin.isTTY;
+const autoApply = !!cliArgs.yes;
+const noInteraction = !isTTY && !autoApply;
+
+/** Shared stdin iterator — reused across all prompts in a session */
+const stdinIter = (console as unknown as AsyncIterable<string>)[Symbol.asyncIterator]();
+
+/**
+ * Prompt the user and read a single line via console AsyncIterable.
+ * Returns the trimmed, lowercased response. Returns `fallback` on EOF.
+ */
+async function prompt(msg: string, fallback = ''): Promise<string> {
+	console.write(msg);
+	const result = await stdinIter.next();
+	if (result.done) return fallback;
+	return String(result.value).trim().toLowerCase();
+}
+
+type FixAction = 'yes' | 'no' | 'all' | 'quit';
+
+/**
+ * Ask the user to confirm a fix action.
+ * Returns 'yes', 'no', 'all', or 'quit'. Repeats on invalid input.
+ */
+async function confirmFix(memberKey: string): Promise<FixAction> {
+	const hint = `${D}[y]es / [n]o / [a]ll / [q]uit${R}`;
+	while (true) {
+		const answer = await prompt(`  Apply fixes for ${B}${memberKey}${R}? ${hint}: `);
+		switch (answer) {
+			case 'y': case 'yes': return 'yes';
+			case 'n': case 'no': return 'no';
+			case 'a': case 'all': return 'all';
+			case 'q': case 'quit': return 'quit';
+			default:
+				console.write(`  ${cYellow}Invalid choice "${answer}"${R} — enter y, n, a, or q.\n`);
+		}
+	}
+}
+
 // ── Types ───────────────────────────────────────────────────────────
 
 interface MachineInfo {
@@ -57,6 +161,18 @@ interface MachineInfo {
 	cores: number;
 	memory_gb: number;
 	bun_version: string;
+}
+
+function detectMachine(): MachineInfo {
+	const cpuInfo = os.cpus();
+	return {
+		os: process.platform,
+		arch: process.arch,
+		cpu: cpuInfo[0]?.model ?? 'unknown',
+		cores: cpuInfo.length,
+		memory_gb: Math.round(os.totalmem() / 1024 ** 3),
+		bun_version: Bun.version,
+	};
 }
 
 interface MemberProfile {
@@ -922,6 +1038,20 @@ function validateCrossProfile(team: Record<string, MemberProfile>): Issue[] {
 		}
 	}
 
+	// Identical machine configs
+	for (let i = 0; i < keys.length; i++) {
+		for (let j = i + 1; j < keys.length; j++) {
+			if (Bun.deepEquals(team[keys[i]].machine, team[keys[j]].machine)) {
+				issues.push({
+					field: 'cross-profile',
+					message: `identical machine config: "${keys[i]}" ↔ "${keys[j]}"`,
+					severity: 'warn',
+					value: `${team[keys[i]].machine.cpu}, ${team[keys[i]].machine.cores} cores`,
+				});
+			}
+		}
+	}
+
 	return issues;
 }
 
@@ -958,30 +1088,84 @@ function classifyDefault(val: unknown): string {
 	return typeof val;
 }
 
+interface ColumnMetrics {
+	tables: number;
+	columns: number;
+	invalidTables: number;
+	invalidEntries: number;
+	guardErrors: number;
+	propErrors: number;
+	widthIssues: number;
+	defaultIssues: number;
+	coherenceWarnings: number;
+	crossTableDupes: number;
+}
+
 function validateColumns(
 	schema: Record<string, readonly {key: string; header: string; width: number; default: unknown}[]>,
-): Issue[] {
+): {issues: Issue[]; metrics: ColumnMetrics} {
 	const issues: Issue[] = [];
 	const globalKeys = new Map<string, string>(); // key → tableName (for cross-table dupe detection)
+	const metrics: ColumnMetrics = {
+		tables: 0, columns: 0, invalidTables: 0, invalidEntries: 0,
+		guardErrors: 0, propErrors: 0, widthIssues: 0, defaultIssues: 0,
+		coherenceWarnings: 0, crossTableDupes: 0,
+	};
 
 	for (const [tableName, columns] of Object.entries(schema)) {
+		metrics.tables++;
+
+		// ── table-level guards ──
+		if (!Array.isArray(columns)) {
+			metrics.invalidTables++;
+			metrics.guardErrors++;
+			issues.push({
+				field: tableName,
+				message: `table value is ${typeof columns}, expected array`,
+				severity: 'error',
+				value: String(columns),
+			});
+			continue;
+		}
+		if (columns.length === 0) {
+			issues.push({field: tableName, message: 'table has no columns', severity: 'warn'});
+			continue;
+		}
+
 		const seenKeys = new Set<string>();
 		const seenHeaders = new Set<string>();
 		const defaultTypes = new Map<string, { type: string; key: string; index: number }[]>(); // type → [{key, index}]
 
 		for (let i = 0; i < columns.length; i++) {
-			const col = columns[i] as Record<string, unknown>;
+			const raw = columns[i];
 			const prefix = `${tableName}[${i}]`;
+			metrics.columns++;
+
+			// ── entry-level guard ──
+			if (raw == null || typeof raw !== 'object' || Array.isArray(raw)) {
+				metrics.invalidEntries++;
+				metrics.guardErrors++;
+				issues.push({
+					field: prefix,
+					message: `column entry is ${raw === null ? 'null' : Array.isArray(raw) ? 'array' : typeof raw}, expected object`,
+					severity: 'error',
+					value: String(raw),
+				});
+				continue;
+			}
+			const col = raw as Record<string, unknown>;
 
 			// ── required property checks ──
 			for (const [prop, expectedType] of COLUMN_REQUIRED_PROPS) {
 				if (!(prop in col)) {
+					metrics.propErrors++;
 					issues.push({
 						field: `${prefix}`,
 						message: `missing required property "${prop}"`,
 						severity: 'error',
 					});
 				} else if (typeof col[prop] !== expectedType) {
+					metrics.propErrors++;
 					issues.push({
 						field: `${prefix}.${prop}`,
 						message: `"${prop}" should be ${expectedType}, got ${typeof col[prop]}`,
@@ -995,6 +1179,7 @@ function validateColumns(
 			const knownProps = new Set(['key', 'header', 'width', 'default']);
 			for (const prop of Object.keys(col)) {
 				if (!knownProps.has(prop)) {
+					metrics.propErrors++;
 					issues.push({
 						field: `${prefix}.${prop}`,
 						message: `unexpected property "${prop}" on column definition`,
@@ -1152,6 +1337,7 @@ function validateColumns(
 
 			// ── width checks ──
 			if (typeof col.width !== 'number' || col.width < 1) {
+				metrics.widthIssues++;
 				issues.push({
 					field: `${prefix}.width`,
 					message: 'width must be a positive number',
@@ -1161,6 +1347,7 @@ function validateColumns(
 			} else if (col.header) {
 				const visibleWidth = Bun.stringWidth(col.header);
 				if (visibleWidth > col.width) {
+					metrics.widthIssues++;
 					const fixed = String(visibleWidth + 2);
 					issues.push({
 						field: `${prefix}.width`,
@@ -1184,6 +1371,7 @@ function validateColumns(
 				if (typeof col.default === 'string' && typeof col.width === 'number') {
 					const defaultVisible = Bun.stringWidth(col.default);
 					if (defaultVisible > col.width && col.default !== '-') {
+						metrics.defaultIssues++;
 						issues.push({
 							field: `${prefix}.default`,
 							message: `default "${col.default}" (${defaultVisible} chars) exceeds width ${col.width}`,
@@ -1200,6 +1388,7 @@ function validateColumns(
 						p => keyLower.startsWith(p) && keyLower.length > p.length && col.key[p.length] === col.key[p.length].toUpperCase(),
 					);
 					if (looksBoolean && typeof col.default !== 'boolean' && col.default !== 'true' && col.default !== 'false' && col.default !== '-') {
+						metrics.defaultIssues++;
 						issues.push({
 							field: `${prefix}.default`,
 							message: `key "${col.key}" looks boolean but default is ${dType}: ${JSON.stringify(col.default)}`,
@@ -1214,6 +1403,7 @@ function validateColumns(
 			if (typeof col.key === 'string' && col.key.length > 0) {
 				const existing = globalKeys.get(col.key);
 				if (existing && existing !== tableName) {
+					metrics.crossTableDupes++;
 					issues.push({
 						field: `${prefix}.key`,
 						message: `key "${col.key}" also exists in ${existing}`,
@@ -1253,6 +1443,7 @@ function validateColumns(
 					const headerSet = new Set(headerWords.map(w => w.slice(0, 4)));
 					const overlap = [...keySet].some(s => headerSet.has(s));
 					if (!overlap && keyWords.length > 0 && headerWords.length > 0) {
+						metrics.coherenceWarnings++;
 						issues.push({
 							field: `${prefix}`,
 							message: `key "${col.key}" doesn't match header "${col.header}" — possible mismatch`,
@@ -1262,9 +1453,21 @@ function validateColumns(
 				}
 			}
 		}
+
+		// ── per-table type consistency ──
+		// Flag if defaults mix incompatible types (e.g. some strings, some numbers) without functions
+		const typeGroups = [...defaultTypes.entries()].filter(([t]) => t !== 'function');
+		if (typeGroups.length > 2) {
+			const typeSummary = typeGroups.map(([t, cols]) => `${t}(${cols.length})`).join(', ');
+			issues.push({
+				field: `${tableName}`,
+				message: `defaults use ${typeGroups.length} different types: ${typeSummary} — consider normalizing`,
+				severity: 'warn',
+			});
+		}
 	}
 
-	return issues;
+	return {issues, metrics};
 }
 
 function printIssues(
@@ -1341,6 +1544,23 @@ if (cliArgs.check) {
 		console.log();
 	}
 
+	// Machine drift detection (current machine vs stored profile)
+	const currentUser = Bun.env.USER ?? 'unknown';
+	const storedProfile = benchrc.team[currentUser];
+	if (storedProfile?.machine) {
+		const currentMachine = detectMachine();
+		if (!Bun.deepEquals(storedProfile.machine, currentMachine)) {
+			console.log(`  ${cYellow}~${R} ${B}${currentUser}${R} machine drift detected:`);
+			for (const k of Object.keys(currentMachine) as (keyof MachineInfo)[]) {
+				if (!Bun.deepEquals((storedProfile.machine as any)[k], currentMachine[k])) {
+					console.log(`    ${k}: ${D}${(storedProfile.machine as any)[k]}${R} → ${currentMachine[k]}`);
+				}
+			}
+			totalWarnings++;
+			console.log();
+		}
+	}
+
 	// Cross-profile checks
 	if (teamKeys.length > 1) {
 		const crossIssues = validateCrossProfile(benchrc.team);
@@ -1354,21 +1574,24 @@ if (cliArgs.check) {
 	}
 
 	// Column schema checks
+	let colMetrics: ColumnMetrics | null = null;
 	try {
 		const {BUN_SCANNER_COLUMNS} = await import('../scan-columns.ts');
-		const colIssues = validateColumns(BUN_SCANNER_COLUMNS as any);
+		const {issues: colIssues, metrics: cm} = validateColumns(BUN_SCANNER_COLUMNS as any);
+		colMetrics = cm;
 		if (colIssues.length > 0) {
 			const colIcon = colIssues.some(i => i.severity === 'error') ? `${cRed}✗${R}` : `${cYellow}~${R}`;
-			console.log(`  ${colIcon} ${B}scan-columns.ts${R}`);
+			console.log(`  ${colIcon} ${B}scan-columns.ts${R} ${D}(${cm.tables} tables, ${cm.columns} columns)${R}`);
 			const {errors, warnings} = printIssues('columns', colIssues);
 			totalErrors += errors;
 			totalWarnings += warnings;
 			console.log();
 		} else {
-			console.log(`  ${cGreen}✓${R} ${B}scan-columns.ts${R} — all column checks passed\n`);
+			console.log(`  ${cGreen}✓${R} ${B}scan-columns.ts${R} — all column checks passed ${D}(${cm.tables} tables, ${cm.columns} columns)${R}\n`);
 		}
-	} catch {
-		console.log(`  ${cYellow}~${R} ${B}scan-columns.ts${R} — could not import (skipped)\n`);
+	} catch (err) {
+		const msg = err instanceof Error ? err.message : String(err);
+		console.log(`  ${cYellow}~${R} ${B}scan-columns.ts${R} — import failed: ${msg}\n`);
 	}
 
 	// Summary table
@@ -1376,11 +1599,22 @@ if (cliArgs.check) {
 		{Field: 'Members', Value: String(teamKeys.length)},
 		{Field: 'Errors', Value: totalErrors > 0 ? `${totalErrors}` : '0'},
 		{Field: 'Warnings', Value: totalWarnings > 0 ? `${totalWarnings}` : '0'},
+		...(colMetrics ? [
+			{Field: 'Tables', Value: String(colMetrics.tables)},
+			{Field: 'Columns', Value: String(colMetrics.columns)},
+			...(colMetrics.guardErrors > 0 ? [{Field: 'Guard errors', Value: `${colMetrics.guardErrors}`}] : []),
+			...(colMetrics.propErrors > 0 ? [{Field: 'Prop errors', Value: `${colMetrics.propErrors}`}] : []),
+			...(colMetrics.widthIssues > 0 ? [{Field: 'Width issues', Value: `${colMetrics.widthIssues}`}] : []),
+			...(colMetrics.defaultIssues > 0 ? [{Field: 'Default issues', Value: `${colMetrics.defaultIssues}`}] : []),
+			...(colMetrics.coherenceWarnings > 0 ? [{Field: 'Coherence', Value: `${colMetrics.coherenceWarnings}`}] : []),
+			...(colMetrics.crossTableDupes > 0 ? [{Field: 'Cross-table dupes', Value: `${colMetrics.crossTableDupes}`}] : []),
+		] : []),
 		{Field: 'Status', Value: totalErrors > 0 ? 'FAIL' : totalWarnings > 0 ? 'PASS (with warnings)' : 'PASS'},
 	];
 	// @ts-expect-error Bun.inspect.table accepts options as third arg
-	console.log(Bun.inspect.table(summaryRows, ['Field', 'Value'], {colors: useColor}));
+	console.log(Bun.inspect.table(summaryRows, ['Field', 'Value'], inspectOpts));
 
+	printMetrics();
 	process.exit(totalErrors > 0 ? 1 : 0);
 }
 
@@ -1444,6 +1678,12 @@ if (cliArgs.fix) {
 
 	let totalFixed = 0;
 	let totalUnfixable = 0;
+	let totalSkipped = 0;
+	let applyAll = autoApply; // --yes → auto-apply, else prompt
+
+	if (noInteraction) {
+		console.log(`  ${D}(non-interactive stdin — use --yes to auto-apply, or run in a terminal)${R}\n`);
+	}
 
 	for (const key of teamKeys) {
 		const profile = benchrc.team[key];
@@ -1462,11 +1702,37 @@ if (cliArgs.fix) {
 		printIssues(key, issues, true);
 
 		if (fixable.length > 0) {
-			const {applied, profile: fixed} = applyFixes(key, profile, issues);
-			benchrc.team[key] = fixed;
-			totalFixed += applied.length;
-			for (const a of applied) {
-				console.log(`    ${cGreen}fixed${R}  ${a}`);
+			// Preview proposed fixes before prompting
+			for (const issue of fixable) {
+				console.log(`    ${cCyan}would fix${R}  ${issue.field}: ${issue.fix}`);
+			}
+
+			let apply = applyAll;
+			if (!apply && noInteraction) {
+				// Can't prompt — skip
+				totalSkipped += fixable.length;
+				console.log(`    ${D}skipped (non-interactive)${R}`);
+			} else if (!apply) {
+				const action = await confirmFix(key);
+				switch (action) {
+					case 'yes': apply = true; break;
+					case 'all': apply = true; applyAll = true; break;
+					case 'quit':
+						console.log(`\n  ${D}Quit — no changes written.${R}\n`);
+						process.exit(0);
+					case 'no':
+						totalSkipped += fixable.length;
+						console.log(`    ${D}skipped${R}`);
+				}
+			}
+
+			if (apply) {
+				const {applied, profile: fixed} = applyFixes(key, profile, issues);
+				benchrc.team[key] = fixed;
+				totalFixed += applied.length;
+				for (const a of applied) {
+					console.log(`    ${cGreen}fixed${R}  ${a}`);
+				}
 			}
 		}
 
@@ -1487,55 +1753,71 @@ if (cliArgs.fix) {
 
 	// Column schema checks (report-only in fix mode — source code, not JSON)
 	let colWarnings = 0;
+	let colMetrics: ColumnMetrics | null = null;
 	try {
 		const {BUN_SCANNER_COLUMNS} = await import('../scan-columns.ts');
-		const colIssues = validateColumns(BUN_SCANNER_COLUMNS as any);
+		const {issues: colIssues, metrics: cm} = validateColumns(BUN_SCANNER_COLUMNS as any);
+		colMetrics = cm;
+		colWarnings = colIssues.length;
 		if (colIssues.length > 0) {
 			const colIcon = colIssues.some(i => i.severity === 'error') ? `${cRed}✗${R}` : `${cYellow}~${R}`;
-			console.log(`  ${colIcon} ${B}scan-columns.ts${R} ${D}(report only — edit source to fix)${R}`);
+			console.log(`  ${colIcon} ${B}scan-columns.ts${R} ${D}(report only — ${cm.tables} tables, ${cm.columns} columns)${R}`);
 			printIssues('columns', colIssues, true);
-			colWarnings = colIssues.length;
 			console.log();
 		} else {
-			console.log(`  ${cGreen}✓${R} ${B}scan-columns.ts${R} — all column checks passed\n`);
+			console.log(`  ${cGreen}✓${R} ${B}scan-columns.ts${R} — all column checks passed ${D}(${cm.tables} tables, ${cm.columns} columns)${R}\n`);
 		}
-	} catch {
-		console.log(`  ${cYellow}~${R} ${B}scan-columns.ts${R} — could not import (skipped)\n`);
+	} catch (err) {
+		const msg = err instanceof Error ? err.message : String(err);
+		console.log(`  ${cYellow}~${R} ${B}scan-columns.ts${R} — import failed: ${msg}\n`);
 	}
 
 	// Summary table
 	const summaryRows = [
 		{Field: 'Members', Value: String(teamKeys.length)},
 		{Field: 'Fixed', Value: totalFixed > 0 ? `${cGreen}${totalFixed}${R}` : '0'},
+		...(totalSkipped > 0 ? [{Field: 'Skipped', Value: `${cYellow}${totalSkipped}${R}`}] : []),
 		{Field: 'Unfixable', Value: totalUnfixable > 0 ? `${cYellow}${totalUnfixable}${R}` : '0'},
 		{Field: 'Remaining', Value: remainingIssues > 0 ? `${cYellow}${remainingIssues}${R}` : `${cGreen}0${R}`},
-		...(colWarnings > 0 ? [{Field: 'Column issues', Value: `${cYellow}${colWarnings}${R}`}] : []),
+		...(colMetrics ? [
+			{Field: 'Tables', Value: String(colMetrics.tables)},
+			{Field: 'Columns', Value: String(colMetrics.columns)},
+			...(colMetrics.guardErrors > 0 ? [{Field: 'Guard errors', Value: `${cYellow}${colMetrics.guardErrors}${R}`}] : []),
+			...(colMetrics.propErrors > 0 ? [{Field: 'Prop errors', Value: `${cYellow}${colMetrics.propErrors}${R}`}] : []),
+			...(colMetrics.widthIssues > 0 ? [{Field: 'Width issues', Value: `${cYellow}${colMetrics.widthIssues}${R}`}] : []),
+			...(colMetrics.defaultIssues > 0 ? [{Field: 'Default issues', Value: `${cYellow}${colMetrics.defaultIssues}${R}`}] : []),
+			...(colMetrics.coherenceWarnings > 0 ? [{Field: 'Coherence', Value: `${cYellow}${colMetrics.coherenceWarnings}${R}`}] : []),
+			...(colMetrics.crossTableDupes > 0 ? [{Field: 'Cross-table dupes', Value: `${cYellow}${colMetrics.crossTableDupes}${R}`}] : []),
+		] : colWarnings > 0 ? [{Field: 'Column issues', Value: `${cYellow}${colWarnings}${R}`}] : []),
 		{Field: 'Written', Value: totalFixed > 0 ? `${cGreen}yes${R}` : `${D}no changes${R}`},
 	];
 	// @ts-expect-error Bun.inspect.table accepts options as third arg
-	console.log(Bun.inspect.table(summaryRows, ['Field', 'Value'], {colors: useColor}));
+	console.log(Bun.inspect.table(summaryRows, ['Field', 'Value'], inspectOpts));
 
+	printMetrics();
 	process.exit(remainingIssues > 0 ? 1 : 0);
 }
 
 // ── Auto-detect machine info ────────────────────────────────────────
 
-const cpus = os.cpus();
-const detected: MachineInfo = {
-	os: process.platform,
-	arch: process.arch,
-	cpu: cpus[0]?.model ?? 'unknown',
-	cores: cpus.length,
-	memory_gb: Math.round(os.totalmem() / 1024 ** 3),
-	bun_version: Bun.version,
-};
-
+const detected = detectMachine();
 const detectedTimezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
 const username = Bun.env.USER ?? 'unknown';
 
 // ── Merge profile ───────────────────────────────────────────────────
 
 const existing = benchrc.team[username];
+
+// Machine drift detection
+if (existing?.machine && !Bun.deepEquals(existing.machine, detected)) {
+	console.log(`${cYellow}Machine config changed since last profile write:${R}`);
+	for (const k of Object.keys(detected) as (keyof MachineInfo)[]) {
+		if (!Bun.deepEquals((existing.machine as any)[k], detected[k])) {
+			console.log(`  ${k}: ${D}${(existing.machine as any)[k]}${R} → ${detected[k]}`);
+		}
+	}
+	console.log();
+}
 
 const profile: MemberProfile = {
 	name: cliArgs.name ?? existing?.name ?? username,
@@ -1585,4 +1867,6 @@ const resultRows = [
 ];
 
 // @ts-expect-error Bun.inspect.table accepts options as third arg
-console.log(Bun.inspect.table(resultRows, ['Field', 'Value'], {colors: useColor}));
+console.log(Bun.inspect.table(resultRows, ['Field', 'Value'], inspectOpts));
+
+printMetrics();

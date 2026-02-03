@@ -92,6 +92,7 @@ export const BUN_API_PROVENANCE: Readonly<Record<string, string>> = {
 	'Bun.stringWidth': '<1.2',
 	'Bun.resolveSync': '<1.2',
 	'Bun.resolve': '<1.2',
+	'ResolveMessage (MODULE_NOT_FOUND)': '<1.2',
 	'Bun.fileURLToPath': '<1.2',
 	'Bun.pathToFileURL': '<1.2',
 	'Bun.Glob': '<1.2',
@@ -111,6 +112,7 @@ export const BUN_API_PROVENANCE: Readonly<Record<string, string>> = {
 	'bun:jsc': '<1.2',
 	'Node-API': '<1.2',
 	'import.meta': '<1.2',
+	'import.meta.resolve': '<1.2',
 	'Bun.semver': '<1.2',
 	// 1.2.0
 	'Bun.sql': '1.2.0',
@@ -136,8 +138,19 @@ export const BUN_API_PROVENANCE: Readonly<Record<string, string>> = {
 	// 1.3.6
 	'Bun.Archive': '1.3.6',
 	'Bun.JSONC': '1.3.6',
+	// 1.3.7
+	'Bun.wrapAnsi': '1.3.7',
 	// 1.3.8
+	'Bun.JSON5': '1.3.8',
+	'Bun.JSONL': '1.3.8',
+	'Bun.YAML': '1.3.8',
+	'Bun.TOML.parse': '1.3.8',
 	'Bun.markdown': '1.3.8',
+	// pre-existing (provenance backfill)
+	'Bun.udpSocket': '<1.2',
+	'Bun.mmap': '<1.2',
+	'Bun.indexOfLine': '<1.2',
+	'FileSink.write': '<1.2',
 };
 
 // ═══════════════════════════════════════════════════════════════
@@ -219,8 +232,8 @@ export const BUN_RELATED_APIS: Readonly<Record<string, readonly string[]>> = {
 	'Bun.spawnSync': ['Bun.spawn', '$ (shell)'],
 
 	// File I/O
-	'Bun.file': ['Bun.write', 'Bun.stdin', 'Bun.mmap'],
-	'Bun.write': ['Bun.file', 'Bun.stdout'],
+	'Bun.file': ['Bun.write', 'Bun.stdin', 'Bun.mmap', 'FileSink.write'],
+	'Bun.write': ['Bun.file', 'Bun.stdout', 'FileSink.write'],
 	'Bun.stdin': ['Bun.stdout', 'Bun.stderr', 'Bun.file'],
 	'Bun.stdout': ['Bun.stdin', 'Bun.stderr', 'Bun.write'],
 	'Bun.stderr': ['Bun.stdin', 'Bun.stdout'],
@@ -230,7 +243,7 @@ export const BUN_RELATED_APIS: Readonly<Record<string, readonly string[]>> = {
 	'Bun.build': ['Bun.Transpiler', 'Bun.plugin', 'bun:bundle'],
 	'Bun.Transpiler': ['Bun.build', 'Bun.plugin'],
 	'Bun.FileSystemRouter': ['URLPattern', 'Bun.serve'],
-	'Bun.plugin': ['Bun.build', 'Bun.Transpiler'],
+	'Bun.plugin': ['Bun.build', 'Bun.Transpiler', 'Bun.resolve', 'ResolveMessage (MODULE_NOT_FOUND)'],
 	'bun:bundle': ['Bun.build', 'Bun.Transpiler'],
 
 	// Hashing & Security
@@ -293,10 +306,13 @@ export const BUN_RELATED_APIS: Readonly<Record<string, readonly string[]>> = {
 	'Bun.wrapAnsi': ['Bun.stringWidth', 'Bun.stripANSI'],
 
 	// Utilities — module resolution
-	'Bun.resolveSync': ['Bun.resolve', 'Bun.fileURLToPath'],
-	'Bun.resolve': ['Bun.resolveSync', 'Bun.fileURLToPath'],
-	'Bun.fileURLToPath': ['Bun.pathToFileURL', 'Bun.resolveSync'],
-	'Bun.pathToFileURL': ['Bun.fileURLToPath', 'Bun.resolve'],
+	'Bun.resolveSync': ['Bun.resolve', 'Bun.fileURLToPath', 'ResolveMessage (MODULE_NOT_FOUND)', 'import.meta.resolve'],
+	'Bun.resolve': ['Bun.resolveSync', 'Bun.fileURLToPath', 'ResolveMessage (MODULE_NOT_FOUND)', 'import.meta.resolve'],
+	'ResolveMessage (MODULE_NOT_FOUND)': ['Bun.resolve', 'Bun.resolveSync', 'Bun.plugin', 'import.meta.resolve'],
+	'import.meta.resolve': ['Bun.resolve', 'Bun.resolveSync', 'import.meta', 'ResolveMessage (MODULE_NOT_FOUND)'],
+	'import.meta': ['import.meta.resolve', 'Bun.fileURLToPath', 'Bun.pathToFileURL', 'Bun.main'],
+	'Bun.fileURLToPath': ['Bun.pathToFileURL', 'Bun.resolveSync', 'import.meta'],
+	'Bun.pathToFileURL': ['Bun.fileURLToPath', 'Bun.resolve', 'import.meta'],
 
 	// Utilities — memory
 	'Bun.allocUnsafe': ['Bun.concatArrayBuffers', 'Bun.shrink'],
@@ -308,9 +324,17 @@ export const BUN_RELATED_APIS: Readonly<Record<string, readonly string[]>> = {
 	'bun:ffi': ['Bun.FFI.CString', 'Bun.FFI.linkSymbols'],
 	'Bun.FFI.CString': ['bun:ffi', 'Bun.FFI.linkSymbols'],
 	'Bun.FFI.linkSymbols': ['bun:ffi', 'Bun.FFI.CString'],
+	'bun:test': ['Bun.jest', 'Worker', 'Bun.inspect'],
+	'Worker': ['bun:test', 'Bun.spawn', 'Bun.stdin'],
 	'Bun.gc': ['Bun.generateHeapSnapshot', 'Bun.shrink'],
 	'Bun.generateHeapSnapshot': ['Bun.gc', 'bun:jsc'],
 	'Bun.Terminal': ['Bun.spawn', 'Bun.stdin'],
+
+	// File I/O — sinks
+	'FileSink.write': ['Bun.file', 'Bun.write', 'Bun.stdout'],
+
+	// Utilities — string (additional)
+	'Bun.indexOfLine': ['Bun.stringWidth', 'Bun.stripANSI'],
 };
 
 // ═══════════════════════════════════════════════════════════════
@@ -348,7 +372,7 @@ export const BUN_SEARCH_KEYWORDS: Readonly<Record<string, readonly string[]>> = 
 	'Bun.build': ['bundle', 'build', 'esbuild', 'entrypoint', 'output', 'minify', 'metafile'],
 	'Bun.Transpiler': ['transpile', 'transform', 'jsx', 'tsx', 'typescript', 'loader'],
 	'Bun.FileSystemRouter': ['router', 'filesystem', 'pages', 'routes', 'nextjs'],
-	'Bun.plugin': ['plugin', 'loader', 'module', 'resolve', 'import'],
+	'Bun.plugin': ['plugin', 'loader', 'module', 'resolve', 'import', 'transform', 'bundle', 'preprocessor'],
 	'bun:bundle': ['bundle', 'feature', 'flag', 'conditional', 'compile-time'],
 
 	// Hashing & Security
@@ -412,8 +436,11 @@ export const BUN_SEARCH_KEYWORDS: Readonly<Record<string, readonly string[]>> = 
 	'Bun.indexOfLine': ['line', 'index', 'newline', 'offset', 'search'],
 
 	// Utilities — module resolution
-	'Bun.resolveSync': ['resolve', 'module', 'import', 'path', 'sync'],
-	'Bun.resolve': ['resolve', 'module', 'import', 'path', 'async'],
+	'Bun.resolveSync': ['resolve', 'module', 'import', 'path', 'sync', 'require', 'specifier'],
+	'Bun.resolve': ['resolve', 'module', 'import', 'path', 'async', 'specifier', 'dynamic import'],
+	'ResolveMessage (MODULE_NOT_FOUND)': ['module', 'not found', 'resolve', 'import', 'require', 'error', 'resolvemessage', 'circular', 'missing'],
+	'import.meta.resolve': ['resolve', 'module', 'import', 'esm', 'specifier', 'dynamic import', 'lazy loading'],
+	'import.meta': ['import', 'meta', 'url', 'dirname', 'filename', 'resolve', 'esm'],
 	'Bun.fileURLToPath': ['file', 'url', 'path', 'convert', 'file://'],
 	'Bun.pathToFileURL': ['path', 'url', 'file', 'convert', 'file://'],
 
@@ -433,6 +460,7 @@ export const BUN_SEARCH_KEYWORDS: Readonly<Record<string, readonly string[]>> = 
 	'Bun.generateHeapSnapshot': ['heap', 'snapshot', 'memory', 'profile', 'debug'],
 	'bun:jsc': ['jsc', 'javascriptcore', 'internals', 'debug', 'profile'],
 	'Bun.Terminal': ['terminal', 'pty', 'tty', 'interactive', 'shell'],
+	'FileSink.write': ['file', 'write', 'sink', 'stream', 'incremental', 'append'],
 };
 
 // ═══════════════════════════════════════════════════════════════
