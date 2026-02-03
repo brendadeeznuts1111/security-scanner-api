@@ -4,13 +4,29 @@
  * Dynamically scans scan.ts and cross-references every Bun native API call
  * against the running Bun runtime surface, documentation URLs, and unicode status.
  *
- * Run:  bun run benchmarks/bun-api-snapshot.ts
- * Save: bun run benchmarks/bun-api-snapshot.ts > benchmarks/bun-api-snapshot.json
+ * Run: bun run benchmarks/bun-api-snapshot.ts
+ *
+ * Writes to bun-api-snapshot.json automatically and prints to stdout.
+ * Delta tracking compares against the previous bun-api-snapshot.json on each run.
  */
 
 const SCAN_PATH = `${import.meta.dir}/../scan.ts`;
+const SNAPSHOT_PATH = `${import.meta.dir}/bun-api-snapshot.json`;
 const source = await Bun.file(SCAN_PATH).text();
 const lines = source.split("\n");
+
+// ── Load previous snapshot as baseline for delta tracking ────────────
+
+type PreviousSnapshot = Record<string, unknown> & { metrics?: Record<string, number> };
+let previousSnapshot: PreviousSnapshot | null = null;
+const snapshotFile = Bun.file(SNAPSHOT_PATH);
+if (await snapshotFile.exists()) {
+  try {
+    previousSnapshot = await snapshotFile.json() as PreviousSnapshot;
+  } catch {
+    previousSnapshot = null;
+  }
+}
 
 // ── API registry: pattern → metadata ────────────────────────────────
 
@@ -450,7 +466,10 @@ const availableApis = Object.keys(Bun).filter((k) => !k.startsWith("_")).sort();
 const usedApiNames = results.map((r) => r.api.replace(/^(Bun\.|import\.meta\.|proc\.)/, "").replace(/\.\*$/, "").split(".")[0]);
 const unusedApis = availableApis.filter((k) => !usedApiNames.includes(k));
 
-// ── Unicode summary ─────────────────────────────────────────────────
+// ── Metrics: flat table of every tracked number ─────────────────────
+// Every numeric metric in one place — the base for delta tracking.
+
+const totalCalls = results.reduce((sum, r) => sum + r.calls, 0);
 
 const unicodeCounts = {
   full: results.filter((r) => r.unicode === "full").length,
@@ -459,23 +478,160 @@ const unicodeCounts = {
   "n/a": results.filter((r) => r.unicode === "n/a").length,
 };
 
-// ── Output ──────────────────────────────────────────────────────────
+const metrics: Record<string, number> = {
+  // file
+  "file.size_bytes":         new TextEncoder().encode(source).byteLength,
+  "file.lines":              lines.length,
 
-const totalCalls = results.reduce((sum, r) => sum + r.calls, 0);
+  // runtime surface
+  "runtime.available_apis":  availableApis.length,
+  "runtime.used_apis":       results.length,
+
+  // api call sites
+  "apis.unique":             results.length,
+  "apis.total_call_sites":   totalCalls,
+
+  // unicode breakdown
+  "unicode.full":            unicodeCounts.full,
+  "unicode.passthrough":     unicodeCounts.passthrough,
+  "unicode.binary":          unicodeCounts.binary,
+  "unicode.n_a":             unicodeCounts["n/a"],
+
+  // legacy patterns (should stay at 0)
+  "legacy.response_wrapper": countPattern(/new Response\(proc\./g),
+  "legacy.url_pathname":     countPattern(/new URL\([^)]*import\.meta\.url\)\.pathname/g),
+  "legacy.strip_ansi_regex": countPattern(/\.replace\(\/\\x1b\\\[/g),
+
+  // spawn surface
+  "spawn.sites_async":       spawnAnalysis.totals.spawn_sites,
+  "spawn.sites_sync":        spawnAnalysis.totals.spawnSync_sites,
+  "spawn.sites_total":       spawnAnalysis.totals.spawn_sites + spawnAnalysis.totals.spawnSync_sites,
+  "spawn.options_available": SPAWN_OPTION_KEYS.length,
+  "spawn.options_used":      spawnAnalysis.totals.options_used,
+  "spawn.members_available": SUBPROCESS_MEMBERS.length,
+  "spawn.members_used":      spawnAnalysis.totals.members_used,
+  "spawn.sync_members_available": SYNC_SUBPROCESS_MEMBERS.length,
+
+  // signals
+  "signals.available":       SIGNALS.length,
+  "signals.used":            signalAnalysis.total_signals_used,
+  "signals.sites":           signalAnalysis.sites.length,
+
+  // terminal (PTY)
+  "terminal.options_available": TERMINAL_OPTIONS_KEYS.length,
+  "terminal.options_used":      terminalAnalysis.options_used,
+  "terminal.members_available": TERMINAL_MEMBERS.length,
+  "terminal.members_used":      terminalAnalysis.members_used,
+
+  // resource usage
+  "resource_usage.call_sites":    resourceUsageAnalysis.call_sites,
+  "resource_usage.fields_available": RESOURCE_USAGE_FIELDS.length,
+  "resource_usage.fields_used":     resourceUsageAnalysis.fields_used,
+
+  // per-signal context counts
+  ...Object.fromEntries(
+    Object.entries(signalAnalysis.contexts).map(([ctx, n]) => [`signals.ctx.${ctx}`, n])
+  ),
+
+  // per-api call counts
+  ...Object.fromEntries(results.map((r) => [`api.${r.api}.calls`, r.calls])),
+};
+
+// ── Delta: compare against previous snapshot ────────────────────────
+
+interface DeltaEntry {
+  metric: string;
+  previous: number;
+  current: number;
+  delta: number;
+  changed: boolean;
+}
+
+function computeDelta(current: Record<string, number>, previous: Record<string, number> | null): DeltaEntry[] {
+  if (!previous) return [];
+
+  const allKeys = new Set([...Object.keys(current), ...Object.keys(previous)]);
+  const entries: DeltaEntry[] = [];
+
+  for (const key of [...allKeys].sort()) {
+    const cur = current[key] ?? 0;
+    const prev = previous[key] ?? 0;
+    entries.push({
+      metric: key,
+      previous: prev,
+      current: cur,
+      delta: cur - prev,
+      changed: cur !== prev,
+    });
+  }
+
+  return entries;
+}
+
+const previousMetrics: Record<string, number> | null = previousSnapshot?.metrics ?? null;
+const deltaEntries = computeDelta(metrics, previousMetrics);
+const changedEntries = deltaEntries.filter((e) => e.changed);
+
+// ── Coverage percentages ────────────────────────────────────────────
+
+function pct(used: number, available: number): string {
+  return available > 0 ? `${((used / available) * 100).toFixed(1)}%` : "n/a";
+}
+
+const coverage = {
+  runtime_apis:       pct(results.length, availableApis.length),
+  spawn_options:      pct(spawnAnalysis.totals.options_used, SPAWN_OPTION_KEYS.length),
+  spawn_members:      pct(spawnAnalysis.totals.members_used, SUBPROCESS_MEMBERS.length),
+  signals:            pct(signalAnalysis.total_signals_used, SIGNALS.length),
+  terminal_options:   pct(terminalAnalysis.options_used, TERMINAL_OPTIONS_KEYS.length),
+  terminal_members:   pct(terminalAnalysis.members_used, TERMINAL_MEMBERS.length),
+  resource_usage:     pct(resourceUsageAnalysis.fields_used, RESOURCE_USAGE_FIELDS.length),
+};
+
+// ── Output ──────────────────────────────────────────────────────────
 
 const snapshot = {
   generated: new Date().toISOString(),
+  previous_generated: previousSnapshot?.generated ?? null,
   file: "scan.ts",
-  fileSizeBytes: new TextEncoder().encode(source).byteLength,
-  fileLines: lines.length,
   runtime: {
     name: "bun",
     version: Bun.version,
     revision: Bun.revision,
     platform: `${process.platform} ${process.arch}`,
-    available_apis: availableApis.length,
-    used_apis: results.length,
-    coverage: `${((results.length / availableApis.length) * 100).toFixed(1)}%`,
+  },
+  metrics,
+  delta: {
+    has_baseline: previousMetrics !== null,
+    total_metrics: deltaEntries.length,
+    changed_count: changedEntries.length,
+    unchanged_count: deltaEntries.length - changedEntries.length,
+    changes: changedEntries,
+  },
+  coverage,
+  summary: {
+    surface_table: [
+      { surface: "Bun Runtime APIs",   used: results.length,                    available: availableApis.length,            coverage: coverage.runtime_apis },
+      { surface: "API Call Sites",      used: totalCalls,                        available: null,                            coverage: null },
+      { surface: "Spawn Options",       used: spawnAnalysis.totals.options_used, available: SPAWN_OPTION_KEYS.length,        coverage: coverage.spawn_options },
+      { surface: "Subprocess Members",  used: spawnAnalysis.totals.members_used, available: SUBPROCESS_MEMBERS.length,       coverage: coverage.spawn_members },
+      { surface: "Spawn Sites (async)", used: spawnAnalysis.totals.spawn_sites,  available: null,                            coverage: null },
+      { surface: "Spawn Sites (sync)",  used: spawnAnalysis.totals.spawnSync_sites, available: null,                         coverage: null },
+      { surface: "Signals",             used: signalAnalysis.total_signals_used, available: SIGNALS.length,                  coverage: coverage.signals },
+      { surface: "Signal Sites",        used: signalAnalysis.sites.length,       available: null,                            coverage: null },
+      { surface: "Terminal Options",    used: terminalAnalysis.options_used,      available: TERMINAL_OPTIONS_KEYS.length,    coverage: coverage.terminal_options },
+      { surface: "Terminal Members",    used: terminalAnalysis.members_used,      available: TERMINAL_MEMBERS.length,         coverage: coverage.terminal_members },
+      { surface: "ResourceUsage Calls", used: resourceUsageAnalysis.call_sites,  available: null,                            coverage: null },
+      { surface: "ResourceUsage Fields",used: resourceUsageAnalysis.fields_used, available: RESOURCE_USAGE_FIELDS.length,    coverage: coverage.resource_usage },
+      { surface: "Unicode: full",       used: unicodeCounts.full,                available: null,                            coverage: null },
+      { surface: "Unicode: passthrough",used: unicodeCounts.passthrough,         available: null,                            coverage: null },
+      { surface: "Unicode: binary",     used: unicodeCounts.binary,              available: null,                            coverage: null },
+      { surface: "Unicode: n/a",        used: unicodeCounts["n/a"],              available: null,                            coverage: null },
+      { surface: "Legacy Patterns",     used: metrics["legacy.response_wrapper"] + metrics["legacy.url_pathname"] + metrics["legacy.strip_ansi_regex"], available: null, coverage: null },
+    ],
+    min_bun_version: "1.0.0",
+    file_size_bytes: metrics["file.size_bytes"],
+    file_lines: metrics["file.lines"],
   },
   apis: results,
   spawn: {
@@ -516,14 +672,9 @@ const snapshot = {
     sub_fields: resourceUsageAnalysis.sub_fields,
     sites: resourceUsageAnalysis.sites,
   },
-  summary: {
-    unique_apis: results.length,
-    total_call_sites: totalCalls,
-    unicode: unicodeCounts,
-    min_bun_version: "1.0.0",
-    legacy_patterns: legacyPatterns,
-  },
   unused_bun_apis: unusedApis,
 };
 
-console.log(JSON.stringify(snapshot, null, 2));
+const output = JSON.stringify(snapshot, null, 2);
+await Bun.write(SNAPSHOT_PATH, output + "\n");
+console.log(output);

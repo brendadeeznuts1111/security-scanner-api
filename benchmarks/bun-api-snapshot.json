@@ -1,16 +1,196 @@
 {
-  "generated": "2026-02-03T14:25:47.074Z",
+  "generated": "2026-02-03T14:31:10.743Z",
+  "previous_generated": "2026-02-03T14:30:43.926Z",
   "file": "scan.ts",
-  "fileSizeBytes": 198029,
-  "fileLines": 4360,
   "runtime": {
     "name": "bun",
     "version": "1.3.9",
     "revision": "eba4da23e69977dee763e296779d913e09e73251",
-    "platform": "darwin arm64",
-    "available_apis": 104,
-    "used_apis": 23,
-    "coverage": "22.1%"
+    "platform": "darwin arm64"
+  },
+  "metrics": {
+    "file.size_bytes": 198029,
+    "file.lines": 4360,
+    "runtime.available_apis": 104,
+    "runtime.used_apis": 23,
+    "apis.unique": 23,
+    "apis.total_call_sites": 125,
+    "unicode.full": 12,
+    "unicode.passthrough": 4,
+    "unicode.binary": 1,
+    "unicode.n_a": 6,
+    "legacy.response_wrapper": 0,
+    "legacy.url_pathname": 0,
+    "legacy.strip_ansi_regex": 0,
+    "spawn.sites_async": 15,
+    "spawn.sites_sync": 1,
+    "spawn.sites_total": 16,
+    "spawn.options_available": 17,
+    "spawn.options_used": 5,
+    "spawn.members_available": 16,
+    "spawn.members_used": 4,
+    "spawn.sync_members_available": 8,
+    "signals.available": 37,
+    "signals.used": 2,
+    "signals.sites": 6,
+    "terminal.options_available": 6,
+    "terminal.options_used": 0,
+    "terminal.members_available": 6,
+    "terminal.members_used": 0,
+    "resource_usage.call_sites": 0,
+    "resource_usage.fields_available": 8,
+    "resource_usage.fields_used": 0,
+    "signals.ctx.process.removeListener": 1,
+    "signals.ctx.process.on": 3,
+    "signals.ctx.process.off": 2,
+    "api.Bun.file.calls": 31,
+    "api.Bun.spawn.calls": 18,
+    "api.Bun.write.calls": 17,
+    "api.Bun.env.calls": 14,
+    "api.proc.stderr.text().calls": 9,
+    "api.Bun.nanoseconds.calls": 6,
+    "api.proc.stdout.text().calls": 6,
+    "api.Bun.version.calls": 3,
+    "api.Bun.inspect.table.calls": 3,
+    "api.Bun.stringWidth.calls": 2,
+    "api.Bun.semver.order.calls": 2,
+    "api.Bun.hash.*.calls": 2,
+    "api.import.meta.dir.calls": 2,
+    "api.Bun.argv.calls": 1,
+    "api.Bun.semver.satisfies.calls": 1,
+    "api.Bun.stripANSI.calls": 1,
+    "api.Bun.revision.calls": 1,
+    "api.Bun.spawnSync.calls": 1,
+    "api.Bun.fileURLToPath.calls": 1,
+    "api.Bun.Glob.calls": 1,
+    "api.Bun.openInEditor.calls": 1,
+    "api.import.meta.url.calls": 1,
+    "api.import.meta.main.calls": 1
+  },
+  "delta": {
+    "has_baseline": true,
+    "total_metrics": 57,
+    "changed_count": 0,
+    "unchanged_count": 57,
+    "changes": []
+  },
+  "coverage": {
+    "runtime_apis": "22.1%",
+    "spawn_options": "29.4%",
+    "spawn_members": "25.0%",
+    "signals": "5.4%",
+    "terminal_options": "0.0%",
+    "terminal_members": "0.0%",
+    "resource_usage": "0.0%"
+  },
+  "summary": {
+    "surface_table": [
+      {
+        "surface": "Bun Runtime APIs",
+        "used": 23,
+        "available": 104,
+        "coverage": "22.1%"
+      },
+      {
+        "surface": "API Call Sites",
+        "used": 125,
+        "available": null,
+        "coverage": null
+      },
+      {
+        "surface": "Spawn Options",
+        "used": 5,
+        "available": 17,
+        "coverage": "29.4%"
+      },
+      {
+        "surface": "Subprocess Members",
+        "used": 4,
+        "available": 16,
+        "coverage": "25.0%"
+      },
+      {
+        "surface": "Spawn Sites (async)",
+        "used": 15,
+        "available": null,
+        "coverage": null
+      },
+      {
+        "surface": "Spawn Sites (sync)",
+        "used": 1,
+        "available": null,
+        "coverage": null
+      },
+      {
+        "surface": "Signals",
+        "used": 2,
+        "available": 37,
+        "coverage": "5.4%"
+      },
+      {
+        "surface": "Signal Sites",
+        "used": 6,
+        "available": null,
+        "coverage": null
+      },
+      {
+        "surface": "Terminal Options",
+        "used": 0,
+        "available": 6,
+        "coverage": "0.0%"
+      },
+      {
+        "surface": "Terminal Members",
+        "used": 0,
+        "available": 6,
+        "coverage": "0.0%"
+      },
+      {
+        "surface": "ResourceUsage Calls",
+        "used": 0,
+        "available": null,
+        "coverage": null
+      },
+      {
+        "surface": "ResourceUsage Fields",
+        "used": 0,
+        "available": 8,
+        "coverage": "0.0%"
+      },
+      {
+        "surface": "Unicode: full",
+        "used": 12,
+        "available": null,
+        "coverage": null
+      },
+      {
+        "surface": "Unicode: passthrough",
+        "used": 4,
+        "available": null,
+        "coverage": null
+      },
+      {
+        "surface": "Unicode: binary",
+        "used": 1,
+        "available": null,
+        "coverage": null
+      },
+      {
+        "surface": "Unicode: n/a",
+        "used": 6,
+        "available": null,
+        "coverage": null
+      },
+      {
+        "surface": "Legacy Patterns",
+        "used": 0,
+        "available": null,
+        "coverage": null
+      }
+    ],
+    "min_bun_version": "1.0.0",
+    "file_size_bytes": 198029,
+    "file_lines": 4360
   },
   "apis": [
     {
@@ -1124,22 +1304,6 @@
       ]
     },
     "sites": []
-  },
-  "summary": {
-    "unique_apis": 23,
-    "total_call_sites": 125,
-    "unicode": {
-      "full": 12,
-      "passthrough": 4,
-      "binary": 1,
-      "n/a": 6
-    },
-    "min_bun_version": "1.0.0",
-    "legacy_patterns": {
-      "new Response(proc.*)": 0,
-      "URL(...).pathname (file)": 0,
-      "manual stripAnsi regex": 0
-    }
   },
   "unused_bun_apis": [
     "$",
