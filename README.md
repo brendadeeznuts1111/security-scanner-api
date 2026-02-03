@@ -99,6 +99,30 @@ security-scanner = "@acme/bun"
 
 See [Bun Security Scanner API docs](https://bun.com/docs/install/security-scanner-api) for the full `Bun.Security.Scanner` interface.
 
+### Error handling
+
+If a scanner's `scan` function throws an error, Bun handles it gracefully but **cancels the installation** as a defensive precaution. When fetching threat feeds over the network, use schema validation (e.g., Zod) to ensure data integrity — invalid responses should fail immediately rather than silently returning empty advisories.
+
+### Validation
+
+```typescript
+import {z} from 'zod';
+
+const ThreatFeedItemSchema = z.object({
+	package: z.string(),
+	version: z.string(),
+	url: z.string().nullable(),
+	description: z.string().nullable(),
+	categories: z.array(z.enum(['backdoor', 'botnet', 'malware', 'protestware', 'adware'])),
+});
+```
+
+### Useful Bun APIs
+
+- [`Bun.semver.satisfies()`](https://bun.com/docs/api/semver) — check if package versions match vulnerability ranges, no external dependencies needed
+- [`Bun.hash`](https://bun.com/docs/api/hashing#bun-hash) — fast hashing for package integrity checks
+- [`Bun.file`](https://bun.com/docs/api/file-io) — efficient file I/O for reading local threat databases
+
 ## What the audit covers
 
 - **Metadata**: author, license, description, engines.bun, repository
