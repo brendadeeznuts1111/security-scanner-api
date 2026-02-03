@@ -164,10 +164,12 @@ const ThreatFeedItemSchema = z.object({
 ## What the audit covers
 
 - **Metadata**: author, license, description, engines.bun, repository
-- **Lock & config**: lockfile type, configVersion, linker strategy, frozenLockfile
-- **bunfig [install]**: exact, production, backend, minimumReleaseAge, saveTextLockfile, peer install, cache, security scanner
+- **Lock & config**: lockfile type, configVersion, linker strategy, frozenLockfile, lockfile.save, lockfile.print
+- **bunfig [install]**: auto, frozenLockfile, dryRun, production, exact, optional, dev, peer, linker, backend, minimumReleaseAge (+ excludes), saveTextLockfile, linkWorkspacePackages, cache (disable, dir, disableManifest), globalDir, globalBinDir, ca/cafile, noVerify, verbose, silent, concurrentScripts, networkConcurrency, targetCpu, targetOs, install.security.scanner, trustedDependencies
+- **bunfig [run]**: shell (`"system"` | `"bun"`), bun (node → bun alias), silent
+- **bunfig [debug]**: editor (Bun.openInEditor)
 - **Registries**: registry consistency, scoped registries, auth readiness, .npmrc
-- **Dependencies**: overrides/resolutions, peerDependencies, native deps, trustedDependencies
+- **Dependencies**: overrides/resolutions, peerDependencies (+ peerDependenciesMeta optional), native deps, trustedDependencies
 - **Env vars**: `DO_NOT_TRACK`, `DISABLE_BUN_ANALYTICS`, `BUN_CONFIG_DNS_TIME_TO_LIVE_SECONDS`, `TZ`, and more
 - **Cross-reference**: lockHash-based drift detection, snapshot comparison with delta reporting
 - **Per-project**: timezone, DNS TTL, workspace membership, git repo normalization
@@ -188,7 +190,7 @@ The lockHash skip optimization reuses cached entries for unchanged projects when
 
 | File | Purpose |
 |------|---------|
-| `scan.ts` | Main scanner (~3500 lines) — CLI, scanning, audit, fix commands |
+| `scan.ts` | Main scanner (~3700 lines) — CLI, scanning, audit, fix commands |
 | `scan-columns.ts` | Column definitions for table output |
 | `scan-worker.ts` | IPC worker for parallel project scanning |
 | `scan.test.ts` | 93 tests covering utilities, Bun.semver, Zod validation, Bun.hash, TZ, DNS TTL, and subprocess verification |
