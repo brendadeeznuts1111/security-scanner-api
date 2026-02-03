@@ -1,6 +1,6 @@
 {
-  "generated": "2026-02-03T15:31:19.173Z",
-  "previous_generated": "2026-02-03T15:31:01.793Z",
+  "generated": "2026-02-03T15:45:20.508Z",
+  "previous_generated": "2026-02-03T15:45:12.179Z",
   "file": "scan.ts",
   "runtime": {
     "name": "bun",
@@ -8,9 +8,23 @@
     "revision": "eba4da23e69977dee763e296779d913e09e73251",
     "platform": "darwin arm64"
   },
+  "member": {
+    "key": "nolarose",
+    "name": "Nola Rose",
+    "timezone": "America/Chicago",
+    "notes": "M3 Max, performance mode",
+    "machine": {
+      "os": "darwin",
+      "arch": "arm64",
+      "cpu": "Apple M4",
+      "cores": 10,
+      "memory_gb": 16,
+      "bun_version": "1.3.9"
+    }
+  },
   "metrics": {
-    "file.size_bytes": 200531,
-    "file.lines": 4408,
+    "file.size_bytes": 201015,
+    "file.lines": 4416,
     "runtime.available_apis": 104,
     "runtime.used_apis": 23,
     "apis.unique": 23,
@@ -105,17 +119,9 @@
   "delta": {
     "has_baseline": true,
     "total_metrics": 92,
-    "changed_count": 1,
-    "unchanged_count": 91,
-    "changes": [
-      {
-        "metric": "file.size_bytes",
-        "previous": 200468,
-        "current": 200531,
-        "delta": 63,
-        "changed": true
-      }
-    ]
+    "changed_count": 0,
+    "unchanged_count": 92,
+    "changes": []
   },
   "coverage": {
     "runtime_apis": "22.1%",
@@ -263,8 +269,8 @@
       }
     ],
     "min_bun_version": "1.0.0",
-    "file_size_bytes": 200531,
-    "file_lines": 4408
+    "file_size_bytes": 201015,
+    "file_lines": 4416
   },
   "api_categories": {
     "Shell & Process": {
@@ -741,37 +747,37 @@
       "doc": "https://bun.sh/docs/api/file-io#reading-files-bun-file",
       "since": "≤1.0.0",
       "lines": [
-        863,
-        921,
-        1028,
-        1128,
-        1134,
-        1144,
-        1145,
-        1150,
-        1160,
-        1166,
-        1308,
-        1836,
-        2046,
-        2249,
-        2455,
-        2551,
-        2592,
-        2627,
-        2644,
-        2660,
-        2689,
-        2742,
-        2837,
-        2892,
-        2912,
-        2968,
-        3047,
-        3071,
-        3735,
-        4132,
-        4223
+        871,
+        929,
+        1036,
+        1136,
+        1142,
+        1152,
+        1153,
+        1158,
+        1168,
+        1174,
+        1316,
+        1844,
+        2054,
+        2257,
+        2463,
+        2559,
+        2600,
+        2635,
+        2652,
+        2668,
+        2697,
+        2750,
+        2845,
+        2900,
+        2920,
+        2976,
+        3055,
+        3079,
+        3743,
+        4140,
+        4231
       ],
       "calls": 31,
       "unicode": "full",
@@ -783,23 +789,23 @@
       "since": "≤1.0.0",
       "lines": [
         657,
-        677,
-        681,
-        697,
-        716,
-        1355,
-        1381,
-        1390,
-        1419,
-        2506,
-        3115,
-        3229,
-        3356,
-        3501,
-        3529,
-        3582,
-        3627,
-        3639
+        685,
+        689,
+        705,
+        724,
+        1363,
+        1389,
+        1398,
+        1427,
+        2514,
+        3123,
+        3237,
+        3364,
+        3509,
+        3537,
+        3590,
+        3635,
+        3647
       ],
       "calls": 18,
       "unicode": "passthrough",
@@ -810,23 +816,23 @@
       "doc": "https://bun.sh/docs/api/file-io#writing-files-bun-write",
       "since": "≤1.0.0",
       "lines": [
-        859,
-        2467,
-        2502,
-        2564,
-        2606,
-        2702,
-        2772,
-        2782,
-        2847,
-        2850,
-        2902,
-        2958,
-        2978,
-        2988,
-        3073,
-        4190,
-        4227
+        867,
+        2475,
+        2510,
+        2572,
+        2614,
+        2710,
+        2780,
+        2790,
+        2855,
+        2858,
+        2910,
+        2966,
+        2986,
+        2996,
+        3081,
+        4198,
+        4235
       ],
       "calls": 17,
       "unicode": "full",
@@ -840,17 +846,17 @@
         76,
         77,
         579,
-        787,
-        810,
-        1317,
-        1495,
-        1790,
-        1993,
-        2246,
-        2247,
-        3758,
-        3883,
-        4393
+        795,
+        818,
+        1325,
+        1503,
+        1798,
+        2001,
+        2254,
+        2255,
+        3766,
+        3891,
+        4401
       ],
       "calls": 14,
       "unicode": "passthrough",
@@ -862,14 +868,14 @@
       "since": "≤1.0.0",
       "lines": [
         662,
-        686,
-        702,
-        2511,
-        3504,
-        3543,
-        3584,
-        3630,
-        3642
+        694,
+        710,
+        2519,
+        3512,
+        3551,
+        3592,
+        3638,
+        3650
       ],
       "calls": 9,
       "unicode": "full",
@@ -880,13 +886,13 @@
       "doc": "https://bun.sh/docs/api/utils#bun-nanoseconds",
       "since": "≤1.0.0",
       "lines": [
-        3874,
         3882,
-        3886,
-        3897,
-        3957,
-        3970,
-        4331
+        3890,
+        3894,
+        3905,
+        3965,
+        3978,
+        4339
       ],
       "calls": 7,
       "unicode": "n/a",
@@ -898,11 +904,11 @@
       "since": "≤1.0.0",
       "lines": [
         667,
-        720,
-        3117,
-        3231,
-        3629,
-        3641
+        728,
+        3125,
+        3239,
+        3637,
+        3649
       ],
       "calls": 6,
       "unicode": "full",
@@ -913,10 +919,10 @@
       "doc": "https://bun.sh/docs/api/utils#bun-inspect-table",
       "since": "1.1.31",
       "lines": [
-        1665,
-        1821,
-        3956,
-        4373
+        1673,
+        1829,
+        3964,
+        4381
       ],
       "calls": 4,
       "unicode": "full",
@@ -928,8 +934,8 @@
       "since": "≤1.0.0",
       "lines": [
         636,
-        2531,
-        4336
+        2539,
+        4344
       ],
       "calls": 3,
       "unicode": "n/a",
@@ -964,8 +970,8 @@
       "doc": "https://bun.sh/docs/api/hashing#bun-hash",
       "since": "≤1.0.0",
       "lines": [
-        1151,
-        1161
+        1159,
+        1169
       ],
       "calls": 2,
       "unicode": "binary",
@@ -976,8 +982,8 @@
       "doc": "https://bun.sh/docs/api/import-meta",
       "since": "≤1.0.0",
       "lines": [
-        842,
-        4394
+        850,
+        4402
       ],
       "calls": 2,
       "unicode": "full",
@@ -1021,7 +1027,7 @@
       "doc": "https://bun.sh/docs/runtime/configuration#revision",
       "since": "≤1.0.0",
       "lines": [
-        4336
+        4344
       ],
       "calls": 1,
       "unicode": "n/a",
@@ -1032,7 +1038,7 @@
       "doc": "https://bun.sh/docs/api/spawn#blocking-api-bun-spawnsync",
       "since": "≤1.0.0",
       "lines": [
-        1112
+        1120
       ],
       "calls": 1,
       "unicode": "passthrough",
@@ -1043,7 +1049,7 @@
       "doc": "https://bun.sh/docs/api/utils#bun-fileurltopath",
       "since": "≤1.0.0",
       "lines": [
-        1350
+        1358
       ],
       "calls": 1,
       "unicode": "full",
@@ -1054,7 +1060,7 @@
       "doc": "https://bun.sh/docs/api/glob",
       "since": "1.0.14",
       "lines": [
-        1467
+        1475
       ],
       "calls": 1,
       "unicode": "full",
@@ -1065,7 +1071,7 @@
       "doc": "https://bun.sh/docs/api/utils#bun-openineditor",
       "since": "≤1.0.0",
       "lines": [
-        2347
+        2355
       ],
       "calls": 1,
       "unicode": "full",
@@ -1076,7 +1082,7 @@
       "doc": "https://bun.sh/docs/api/import-meta",
       "since": "≤1.0.0",
       "lines": [
-        1350
+        1358
       ],
       "calls": 1,
       "unicode": "full",
@@ -1087,7 +1093,7 @@
       "doc": "https://bun.sh/docs/api/import-meta",
       "since": "≤1.0.0",
       "lines": [
-        4402
+        4410
       ],
       "calls": 1,
       "unicode": "n/a",
@@ -1182,7 +1188,7 @@
       },
       "exited": {
         "used": true,
-        "sites": 19
+        "sites": 18
       },
       "exitCode": {
         "used": false,
@@ -1206,7 +1212,7 @@
       },
       "stderr": {
         "used": true,
-        "sites": 12
+        "sites": 11
       },
       "readable": {
         "used": false,
@@ -1252,20 +1258,18 @@
         },
         "subprocessAccess": {
           "exited": [
-            660,
-            684
+            660
           ],
           "stdout": [
             667
           ],
           "stderr": [
-            662,
-            686
+            662
           ]
         }
       },
       {
-        "line": 677,
+        "line": 685,
         "cmd": "security delete-generic-password -s service -a name",
         "sync": false,
         "options": {
@@ -1274,12 +1278,12 @@
         },
         "subprocessAccess": {
           "exited": [
-            680
+            688
           ]
         }
       },
       {
-        "line": 681,
+        "line": 689,
         "cmd": "security add-generic-password -s service -a name -w value -U -j `stored:${new Date().toISOString()}`",
         "sync": false,
         "options": {
@@ -1288,17 +1292,17 @@
         },
         "subprocessAccess": {
           "exited": [
-            684,
-            700
+            692,
+            708
           ],
           "stderr": [
-            686,
-            702
+            694,
+            710
           ]
         }
       },
       {
-        "line": 697,
+        "line": 705,
         "cmd": "security delete-generic-password -s service -a name",
         "sync": false,
         "options": {
@@ -1307,19 +1311,19 @@
         },
         "subprocessAccess": {
           "exited": [
-            700,
-            719
+            708,
+            727
           ],
           "stdout": [
-            720
+            728
           ],
           "stderr": [
-            702
+            710
           ]
         }
       },
       {
-        "line": 716,
+        "line": 724,
         "cmd": "security find-generic-password -s service -a name",
         "sync": false,
         "options": {
@@ -1328,15 +1332,15 @@
         },
         "subprocessAccess": {
           "exited": [
-            719
+            727
           ],
           "stdout": [
-            720
+            728
           ]
         }
       },
       {
-        "line": 1112,
+        "line": 1120,
         "cmd": "git remote get-url origin",
         "sync": true,
         "options": {
@@ -1346,15 +1350,15 @@
         },
         "subprocessAccess": {
           "stdout": [
-            1114
+            1122
           ],
           "success": [
-            1113
+            1121
           ]
         }
       },
       {
-        "line": 1419,
+        "line": 1427,
         "cmd": "bun workerPath",
         "sync": false,
         "options": {
@@ -1364,7 +1368,7 @@
         "subprocessAccess": {}
       },
       {
-        "line": 2506,
+        "line": 2514,
         "cmd": "bun install",
         "sync": false,
         "options": {
@@ -1374,15 +1378,15 @@
         },
         "subprocessAccess": {
           "exited": [
-            2507
+            2515
           ],
           "stderr": [
-            2511
+            2519
           ]
         }
       },
       {
-        "line": 3115,
+        "line": 3123,
         "cmd": "dynamic",
         "sync": false,
         "options": {
@@ -1392,15 +1396,15 @@
         },
         "subprocessAccess": {
           "exited": [
-            3116
+            3124
           ],
           "stdout": [
-            3117
+            3125
           ]
         }
       },
       {
-        "line": 3229,
+        "line": 3237,
         "cmd": "dynamic",
         "sync": false,
         "options": {
@@ -1410,15 +1414,15 @@
         },
         "subprocessAccess": {
           "exited": [
-            3230
+            3238
           ],
           "stdout": [
-            3231
+            3239
           ]
         }
       },
       {
-        "line": 3356,
+        "line": 3364,
         "cmd": "bun outdated",
         "sync": false,
         "options": {
@@ -1428,15 +1432,15 @@
         },
         "subprocessAccess": {
           "exited": [
-            3357
+            3365
           ],
           "stdout": [
-            3358
+            3366
           ]
         }
       },
       {
-        "line": 3501,
+        "line": 3509,
         "cmd": "dynamic",
         "sync": false,
         "options": {
@@ -1446,16 +1450,16 @@
         },
         "subprocessAccess": {
           "exited": [
-            3502,
-            3530
+            3510,
+            3538
           ],
           "stderr": [
-            3504
+            3512
           ]
         }
       },
       {
-        "line": 3529,
+        "line": 3537,
         "cmd": "dynamic",
         "sync": false,
         "options": {
@@ -1465,15 +1469,15 @@
         },
         "subprocessAccess": {
           "exited": [
-            3530
+            3538
           ],
           "stderr": [
-            3543
+            3551
           ]
         }
       },
       {
-        "line": 3582,
+        "line": 3590,
         "cmd": "bun install --frozen-lockfile",
         "sync": false,
         "options": {
@@ -1483,15 +1487,15 @@
         },
         "subprocessAccess": {
           "exited": [
-            3583
+            3591
           ],
           "stderr": [
-            3584
+            3592
           ]
         }
       },
       {
-        "line": 3627,
+        "line": 3635,
         "cmd": "dynamic",
         "sync": false,
         "options": {
@@ -1500,21 +1504,21 @@
         },
         "subprocessAccess": {
           "exited": [
-            3628,
-            3640
+            3636,
+            3648
           ],
           "stdout": [
-            3629,
-            3641
+            3637,
+            3649
           ],
           "stderr": [
-            3630,
-            3642
+            3638,
+            3650
           ]
         }
       },
       {
-        "line": 3639,
+        "line": 3647,
         "cmd": "bun info pkg --json",
         "sync": false,
         "options": {
@@ -1523,13 +1527,13 @@
         },
         "subprocessAccess": {
           "exited": [
-            3640
+            3648
           ],
           "stdout": [
-            3641
+            3649
           ],
           "stderr": [
-            3642
+            3650
           ]
         }
       }
@@ -1697,32 +1701,32 @@
     "sites": [
       {
         "signal": "SIGINT",
-        "line": 1368,
+        "line": 1376,
         "context": "process.removeListener"
       },
       {
         "signal": "SIGINT",
-        "line": 1443,
+        "line": 1451,
         "context": "process.on"
       },
       {
         "signal": "SIGINT",
-        "line": 3451,
+        "line": 3459,
         "context": "process.on"
       },
       {
         "signal": "SIGTERM",
-        "line": 3452,
+        "line": 3460,
         "context": "process.on"
       },
       {
         "signal": "SIGINT",
-        "line": 3550,
+        "line": 3558,
         "context": "process.off"
       },
       {
         "signal": "SIGTERM",
-        "line": 3551,
+        "line": 3559,
         "context": "process.off"
       }
     ]

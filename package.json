@@ -15,8 +15,11 @@
     "audit": "bun run scan.ts --audit",
     "test:ci": "bun test --no-env-file scan.test.ts",
     "scan:ci": "bun run --no-env-file scan.ts",
-    "profile:cpu": "bun run --smol --cpu-prof scan.ts --audit",
-    "profile:heap": "bun run --smol --heap-prof scan.ts --audit"
+    "bench:init": "bun run benchmarks/team-init.ts",
+    "profile:cpu": "bun run --smol --cpu-prof --cpu-prof-dir .audit --cpu-prof-name cpu-profile scan.ts --audit",
+    "profile:cpu:md": "bun run --smol --cpu-prof --cpu-prof-md --cpu-prof-dir .audit --cpu-prof-name cpu-profile scan.ts --audit",
+    "profile:heap": "bun run --smol --heap-prof --heap-prof-dir .audit --heap-prof-name heap-profile scan.ts --audit",
+    "profile:heap:md": "bun run --smol --heap-prof-md --heap-prof-dir .audit --heap-prof-name heap-profile scan.ts --audit"
   },
   "keywords": [
     "bun",

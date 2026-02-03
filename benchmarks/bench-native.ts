@@ -216,6 +216,34 @@ const URL_CASES = {
   report("unicode", old, neo);
 }
 
+// ── Load team member profile ─────────────────────────────────────────
+
+interface MemberProfile {
+  name: string;
+  timezone: string;
+  notes: string;
+  machine: { os: string; arch: string; cpu: string; cores: number; memory_gb: number; bun_version: string };
+}
+interface BenchRC { team: Record<string, MemberProfile> }
+
+let memberKey: string | null = null;
+let memberProfile: MemberProfile | null = null;
+
+{
+  const benchrcPath = `${import.meta.dir}/../.benchrc.json`;
+  const benchrcFile = Bun.file(benchrcPath);
+  if (await benchrcFile.exists()) {
+    try {
+      const rc = (await benchrcFile.json()) as BenchRC;
+      const user = Bun.env.USER ?? "";
+      if (rc.team?.[user]) {
+        memberKey = user;
+        memberProfile = rc.team[user];
+      }
+    } catch {}
+  }
+}
+
 // ── Summary ─────────────────────────────────────────────────────────
 
 console.log("\n═══ SUMMARY ═══");
@@ -224,3 +252,13 @@ console.log(`Warmup: ${WARMUP}`);
 console.log(`Bun version: ${Bun.version}`);
 console.log(`Platform: ${process.platform} ${process.arch}`);
 console.log(`Timestamp: ${new Date().toISOString()}`);
+console.log(`Timezone: ${Intl.DateTimeFormat().resolvedOptions().timeZone}`);
+
+if (memberProfile) {
+  console.log(`Member: ${memberKey} (${memberProfile.name})`);
+  console.log(`Machine: ${memberProfile.machine.cpu}, ${memberProfile.machine.cores} cores, ${memberProfile.machine.memory_gb} GB`);
+  console.log(`Timezone: ${memberProfile.timezone}`);
+  console.log(`Notes: ${memberProfile.notes || "(none)"}`);
+} else {
+  console.log(`Member: (unknown — run: bun run benchmarks/team-init.ts)`);
+}

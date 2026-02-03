@@ -19,8 +19,36 @@ const FLAG_QUIET = flags.has("--quiet");
 
 const SCAN_PATH = `${import.meta.dir}/../scan.ts`;
 const SNAPSHOT_PATH = `${import.meta.dir}/bun-api-snapshot.json`;
+const BENCHRC_PATH = `${import.meta.dir}/../.benchrc.json`;
 const source = await Bun.file(SCAN_PATH).text();
 const lines = source.split("\n");
+
+// ── Load team member profile ────────────────────────────────────────
+
+interface MemberProfile {
+  name: string;
+  timezone: string;
+  notes: string;
+  machine: { os: string; arch: string; cpu: string; cores: number; memory_gb: number; bun_version: string };
+}
+interface BenchRC { team: Record<string, MemberProfile> }
+
+let memberKey: string | null = null;
+let memberProfile: MemberProfile | null = null;
+
+{
+  const benchrcFile = Bun.file(BENCHRC_PATH);
+  if (await benchrcFile.exists()) {
+    try {
+      const rc = (await benchrcFile.json()) as BenchRC;
+      const user = Bun.env.USER ?? "";
+      if (rc.team?.[user]) {
+        memberKey = user;
+        memberProfile = rc.team[user];
+      }
+    } catch {}
+  }
+}
 
 // ── Load previous snapshot as baseline for delta tracking ────────────
 
@@ -768,6 +796,9 @@ const snapshot = {
     revision: Bun.revision,
     platform: `${process.platform} ${process.arch}`,
   },
+  member: memberProfile
+    ? { key: memberKey, name: memberProfile.name, timezone: memberProfile.timezone, notes: memberProfile.notes, machine: memberProfile.machine }
+    : null,
   metrics,
   delta: {
     has_baseline: previousMetrics !== null,
@@ -959,6 +990,11 @@ const ts = new Date().toISOString().replace("T", " ").slice(0, 19);
 console.log();
 console.log(`  ${B}${o(S.bCyan)}BUN API SURFACE AUDIT${R}  ${D}${metricsCount} metrics · ${ts}${R}`);
 console.log(`  ${D}scan.ts · ${lines.length} lines · ${(metrics["file.size_bytes"] / 1024).toFixed(1)} KB · Bun ${Bun.version} · ${process.platform} ${process.arch}${R}`);
+if (memberProfile) {
+  console.log(`  ${D}Member: ${memberKey} (${memberProfile.name}) · ${memberProfile.machine.cpu}, ${memberProfile.machine.cores} cores, ${memberProfile.machine.memory_gb} GB${R}`);
+} else {
+  console.log(`  ${D}Member: (unknown — run: bun run benchmarks/team-init.ts)${R}`);
+}
 console.log();
 console.log(rule("━"));
 

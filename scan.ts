@@ -7,6 +7,18 @@ import { dns } from "bun";
 import { z } from "zod";
 import { SCANNER_COLUMNS } from "./scan-columns";
 
+// ── Broken-pipe guard ─────────────────────────────────────────────────
+// When piped to a command that closes early (e.g., `scan | head`, `scan | true`),
+// writes to stdout/stderr raise EPIPE. Exit cleanly instead of crashing.
+function handlePipeError(err: NodeJS.ErrnoException): void {
+  if (err.code === "EPIPE" || err.code === "ERR_STREAM_DESTROYED") {
+    process.exit(0);
+  }
+  throw err;
+}
+process.stdout.on("error", handlePipeError);
+process.stderr.on("error", handlePipeError);
+
 // ── CLI flags ──────────────────────────────────────────────────────────
 const { values: flags, positionals } = parseArgs({
   allowPositionals: true,
