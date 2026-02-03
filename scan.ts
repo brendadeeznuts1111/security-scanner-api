@@ -339,7 +339,7 @@ export function semverCompare(a: string, b: string): 0 | 1 | -1 {
 }
 
 // ── Shared outdated parsing ───────────────────────────────────────────
-const stripAnsi = (s: string) => s.replace(/\x1b\[[0-9;]*m/g, "");
+const stripAnsi = Bun.stripANSI;
 
 type OutdatedPkg = { name: string; depType: string; current: string; update: string; latest: string; workspace?: string };
 
@@ -615,12 +615,12 @@ async function securityGet(name: string, service = KEYCHAIN_SERVICE): Promise<Ke
     });
     const exitCode = await proc.exited;
     if (exitCode !== 0) {
-      const stderr = await new Response(proc.stderr).text();
+      const stderr = await proc.stderr.text();
       if (stderr.includes("could not be found") || stderr.includes("SecKeychainSearchCopyNext"))
         return { ok: true, value: null };                       // item simply doesn't exist
       return classifyKeychainError(new Error(stderr.trim()));
     }
-    const value = (await new Response(proc.stdout).text()).replace(/\n$/, "");
+    const value = (await proc.stdout.text()).replace(/\n$/, "");
     return { ok: true, value: value || null };
   } catch (err) {
     return classifyKeychainError(err);
@@ -639,7 +639,7 @@ async function securitySet(name: string, value: string, service = KEYCHAIN_SERVI
     });
     const exitCode = await proc.exited;
     if (exitCode !== 0) {
-      const stderr = (await new Response(proc.stderr).text()).trim();
+      const stderr = (await proc.stderr.text()).trim();
       return classifyKeychainError(new Error(stderr || `security add-generic-password exited ${exitCode}`));
     }
     return { ok: true, value: undefined };
@@ -655,7 +655,7 @@ async function securityDelete(name: string, service = KEYCHAIN_SERVICE): Promise
     });
     const exitCode = await proc.exited;
     if (exitCode !== 0) {
-      const stderr = await new Response(proc.stderr).text();
+      const stderr = await proc.stderr.text();
       if (stderr.includes("could not be found") || stderr.includes("SecKeychainSearchCopyNext"))
         return { ok: true, value: false };
       return classifyKeychainError(new Error(stderr.trim()));
@@ -1272,7 +1272,7 @@ type IPCFromWorker = z.infer<typeof IPCFromWorkerSchema>;
 async function scanProjectsViaIPC(dirs: string[]): Promise<ProjectInfo[]> {
   const cpuCount = availableParallelism();
   const poolSize = Math.min(cpuCount, dirs.length, 8);
-  const workerPath = new URL("./scan-worker.ts", import.meta.url).pathname;
+  const workerPath = Bun.fileURLToPath(new URL("./scan-worker.ts", import.meta.url));
   const results = new Map<number, ProjectInfo>();
   let nextIdx = 0;
 
