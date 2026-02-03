@@ -54,6 +54,9 @@ const { values: flags, positionals } = parseArgs({
     "no-auto-snapshot": { type: "boolean", default: false },
     tz:           { type: "string" },
     "fix-dns-ttl": { type: "boolean", default: false },
+    "store-token":  { type: "string" },
+    "delete-token": { type: "string" },
+    "list-tokens":  { type: "boolean", default: false },
   },
   strict: true,
 });
@@ -150,20 +153,81 @@ export const PackageJsonSchema = z.object({
   publishConfig: z.object({ registry: z.string().optional() }).optional(),
 }).passthrough();
 
-// ── Bun info response schema (minimal — covers fields read by infoPackage) ─
-const BunInfoResponseSchema = z.object({
+// ── npm packument schema (bun info <pkg> --json response) ─────────────
+// Covers the standard npm registry packument fields returned by `bun info`.
+// See: https://bun.com/docs/pm/cli/install#npm-registry-metadata
+
+const NpmPersonSchema = z.union([
+  z.string(),
+  z.object({ name: z.string().optional(), email: z.string().optional(), url: z.string().optional() }),
+]);
+
+const NpmDistSchema = z.object({
+  shasum: z.string().optional(),
+  tarball: z.string().optional(),
+  fileCount: z.number().optional(),
+  integrity: z.string().optional(),
+  unpackedSize: z.number().optional(),
+  signatures: z.array(z.object({ sig: z.string(), keyid: z.string() })).optional(),
+  attestations: z.object({
+    url: z.string(),
+    provenance: z.object({ predicateType: z.string() }).optional(),
+  }).optional(),
+});
+
+export const BunInfoResponseSchema = z.object({
+  // ── identity ──
   name: z.string().optional(),
   version: z.string().optional(),
   description: z.string().optional(),
+  keywords: z.array(z.string()).optional(),
   license: z.string().optional(),
   homepage: z.string().optional(),
-  author: z.union([z.string(), z.object({ name: z.string().optional(), email: z.string().optional() })]).optional(),
-  repository: z.union([z.string(), z.object({ url: z.string() })]).optional(),
+  bugs: z.union([z.string(), z.object({ url: z.string().optional() })]).optional(),
+  // ── people ──
+  author: NpmPersonSchema.optional(),
+  contributors: z.array(NpmPersonSchema).optional(),
+  maintainers: z.array(NpmPersonSchema).optional(),
+  // ── repository ──
+  repository: z.union([
+    z.string(),
+    z.object({ type: z.string().optional(), url: z.string(), directory: z.string().optional() }),
+  ]).optional(),
+  // ── dependencies ──
   dependencies: z.record(z.string(), z.string()).optional(),
   devDependencies: z.record(z.string(), z.string()).optional(),
+  peerDependencies: z.record(z.string(), z.string()).optional(),
+  optionalDependencies: z.record(z.string(), z.string()).optional(),
+  // ── distribution ──
+  dist: NpmDistSchema.optional(),
   "dist-tags": z.record(z.string(), z.string()).optional(),
-  maintainers: z.array(z.union([z.string(), z.object({ name: z.string().optional(), email: z.string().optional() })])).optional(),
+  versions: z.array(z.string()).optional(),
+  // ── timing (full packument only — not in bun info single-version response) ──
+  time: z.record(z.string(), z.string()).optional(),
+  // ── entry points ──
+  main: z.string().optional(),
+  module: z.string().optional(),
+  types: z.string().optional(),
+  type: z.string().optional(),
+  exports: z.any().optional(),
+  bin: z.union([z.string(), z.record(z.string(), z.string())]).optional(),
+  // ── package metadata ──
+  engines: z.record(z.string(), z.string()).optional(),
+  scripts: z.record(z.string(), z.string()).optional(),
+  funding: z.any().optional(),
+  sideEffects: z.boolean().optional(),
+  directories: z.record(z.string(), z.string()).optional(),
+  // ── npm internal ──
+  _id: z.string().optional(),
+  _npmUser: NpmPersonSchema.optional(),
+  _npmVersion: z.string().optional(),
+  _nodeVersion: z.string().optional(),
+  _hasShrinkwrap: z.boolean().optional(),
+  _npmOperationalInternal: z.object({ host: z.string().optional(), tmp: z.string().optional() }).passthrough().optional(),
+  gitHead: z.string().optional(),
 }).passthrough();
+
+export type NpmPackument = z.infer<typeof BunInfoResponseSchema>;
 
 // ── Feature flag helpers ──────────────────────────────────────────────
 
@@ -348,8 +412,8 @@ export const ProjectInfoSchema = z.object({
   networkConcurrency: z.number(),
   targetCpu: z.string(),
   targetOs: z.string(),
-  overrides: z.array(z.string()),
-  resolutions: z.array(z.string()),
+  overrides: z.record(z.string(), z.string()),
+  resolutions: z.record(z.string(), z.string()),
   trustedDeps: z.array(z.string()),
   repo: z.string(),
   repoSource: z.string(),
@@ -390,6 +454,38 @@ const NOTABLE = new Set([
   "bun-types", "@anthropic-ai/sdk", "openai", "discord.js",
   "@modelcontextprotocol/sdk",
 ]);
+
+// ── Recursive override flattener (npm nested overrides use ">") ──────
+function flattenOverrides(obj: Record<string, unknown>, prefix = ""): Record<string, string> {
+  const result: Record<string, string> = {};
+  for (const [key, value] of Object.entries(obj)) {
+    const fullKey = prefix ? `${prefix}>${key}` : key;
+    if (typeof value === "string") {
+      result[fullKey] = value;
+    } else if (value && typeof value === "object" && !Array.isArray(value)) {
+      Object.assign(result, flattenOverrides(value as Record<string, unknown>, fullKey));
+    } else {
+      result[fullKey] = String(value);
+    }
+  }
+  return result;
+}
+
+// ── Override value risk classification ────────────────────────────────
+const SUSPICIOUS_OVERRIDE_PREFIXES = ["npm:", "git:", "git+", "github:", "file:", "http:", "https:", "link:"];
+
+function classifyOverrideValue(value: string): string | null {
+  const v = value.trim().toLowerCase();
+  for (const prefix of SUSPICIOUS_OVERRIDE_PREFIXES) {
+    if (v.startsWith(prefix)) {
+      if (prefix === "npm:")   return "redirect";
+      if (prefix === "git:" || prefix === "git+" || prefix === "github:") return "git-source";
+      if (prefix === "file:" || prefix === "link:") return "local-path";
+      if (prefix === "http:" || prefix === "https:") return "url";
+    }
+  }
+  return null;
+}
 
 // ── Native dependency detection pattern ───────────────────────────────
 const NATIVE_PATTERN = /napi|prebuild|node-gyp|node-pre-gyp|ffi-napi|binding\.gyp|cmake-js|cargo-cp-artifact/i;
@@ -478,6 +574,151 @@ const BUN_DEFAULT_TRUSTED = new Set([
 ]);
 
 const PROJECTS_ROOT = Bun.env.BUN_PLATFORM_HOME ?? "/Users/nolarose/Projects";
+
+// ── Keychain (Bun.secrets) ────────────────────────────────────────────
+const KEYCHAIN_SERVICE = "bun-scanner";
+const KEYCHAIN_TOKEN_NAMES = ["FW_REGISTRY_TOKEN", "REGISTRY_TOKEN"] as const;
+const _keychainLoadedTokens = new Set<string>();
+
+type KeychainOk<T> = { ok: true; value: T };
+type KeychainErr = { ok: false; code: "NO_API" | "ACCESS_DENIED" | "NOT_FOUND" | "OS_ERROR"; reason: string };
+type KeychainResult<T> = KeychainOk<T> | KeychainErr;
+
+function keychainUnavailableErr(): KeychainErr {
+  const v = typeof Bun !== "undefined" ? Bun.version : "unknown";
+  return {
+    ok: false,
+    code: "NO_API",
+    reason: `Bun.secrets API not available (Bun ${v}; requires a build with keychain support)`,
+  };
+}
+
+function classifyKeychainError(err: unknown): KeychainErr {
+  const msg = err instanceof Error ? err.message : String(err);
+  const lower = msg.toLowerCase();
+  if (lower.includes("denied") || lower.includes("authorization") || lower.includes("permission") || lower.includes("not allowed"))
+    return { ok: false, code: "ACCESS_DENIED", reason: `Keychain access denied: ${msg}` };
+  if (lower.includes("not found") || lower.includes("no such") || lower.includes("could not be found"))
+    return { ok: false, code: "NOT_FOUND", reason: `Keychain item not found: ${msg}` };
+  return { ok: false, code: "OS_ERROR", reason: `Keychain OS error: ${msg}` };
+}
+
+// -- security CLI fallback (macOS) -----------------------------------------
+async function securityGet(name: string): Promise<KeychainResult<string | null>> {
+  try {
+    const proc = Bun.spawn(["security", "find-generic-password", "-s", KEYCHAIN_SERVICE, "-a", name, "-w"], {
+      stdout: "pipe", stderr: "pipe",
+    });
+    const exitCode = await proc.exited;
+    if (exitCode !== 0) {
+      const stderr = await new Response(proc.stderr).text();
+      if (stderr.includes("could not be found") || stderr.includes("SecKeychainSearchCopyNext"))
+        return { ok: true, value: null };                       // item simply doesn't exist
+      return classifyKeychainError(new Error(stderr.trim()));
+    }
+    const value = (await new Response(proc.stdout).text()).replace(/\n$/, "");
+    return { ok: true, value: value || null };
+  } catch (err) {
+    return classifyKeychainError(err);
+  }
+}
+
+async function securitySet(name: string, value: string): Promise<KeychainResult<void>> {
+  try {
+    // delete first so add doesn't fail with "duplicate item"
+    const del = Bun.spawn(["security", "delete-generic-password", "-s", KEYCHAIN_SERVICE, "-a", name], {
+      stdout: "ignore", stderr: "ignore",
+    });
+    await del.exited;
+    const proc = Bun.spawn(["security", "add-generic-password", "-s", KEYCHAIN_SERVICE, "-a", name, "-w", value, "-U"], {
+      stdout: "pipe", stderr: "pipe",
+    });
+    const exitCode = await proc.exited;
+    if (exitCode !== 0) {
+      const stderr = (await new Response(proc.stderr).text()).trim();
+      return classifyKeychainError(new Error(stderr || `security add-generic-password exited ${exitCode}`));
+    }
+    return { ok: true, value: undefined };
+  } catch (err) {
+    return classifyKeychainError(err);
+  }
+}
+
+async function securityDelete(name: string): Promise<KeychainResult<boolean>> {
+  try {
+    const proc = Bun.spawn(["security", "delete-generic-password", "-s", KEYCHAIN_SERVICE, "-a", name], {
+      stdout: "pipe", stderr: "pipe",
+    });
+    const exitCode = await proc.exited;
+    if (exitCode !== 0) {
+      const stderr = await new Response(proc.stderr).text();
+      if (stderr.includes("could not be found") || stderr.includes("SecKeychainSearchCopyNext"))
+        return { ok: true, value: false };
+      return classifyKeychainError(new Error(stderr.trim()));
+    }
+    return { ok: true, value: true };
+  } catch (err) {
+    return classifyKeychainError(err);
+  }
+}
+
+// -- dispatch: Bun.secrets → security CLI ----------------------------------
+const _hasBunSecrets = !!(globalThis as any).secrets?.get;
+
+async function keychainGet(name: string): Promise<KeychainResult<string | null>> {
+  if (_hasBunSecrets) {
+    try {
+      const value = (await (globalThis as any).secrets.get(KEYCHAIN_SERVICE, name)) ?? null;
+      return { ok: true, value };
+    } catch (err) {
+      return classifyKeychainError(err);
+    }
+  }
+  if (process.platform === "darwin") return securityGet(name);
+  return keychainUnavailableErr();
+}
+
+async function keychainSet(name: string, value: string): Promise<KeychainResult<void>> {
+  if (_hasBunSecrets) {
+    try {
+      await (globalThis as any).secrets.set(KEYCHAIN_SERVICE, name, value);
+      return { ok: true, value: undefined };
+    } catch (err) {
+      return classifyKeychainError(err);
+    }
+  }
+  if (process.platform === "darwin") return securitySet(name, value);
+  return keychainUnavailableErr();
+}
+
+async function keychainDelete(name: string): Promise<KeychainResult<boolean>> {
+  if (_hasBunSecrets) {
+    try {
+      return { ok: true, value: await (globalThis as any).secrets.delete(KEYCHAIN_SERVICE, name) };
+    } catch (err) {
+      return classifyKeychainError(err);
+    }
+  }
+  if (process.platform === "darwin") return securityDelete(name);
+  return keychainUnavailableErr();
+}
+
+function tokenSource(name: string): "env" | "keychain" | "not set" {
+  if (_keychainLoadedTokens.has(name)) return "keychain";
+  if (Bun.env[name]) return "env";
+  return "not set";
+}
+
+async function autoLoadKeychainTokens(): Promise<void> {
+  for (const name of KEYCHAIN_TOKEN_NAMES) {
+    if (Bun.env[name]) continue;
+    const result = await keychainGet(name);
+    if (result.ok && result.value) {
+      process.env[name] = result.value;
+      _keychainLoadedTokens.add(name);
+    }
+  }
+}
 
 // ── Xref types ────────────────────────────────────────────────────────
 export const XrefEntrySchema = z.object({
@@ -663,8 +904,8 @@ export async function scanProject(dir: string): Promise<ProjectInfo> {
     networkConcurrency: 0,
     targetCpu: "-",
     targetOs: "-",
-    overrides: [],
-    resolutions: [],
+    overrides: {},
+    resolutions: {},
     trustedDeps: [],
     repo: "-",
     repoSource: "-",
@@ -736,12 +977,13 @@ export async function scanProject(dir: string): Promise<ProjectInfo> {
           base.nativeDeps = base.trustedDeps.filter((name) => NATIVE_PATTERN.test(name));
         }
 
-        // overrides (npm) / resolutions (yarn) — metadependency version pins
-        if (pkg.overrides && typeof pkg.overrides === "object") {
-          base.overrides = Object.keys(pkg.overrides);
+        // overrides (npm/pnpm) / resolutions (yarn) — metadependency version pins
+        const rawOverrides = pkg.overrides ?? pkg.pnpm?.overrides;
+        if (rawOverrides && typeof rawOverrides === "object") {
+          base.overrides = flattenOverrides(rawOverrides as Record<string, unknown>);
         }
         if (pkg.resolutions && typeof pkg.resolutions === "object") {
-          base.resolutions = Object.keys(pkg.resolutions);
+          base.resolutions = flattenOverrides(pkg.resolutions as Record<string, unknown>);
         }
 
         // peerDependencies / peerDependenciesMeta
@@ -1160,6 +1402,11 @@ function inspectProject(p: ProjectInfo) {
   line(".npmrc",       p.hasNpmrc ? c.green("yes") : c.dim("no"));
   line("Auth Ready",   p.authReady ? c.green("YES") : c.dim("no"));
   line("Resilient",    p.resilient ? c.green("YES") : c.dim("no"));
+  for (const tkn of KEYCHAIN_TOKEN_NAMES) {
+    const src = tokenSource(tkn);
+    const colored = src === "env" ? c.green(src) : src === "keychain" ? c.cyan(src) : c.yellow(src);
+    line(`  ${tkn}`, colored);
+  }
   line("bin/",         p.hasBinDir ? c.green("yes") : c.dim("no"));
   line("Has pkg.json", p.hasPkg ? c.green("yes") : c.red("no"));
   line("TZ",           p.projectTz === "UTC" ? c.dim("UTC (default)") : c.cyan(p.projectTz));
@@ -1249,13 +1496,24 @@ function inspectProject(p: ProjectInfo) {
   }
 
   // Overrides / resolutions (package.json)
-  const hasOverrides = p.overrides.length > 0 || p.resolutions.length > 0;
+  const overrideKeys = Object.keys(p.overrides);
+  const resolutionKeys = Object.keys(p.resolutions);
+  const hasOverrides = overrideKeys.length > 0 || resolutionKeys.length > 0;
   if (hasOverrides) {
     console.log();
     console.log(`  ${c.bold(c.cyan("Dependency Overrides"))}`);
     console.log();
-    if (p.overrides.length > 0) line("overrides",    `${c.yellow(String(p.overrides.length))} — ${p.overrides.join(", ")}`);
-    if (p.resolutions.length > 0) line("resolutions", `${c.yellow(String(p.resolutions.length))} — ${p.resolutions.join(", ")}`);
+    const printEntries = (label: string, entries: Record<string, string>) => {
+      const keys = Object.keys(entries);
+      line(label, `${c.yellow(String(keys.length))} mapping(s)`);
+      for (const [k, v] of Object.entries(entries)) {
+        const risk = classifyOverrideValue(v);
+        const flag = risk ? ` ${c.red(`[${risk}]`)}` : "";
+        console.log(`      ${c.dim("•")} ${k} ${c.dim("→")} ${v}${flag}`);
+      }
+    };
+    if (overrideKeys.length > 0) printEntries("overrides", p.overrides);
+    if (resolutionKeys.length > 0) printEntries("resolutions", p.resolutions);
   }
   console.log();
 }
@@ -1515,11 +1773,22 @@ async function renderAudit(projects: ProjectInfo[]) {
   console.log(`    ${c.cyan("nativeDeps".padEnd(14))} ${c.green(String(arrayStats.nativeDeps))} detected`);
   console.log(`    ${c.cyan("scopes".padEnd(14))} ${c.green(String(arrayStats.scopes))} total scope registrations`);
 
+  // Token sources
+  console.log();
+  console.log(c.bold("  Token sources:"));
+  console.log();
+  for (const tkn of KEYCHAIN_TOKEN_NAMES) {
+    const src = tokenSource(tkn);
+    const colored = src === "env" ? c.green(src) : src === "keychain" ? c.cyan(src) : c.yellow(src);
+    const hint = src === "not set" ? c.dim(`  (--store-token ${tkn} <value>)`) : "";
+    console.log(`    ${c.cyan(tkn.padEnd(24))} ${colored}${hint}`);
+  }
+
   // Dependency overrides / resolutions
-  const withOverrides = withPkg.filter((p) => p.overrides.length > 0);
-  const withResolutions = withPkg.filter((p) => p.resolutions.length > 0);
-  const totalOverrideCount = withOverrides.reduce((n, p) => n + p.overrides.length, 0);
-  const totalResolutionCount = withResolutions.reduce((n, p) => n + p.resolutions.length, 0);
+  const withOverrides = withPkg.filter((p) => Object.keys(p.overrides).length > 0);
+  const withResolutions = withPkg.filter((p) => Object.keys(p.resolutions).length > 0);
+  const totalOverrideCount = withOverrides.reduce((n, p) => n + Object.keys(p.overrides).length, 0);
+  const totalResolutionCount = withResolutions.reduce((n, p) => n + Object.keys(p.resolutions).length, 0);
   if (withOverrides.length > 0 || withResolutions.length > 0) {
     console.log();
     console.log(c.bold("  Dependency overrides:"));
@@ -1527,13 +1796,31 @@ async function renderAudit(projects: ProjectInfo[]) {
     if (withOverrides.length > 0) {
       console.log(`    ${c.cyan("overrides".padEnd(14))} ${c.yellow(String(withOverrides.length))} project(s), ${totalOverrideCount} pinned metadependencies`);
       for (const p of withOverrides) {
-        console.log(`      ${c.dim("•")} ${p.folder.padEnd(28)} ${c.dim(p.overrides.join(", "))}`);
+        const mappings = Object.entries(p.overrides).map(([k, v]) => `${k} -> ${v}`).join(", ");
+        console.log(`      ${c.dim("•")} ${p.folder.padEnd(28)} ${c.dim(mappings)}`);
       }
     }
     if (withResolutions.length > 0) {
       console.log(`    ${c.cyan("resolutions".padEnd(14))} ${c.yellow(String(withResolutions.length))} project(s), ${totalResolutionCount} pinned metadependencies`);
       for (const p of withResolutions) {
-        console.log(`      ${c.dim("•")} ${p.folder.padEnd(28)} ${c.dim(p.resolutions.join(", "))}`);
+        const mappings = Object.entries(p.resolutions).map(([k, v]) => `${k} -> ${v}`).join(", ");
+        console.log(`      ${c.dim("•")} ${p.folder.padEnd(28)} ${c.dim(mappings)}`);
+      }
+    }
+    // Suspicious overrides summary
+    const suspicious: { folder: string; pkg: string; value: string; risk: string }[] = [];
+    for (const p of [...withOverrides, ...withResolutions]) {
+      const allEntries = { ...p.overrides, ...p.resolutions };
+      for (const [k, v] of Object.entries(allEntries)) {
+        const risk = classifyOverrideValue(v);
+        if (risk) suspicious.push({ folder: p.folder, pkg: k, value: v, risk });
+      }
+    }
+    if (suspicious.length > 0) {
+      console.log();
+      console.log(`    ${c.red("Suspicious overrides:")} ${c.yellow(String(suspicious.length))} detected`);
+      for (const s of suspicious) {
+        console.log(`      ${c.red("!")} ${s.folder.padEnd(28)} ${s.pkg} -> ${s.value} ${c.red(`[${s.risk}]`)}`);
       }
     }
   }
@@ -3257,7 +3544,7 @@ async function infoPackage(pkg: string, projects: ProjectInfo[], jsonOut: boolea
     process.exit(1);
   }
 
-  let meta: z.infer<typeof BunInfoResponseSchema>;
+  let meta: NpmPackument;
   try {
     meta = BunInfoResponseSchema.parse(JSON.parse(stdout));
   } catch {
@@ -3401,6 +3688,9 @@ ${c.bold("  Modes:")}
     ${c.cyan("--verify")}                           bun install --frozen-lockfile across all projects
     ${c.cyan("--info")} <pkg> [--json]              Registry metadata + local cross-reference
     ${c.cyan("--path")}                             Emit export PATH for projects with bin/
+    ${c.cyan("--store-token")} <name> <value>       Store a token in OS keychain
+    ${c.cyan("--delete-token")} <name>              Remove a token from OS keychain
+    ${c.cyan("--list-tokens")}                      Show stored token names and sources
 
 ${c.bold("  Filters:")}
     ${c.cyan("--filter")} <glob|bool>               Filter by name, folder, or boolean field
@@ -3431,6 +3721,77 @@ ${c.bold("  Other:")}
 `);
     return;
   }
+
+  // ── Keychain token commands ───────────────────────────────────────────
+  if (flags["store-token"]) {
+    const name = flags["store-token"];
+    const value = positionals[0];
+    if (!value) {
+      console.error(`${c.red("error:")} --store-token requires a value argument\n  usage: --store-token <name> <value>`);
+      process.exit(1);
+    }
+    const result = await keychainSet(name, value);
+    if (result.ok) {
+      console.log(`${c.green("✓")} Stored ${c.cyan(name)} in OS keychain (service: ${KEYCHAIN_SERVICE})`);
+    } else {
+      const hints: Record<KeychainErr["code"], string> = {
+        NO_API:         "upgrade Bun to a version with keychain support, or export the token as an env var instead",
+        ACCESS_DENIED:  "unlock your keychain or grant terminal access in System Settings → Privacy → Security",
+        NOT_FOUND:      "unexpected; the item should have been created",
+        OS_ERROR:       "check Console.app for keychain errors, or try: security add-generic-password -a $USER -s bun-scanner -w",
+      };
+      console.error(`${c.red("error:")} failed to store ${c.cyan(name)}: ${result.reason}`);
+      console.error(`  ${c.dim("hint:")} ${hints[result.code]}`);
+      process.exit(1);
+    }
+    return;
+  }
+
+  if (flags["delete-token"]) {
+    const name = flags["delete-token"];
+    const result = await keychainDelete(name);
+    if (!result.ok) {
+      const hints: Record<KeychainErr["code"], string> = {
+        NO_API:         "upgrade Bun to a version with keychain support",
+        ACCESS_DENIED:  "unlock your keychain or grant terminal access in System Settings → Privacy → Security",
+        NOT_FOUND:      "token was already absent from the keychain",
+        OS_ERROR:       "check Console.app for keychain errors",
+      };
+      console.error(`${c.red("error:")} failed to delete ${c.cyan(name)}: ${result.reason}`);
+      console.error(`  ${c.dim("hint:")} ${hints[result.code]}`);
+      process.exit(1);
+    } else if (result.value) {
+      console.log(`${c.green("✓")} Removed ${c.cyan(name)} from OS keychain`);
+    } else {
+      console.log(`${c.yellow("⚠")} ${c.cyan(name)} not found in OS keychain (nothing to remove)`);
+    }
+    return;
+  }
+
+  if (flags["list-tokens"]) {
+    console.log(`\n${c.bold("  Token sources:")}\n`);
+    let keychainNote = "";
+    for (const name of KEYCHAIN_TOKEN_NAMES) {
+      const inEnv = !!Bun.env[name];
+      const kcResult = await keychainGet(name);
+      const inKeychain = kcResult.ok && !!kcResult.value;
+      if (!kcResult.ok && !keychainNote) keychainNote = kcResult.reason;
+      let status: string;
+      if (inEnv && inKeychain) status = c.green("env + keychain");
+      else if (inEnv) status = c.green("env");
+      else if (inKeychain) status = c.cyan("keychain");
+      else status = c.yellow("not set");
+      console.log(`    ${c.cyan(name.padEnd(24))} ${status}`);
+    }
+    if (keychainNote) {
+      console.log(`\n  ${c.yellow("note:")} ${keychainNote}`);
+      console.log(`  ${c.dim("Tokens can still be provided via env vars: export FW_REGISTRY_TOKEN=<value>")}`);
+    }
+    console.log();
+    return;
+  }
+
+  await autoLoadKeychainTokens();
 
   const t0 = Bun.nanoseconds();
 
