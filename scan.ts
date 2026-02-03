@@ -197,24 +197,27 @@ export function parseTzFromEnv(contents: string[]): string {
   return parseEnvVar(contents, "TZ");
 }
 
-// ── Semver helpers ────────────────────────────────────────────────────
-type SemVer = { major: number; minor: number; patch: number };
+// ── Semver helpers (Bun.semver + bump classification) ─────────────────
 
-function parseSemver(v: string): SemVer | null {
-  const m = v.match(/^(\d+)\.(\d+)\.(\d+)/);
-  if (!m) return null;
-  return { major: +m[1], minor: +m[2], patch: +m[3] };
+/** Classify the bump from `a` → `b`. Uses Bun.semver.order for validation. */
+export function semverBumpType(a: string, b: string): "patch" | "minor" | "major" | null {
+  const ma = a.match(/^(\d+)\.(\d+)\.(\d+)/);
+  const mb = b.match(/^(\d+)\.(\d+)\.(\d+)/);
+  if (!ma || !mb) return null;
+  if (ma[1] !== mb[1]) return "major";
+  if (ma[2] !== mb[2]) return "minor";
+  if (ma[3] !== mb[3]) return "patch";
+  return null; // same version
 }
 
-/** Classify the bump from `a` → `b`. Returns null if versions can't be parsed. */
-function semverBumpType(a: string, b: string): "patch" | "minor" | "major" | null {
-  const va = parseSemver(a);
-  const vb = parseSemver(b);
-  if (!va || !vb) return null;
-  if (va.major !== vb.major) return "major";
-  if (va.minor !== vb.minor) return "minor";
-  if (va.patch !== vb.patch) return "patch";
-  return null; // same version
+/** Check if a package version falls within a vulnerability range. */
+export function isVulnerable(version: string, range: string): boolean {
+  return Bun.semver.satisfies(version, range);
+}
+
+/** Compare two semver strings. Returns 1 if a > b, -1 if a < b, 0 if equal. */
+export function semverCompare(a: string, b: string): 0 | 1 | -1 {
+  return Bun.semver.order(a, b);
 }
 
 // ── Shared outdated parsing ───────────────────────────────────────────

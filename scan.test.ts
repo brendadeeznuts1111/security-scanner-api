@@ -1,5 +1,5 @@
 import { describe, test, expect } from "bun:test";
-import { isFeatureFlagActive, classifyEnvFlag, effectiveLinker, platformHelp, shouldWarnMise, parseTzFromEnv, parseEnvVar, validateThreatFeed, ThreatFeedItemSchema } from "./scan.ts";
+import { isFeatureFlagActive, classifyEnvFlag, effectiveLinker, platformHelp, shouldWarnMise, parseTzFromEnv, parseEnvVar, validateThreatFeed, ThreatFeedItemSchema, semverBumpType, isVulnerable, semverCompare } from "./scan.ts";
 
 describe("isFeatureFlagActive", () => {
   test("returns true for '1'", () => {
@@ -332,6 +332,54 @@ describe("parseEnvVar", () => {
   test("parseTzFromEnv delegates to parseEnvVar", () => {
     expect(parseTzFromEnv(["TZ=America/Chicago"])).toBe("America/Chicago");
     expect(parseEnvVar(["TZ=America/Chicago"], "TZ")).toBe("America/Chicago");
+  });
+});
+
+describe("Bun.semver integration (semverBumpType, isVulnerable, semverCompare)", () => {
+  test("semverBumpType classifies patch bump", () => {
+    expect(semverBumpType("1.2.3", "1.2.4")).toBe("patch");
+  });
+
+  test("semverBumpType classifies minor bump", () => {
+    expect(semverBumpType("1.2.3", "1.3.0")).toBe("minor");
+  });
+
+  test("semverBumpType classifies major bump", () => {
+    expect(semverBumpType("1.2.3", "2.0.0")).toBe("major");
+  });
+
+  test("semverBumpType returns null for same version", () => {
+    expect(semverBumpType("1.2.3", "1.2.3")).toBeNull();
+  });
+
+  test("semverBumpType returns null for invalid input", () => {
+    expect(semverBumpType("latest", "1.0.0")).toBeNull();
+    expect(semverBumpType("1.0.0", "nope")).toBeNull();
+  });
+
+  test("isVulnerable matches event-stream incident range", () => {
+    expect(isVulnerable("3.3.6", ">=3.3.6 <4.0.0")).toBe(true);
+    expect(isVulnerable("3.3.5", ">=3.3.6 <4.0.0")).toBe(false);
+    expect(isVulnerable("4.0.0", ">=3.3.6 <4.0.0")).toBe(false);
+  });
+
+  test("isVulnerable handles caret and tilde ranges", () => {
+    expect(isVulnerable("1.3.0", "^1.2.0")).toBe(true);
+    expect(isVulnerable("2.0.0", "^1.2.0")).toBe(false);
+    expect(isVulnerable("1.2.9", "~1.2.0")).toBe(true);
+    expect(isVulnerable("1.3.0", "~1.2.0")).toBe(false);
+  });
+
+  test("semverCompare orders versions correctly", () => {
+    expect(semverCompare("2.0.0", "1.0.0")).toBe(1);
+    expect(semverCompare("1.0.0", "2.0.0")).toBe(-1);
+    expect(semverCompare("1.0.0", "1.0.0")).toBe(0);
+  });
+
+  test("semverCompare handles patch and minor differences", () => {
+    expect(semverCompare("1.2.4", "1.2.3")).toBe(1);
+    expect(semverCompare("1.3.0", "1.2.9")).toBe(1);
+    expect(semverCompare("1.0.0", "1.0.1")).toBe(-1);
   });
 });
 
