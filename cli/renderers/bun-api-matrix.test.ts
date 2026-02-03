@@ -153,120 +153,94 @@ describe("SCANNER_USED_APIS", () => {
 });
 
 describe("colorize", () => {
-  test("wraps text with ANSI codes from HSL", () => {
-    const result = colorize("test", "hsl(140, 70%, 40%)");
-    expect(result).toContain("test");
-    expect(result).toContain("\x1b[");
-    expect(result).toEndWith("\x1b[0m");
-  });
+  const COLORIZE_CASES: [string, string, boolean][] = [
+    //  text     hsl input                  expect ANSI?
+    ["test", "hsl(140, 70%, 40%)",  true],   // green
+    ["test", "hsl(210, 80%, 55%)",  true],   // blue
+    ["test", "hsl(40, 90%, 50%)",   true],   // amber
+    ["test", "hsl(270, 60%, 55%)",  true],   // purple
+    ["test", "hsl(0, 0%, 30%)",     true],   // gray
+    ["test", "not-a-color",         false],  // invalid → plain
+    ["test", "",                     false],  // empty → plain
+  ];
 
-  test("returns plain text on invalid color", () => {
-    const result = colorize("test", "not-a-color");
-    expect(result).toBe("test");
+  test.each(COLORIZE_CASES)("case colorize(%s, %s) → ansi=%s", (text, hsl, expectAnsi) => {
+    const result = colorize(text, hsl);
+    expect(result).toContain(text);
+    if (expectAnsi) {
+      expect(result).toContain("\x1b[");
+      expect(result).toEndWith("\x1b[0m");
+      expect(result.length).toBeGreaterThan(text.length);
+    } else {
+      expect(result).toBe(text);
+    }
   });
 });
 
 describe("renderStatus", () => {
-  const STATUS_SYMBOLS: Record<BunApiStatus, string> = {
-    stable: "\u25cf",       // ● filled circle
-    new: "\u25c6",          // ◆ filled diamond
-    experimental: "\u25d0", // ◐ half-filled circle
-  };
+  const STATUS_CASES: [BunApiStatus, string, string, number][] = [
+    //  status            symbol    label              codepoint
+    ["stable",       "\u25cf", "green circle",    0x25CF],
+    ["new",          "\u25c6", "blue diamond",    0x25C6],
+    ["experimental", "\u25d0", "amber half-circle", 0x25D0],
+  ];
 
-  test("stable returns green circle \u25cf", () => {
-    const result = renderStatus("stable");
-    expect(result).toContain("\u25cf");
-    expect(result).toContain("stable");
-  });
+  test.each(STATUS_CASES)("case %s → %s (%s)", (status, symbol, _label, codepoint) => {
+    const raw = renderStatus(status);
+    const stripped = Bun.stripANSI(raw);
 
-  test("new returns blue diamond \u25c6", () => {
-    const result = renderStatus("new");
-    expect(result).toContain("\u25c6");
-    expect(result).toContain("new");
-  });
-
-  test("experimental returns amber half-circle \u25d0", () => {
-    const result = renderStatus("experimental");
-    expect(result).toContain("\u25d0");
-    expect(result).toContain("experimental");
+    // Symbol + space + status label
+    expect(stripped).toBe(`${symbol} ${status}`);
+    // Correct codepoint
+    expect(symbol.codePointAt(0)).toBe(codepoint);
+    // ANSI envelope
+    expect(raw).toContain("\x1b[");
+    expect(raw).toEndWith("\x1b[0m");
+    expect(raw.length).toBeGreaterThan(stripped.length);
   });
 
   test("each status has a unique symbol", () => {
-    const symbols = Object.values(STATUS_SYMBOLS);
+    const symbols = STATUS_CASES.map(([, s]) => s);
     expect(new Set(symbols).size).toBe(3);
   });
 
-  test("stripped output is 'symbol + space + label'", () => {
-    for (const [status, symbol] of Object.entries(STATUS_SYMBOLS)) {
-      const stripped = Bun.stripANSI(renderStatus(status as BunApiStatus));
-      expect(stripped).toBe(`${symbol} ${status}`);
-    }
-  });
-
-  test("all outputs contain ANSI escape sequences", () => {
-    for (const status of ["stable", "new", "experimental"] as BunApiStatus[]) {
-      const raw = renderStatus(status);
-      expect(raw).toContain("\x1b[");
-      expect(raw).toEndWith("\x1b[0m");
-    }
-  });
-
-  test("raw output is longer than stripped (ANSI wrapping present)", () => {
-    for (const status of ["stable", "new", "experimental"] as BunApiStatus[]) {
-      const raw = renderStatus(status);
-      const stripped = Bun.stripANSI(raw);
-      expect(raw.length).toBeGreaterThan(stripped.length);
-    }
-  });
-
   test("every catalog entry renders a valid status", () => {
-    const validSymbols = new Set(Object.values(STATUS_SYMBOLS));
+    const validSymbols = new Set(STATUS_CASES.map(([, s]) => s));
     for (const entry of BUN_API_CATALOG) {
       const stripped = Bun.stripANSI(renderStatus(entry.status));
-      const symbol = stripped.charAt(0);
-      expect(validSymbols.has(symbol)).toBe(true);
+      expect(validSymbols.has(stripped.charAt(0))).toBe(true);
       expect(stripped).toContain(entry.status);
     }
   });
 });
 
 describe("renderSurface", () => {
-  const FILLED = "\u25aa"; // ▪ small filled square
-  const EMPTY  = "\u25ab"; // ▫ small empty square
+  const FILLED = "\u25aa"; // ▪ U+25AA small filled square
+  const EMPTY  = "\u25ab"; // ▫ U+25AB small empty square
 
-  test("surface 1 \u25aa\u25ab\u25ab", () => {
-    const result = renderSurface(1);
-    expect(Bun.stripANSI(result)).toBe(`${FILLED}${EMPTY}${EMPTY}`);
+  const SURFACE_CASES: [BunApiSurface, string][] = [
+    //  level   expected stripped output
+    [1, `${FILLED}${EMPTY}${EMPTY}`],
+    [2, `${FILLED}${FILLED}${EMPTY}`],
+    [3, `${FILLED}${FILLED}${FILLED}`],
+  ];
+
+  test.each(SURFACE_CASES)("case surface %i → %s", (level, expected) => {
+    const raw = renderSurface(level);
+    const stripped = Bun.stripANSI(raw);
+
+    expect(stripped).toBe(expected);
+    expect(stripped.length).toBe(3);
+    // Filled count matches level
+    expect([...stripped].filter(c => c === FILLED).length).toBe(level);
+    // ANSI coloring present on both segments
+    expect((raw.match(/\x1b\[/g) || []).length).toBeGreaterThanOrEqual(2);
   });
 
-  test("surface 2 \u25aa\u25aa\u25ab", () => {
-    const result = renderSurface(2);
-    expect(Bun.stripANSI(result)).toBe(`${FILLED}${FILLED}${EMPTY}`);
-  });
-
-  test("surface 3 \u25aa\u25aa\u25aa", () => {
-    const result = renderSurface(3);
-    expect(Bun.stripANSI(result)).toBe(`${FILLED}${FILLED}${FILLED}`);
-  });
-
-  test("stripped output is always 3 characters", () => {
-    for (const s of [1, 2, 3] as BunApiSurface[]) {
-      const stripped = Bun.stripANSI(renderSurface(s));
-      expect(stripped.length).toBe(3);
-    }
-  });
-
-  test("filled and empty symbols are distinct", () => {
-    expect(FILLED).not.toBe(EMPTY);
+  test("filled U+25AA and empty U+25AB are distinct", () => {
     expect(FILLED.codePointAt(0)).toBe(0x25AA);
     expect(EMPTY.codePointAt(0)).toBe(0x25AB);
-  });
-
-  test("ANSI coloring applied to both filled and empty segments", () => {
-    const raw = renderSurface(2);
-    // Two color regions: filled (purple) and empty (gray), each ANSI-wrapped
-    const ansiEscapes = raw.match(/\x1b\[/g) || [];
-    expect(ansiEscapes.length).toBeGreaterThanOrEqual(2);
+    expect(FILLED).not.toBe(EMPTY);
   });
 
   test("every catalog entry renders a valid 3-glyph surface bar", () => {
@@ -277,49 +251,40 @@ describe("renderSurface", () => {
       for (const ch of stripped) {
         expect(validGlyphs.has(ch)).toBe(true);
       }
-      // filled count must equal surface value
-      const filledCount = [...stripped].filter(c => c === FILLED).length;
-      expect(filledCount).toBe(entry.surface);
+      expect([...stripped].filter(c => c === FILLED).length).toBe(entry.surface);
     }
   });
 });
 
 describe("renderScanner", () => {
-  const CHECKMARK = "\u2713"; // ✓
-  const DOT       = "\u00b7"; // ·
+  const SCANNER_CASES: [boolean, string, string, number][] = [
+    //  used     symbol    label        codepoint
+    [true,  "\u2713", "checkmark", 0x2713],
+    [false, "\u00b7", "dot",       0x00B7],
+  ];
 
-  test("used returns green checkmark \u2713", () => {
-    const result = renderScanner(true);
-    expect(Bun.stripANSI(result)).toBe(CHECKMARK);
+  test.each(SCANNER_CASES)("case used=%s → %s (%s)", (used, symbol, _label, codepoint) => {
+    const raw = renderScanner(used);
+    const stripped = Bun.stripANSI(raw);
+
+    expect(stripped).toBe(symbol);
+    expect(stripped.length).toBe(1);
+    expect(symbol.codePointAt(0)).toBe(codepoint);
+    // ANSI envelope
+    expect(raw).toContain("\x1b[");
+    expect(raw).toEndWith("\x1b[0m");
+    expect(raw.length).toBeGreaterThan(stripped.length);
   });
 
-  test("unused returns dim dot \u00b7", () => {
-    const result = renderScanner(false);
-    expect(Bun.stripANSI(result)).toBe(DOT);
-  });
-
-  test("checkmark and dot are distinct codepoints", () => {
-    expect(CHECKMARK.codePointAt(0)).toBe(0x2713);
-    expect(DOT.codePointAt(0)).toBe(0x00B7);
-    expect(CHECKMARK).not.toBe(DOT);
-  });
-
-  test("both outputs are ANSI-colored single glyphs", () => {
-    for (const used of [true, false]) {
-      const raw = renderScanner(used);
-      const stripped = Bun.stripANSI(raw);
-      expect(stripped.length).toBe(1);
-      expect(raw).toContain("\x1b[");
-      expect(raw).toEndWith("\x1b[0m");
-      expect(raw.length).toBeGreaterThan(stripped.length);
-    }
+  test("symbols are distinct", () => {
+    expect(SCANNER_CASES[0][1]).not.toBe(SCANNER_CASES[1][1]);
   });
 
   test("SCANNER_USED_APIS entries render \u2713, non-used render \u00b7", () => {
     for (const entry of BUN_API_CATALOG) {
       const used = SCANNER_USED_APIS.has(entry.api);
       const stripped = Bun.stripANSI(renderScanner(used));
-      expect(stripped).toBe(used ? CHECKMARK : DOT);
+      expect(stripped).toBe(used ? "\u2713" : "\u00b7");
     }
   });
 });
@@ -373,84 +338,50 @@ describe("filterByTopic", () => {
 });
 
 describe("Unicode symbol system", () => {
-  // Full glyph palette used across the matrix
-  const GLYPHS = {
-    statusStable:       "\u25cf", // ● filled circle — green
-    statusNew:          "\u25c6", // ◆ filled diamond — blue
-    statusExperimental: "\u25d0", // ◐ half-filled circle — amber
-    surfaceFilled:      "\u25aa", // ▪ small filled square — purple
-    surfaceEmpty:       "\u25ab", // ▫ small empty square — gray
-    scannerUsed:        "\u2713", // ✓ checkmark — green
-    scannerUnused:      "\u00b7", // · middle dot — dim
-    urlTruncated:       "\u2026", // … ellipsis
-  };
+  // Full glyph palette: [name, glyph, codepoint, unicode block low, unicode block high]
+  const GLYPH_CASES: [string, string, number, number, number][] = [
+    ["statusStable",       "\u25cf", 0x25CF, 0x25A0, 0x25FF],  // ● Geometric Shapes
+    ["statusNew",          "\u25c6", 0x25C6, 0x25A0, 0x25FF],  // ◆ Geometric Shapes
+    ["statusExperimental", "\u25d0", 0x25D0, 0x25A0, 0x25FF],  // ◐ Geometric Shapes
+    ["surfaceFilled",      "\u25aa", 0x25AA, 0x25A0, 0x25FF],  // ▪ Geometric Shapes
+    ["surfaceEmpty",       "\u25ab", 0x25AB, 0x25A0, 0x25FF],  // ▫ Geometric Shapes
+    ["scannerUsed",        "\u2713", 0x2713, 0x2700, 0x27BF],  // ✓ Dingbats
+    ["scannerUnused",      "\u00b7", 0x00B7, 0x0080, 0x00FF],  // · Latin-1 Supplement
+    ["urlTruncated",       "\u2026", 0x2026, 0x2000, 0x206F],  // … General Punctuation
+  ];
+
+  test.each(GLYPH_CASES)("case %s → %s (U+%s) in block [%s, %s]", (name, glyph, codepoint, blockLow, blockHigh) => {
+    // Single BMP character
+    expect(glyph.length).toBe(1);
+    expect(glyph.codePointAt(0)).toBe(codepoint);
+    // Within expected Unicode block
+    expect(codepoint).toBeGreaterThanOrEqual(blockLow);
+    expect(codepoint).toBeLessThanOrEqual(blockHigh);
+    // Terminal width = 1 column
+    expect(Bun.stringWidth(glyph)).toBe(1);
+  });
 
   test("all 8 glyphs have distinct codepoints", () => {
-    const codepoints = Object.values(GLYPHS).map(g => g.codePointAt(0));
+    const codepoints = GLYPH_CASES.map(([, , cp]) => cp);
     expect(new Set(codepoints).size).toBe(8);
   });
 
-  test("all glyphs are single-character", () => {
-    for (const [name, glyph] of Object.entries(GLYPHS)) {
-      expect(glyph.length).toBe(1);
-    }
-  });
-
-  test("all glyphs are within BMP (U+0000–U+FFFF)", () => {
-    for (const glyph of Object.values(GLYPHS)) {
-      const cp = glyph.codePointAt(0)!;
-      expect(cp).toBeGreaterThanOrEqual(0x00);
-      expect(cp).toBeLessThanOrEqual(0xFFFF);
-    }
-  });
-
-  test("status glyphs are in Unicode Geometric Shapes block (U+25A0–U+25FF)", () => {
-    for (const glyph of [GLYPHS.statusStable, GLYPHS.statusNew, GLYPHS.statusExperimental]) {
-      const cp = glyph.codePointAt(0)!;
-      expect(cp).toBeGreaterThanOrEqual(0x25A0);
-      expect(cp).toBeLessThanOrEqual(0x25FF);
-    }
-  });
-
-  test("surface glyphs are in Unicode Geometric Shapes block", () => {
-    for (const glyph of [GLYPHS.surfaceFilled, GLYPHS.surfaceEmpty]) {
-      const cp = glyph.codePointAt(0)!;
-      expect(cp).toBeGreaterThanOrEqual(0x25A0);
-      expect(cp).toBeLessThanOrEqual(0x25FF);
-    }
-  });
-
-  test("checkmark is in Dingbats block (U+2700–U+27BF)", () => {
-    const cp = GLYPHS.scannerUsed.codePointAt(0)!;
-    expect(cp).toBeGreaterThanOrEqual(0x2700);
-    expect(cp).toBeLessThanOrEqual(0x27BF);
-  });
-
   test("full catalog renders consistently with all glyph types", () => {
-    const validStatusSymbols = new Set([GLYPHS.statusStable, GLYPHS.statusNew, GLYPHS.statusExperimental]);
-    const validSurfaceSymbols = new Set([GLYPHS.surfaceFilled, GLYPHS.surfaceEmpty]);
-    const validScannerSymbols = new Set([GLYPHS.scannerUsed, GLYPHS.scannerUnused]);
+    const validStatusSymbols = new Set(GLYPH_CASES.slice(0, 3).map(([, g]) => g));
+    const validSurfaceSymbols = new Set(GLYPH_CASES.slice(3, 5).map(([, g]) => g));
+    const validScannerSymbols = new Set(GLYPH_CASES.slice(5, 7).map(([, g]) => g));
 
     for (const entry of BUN_API_CATALOG) {
-      // Status glyph
       const statusStripped = Bun.stripANSI(renderStatus(entry.status));
       expect(validStatusSymbols.has(statusStripped.charAt(0))).toBe(true);
 
-      // Surface glyphs
       const surfaceStripped = Bun.stripANSI(renderSurface(entry.surface));
       for (const ch of surfaceStripped) {
         expect(validSurfaceSymbols.has(ch)).toBe(true);
       }
 
-      // Scanner glyph
       const scannerStripped = Bun.stripANSI(renderScanner(SCANNER_USED_APIS.has(entry.api)));
       expect(validScannerSymbols.has(scannerStripped)).toBe(true);
-    }
-  });
-
-  test("Bun.stringWidth counts all glyphs as width 1", () => {
-    for (const glyph of Object.values(GLYPHS)) {
-      expect(Bun.stringWidth(glyph)).toBe(1);
     }
   });
 });
