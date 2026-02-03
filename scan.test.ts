@@ -335,6 +335,131 @@ describe("parseEnvVar", () => {
   });
 });
 
+describe("Bun API integration (scanner uses Bun.hash, Bun.file, Bun.semver, dns)", () => {
+  const scanTs = `${import.meta.dir}/scan.ts`;
+
+  test("Bun.hash.wyhash produces consistent hex lockHash", () => {
+    const content = "lockfile content v1";
+    const hash1 = Bun.hash.wyhash(content).toString(16);
+    const hash2 = Bun.hash.wyhash(content).toString(16);
+    expect(hash1).toBe(hash2);
+    expect(hash1.length).toBeGreaterThan(0);
+    // Different content → different hash
+    const hash3 = Bun.hash.wyhash("lockfile content v2").toString(16);
+    expect(hash3).not.toBe(hash1);
+  });
+
+  test("Bun.hash.wyhash handles binary (Uint8Array) like bun.lockb", () => {
+    const bytes = new Uint8Array([0x00, 0x62, 0x75, 0x6e]); // \0bun header
+    const hash = Bun.hash.wyhash(bytes).toString(16);
+    expect(hash.length).toBeGreaterThan(0);
+    // Same bytes → same hash
+    expect(Bun.hash.wyhash(new Uint8Array([0x00, 0x62, 0x75, 0x6e])).toString(16)).toBe(hash);
+  });
+
+  test("Bun.file reads package.json and returns valid JSON", async () => {
+    // Use any real project — scanner itself now has a package.json
+    const file = Bun.file(`${import.meta.dir}/package.json`);
+    expect(await file.exists()).toBe(true);
+    const pkg = JSON.parse(await file.text());
+    expect(pkg.name).toBe("security-scanner-api");
+  });
+
+  test("Bun.file.exists() returns false for missing files", async () => {
+    const missing = Bun.file(`${import.meta.dir}/does-not-exist-xyz.json`);
+    expect(await missing.exists()).toBe(false);
+  });
+
+  test("Bun.semver.satisfies matches vulnerability ranges", () => {
+    // event-stream incident: 3.3.6 was malicious
+    expect(Bun.semver.satisfies("3.3.6", ">=3.3.6 <4.0.0")).toBe(true);
+    expect(Bun.semver.satisfies("4.0.0", ">=3.3.6 <4.0.0")).toBe(false);
+    expect(Bun.semver.satisfies("3.3.5", ">=3.3.6 <4.0.0")).toBe(false);
+    // Patch range
+    expect(Bun.semver.satisfies("1.2.5", ">=1.0.0 <1.2.5")).toBe(false);
+    expect(Bun.semver.satisfies("1.2.4", ">=1.0.0 <1.2.5")).toBe(true);
+  });
+
+  test("Bun.semver.satisfies handles caret and tilde ranges", () => {
+    expect(Bun.semver.satisfies("1.3.0", "^1.2.0")).toBe(true);
+    expect(Bun.semver.satisfies("2.0.0", "^1.2.0")).toBe(false);
+    expect(Bun.semver.satisfies("1.2.9", "~1.2.0")).toBe(true);
+    expect(Bun.semver.satisfies("1.3.0", "~1.2.0")).toBe(false);
+  });
+
+  test("dns.getCacheStats returns valid stats object", async () => {
+    const { dns } = await import("bun");
+    const stats = dns.getCacheStats();
+    expect(stats).toHaveProperty("cacheHitsCompleted");
+    expect(stats).toHaveProperty("cacheMisses");
+    expect(stats).toHaveProperty("size");
+    expect(stats).toHaveProperty("errors");
+    expect(stats).toHaveProperty("totalCount");
+    expect(typeof stats.totalCount).toBe("number");
+  });
+
+  test("--json output includes all ProjectInfo fields for every project", async () => {
+    const proc = Bun.spawn(["bun", "run", scanTs, "--json"], {
+      stdout: "pipe", stderr: "pipe",
+    });
+    const out = await new Response(proc.stdout).text();
+    await proc.exited;
+    const projects = JSON.parse(out);
+    expect(projects.length).toBeGreaterThan(0);
+
+    // Every project must have the core fields
+    const requiredFields = [
+      "folder", "name", "deps", "devDeps", "totalDeps",
+      "engine", "lock", "bunfig", "workspace",
+      "hasPkg", "lockHash", "projectTz", "projectDnsTtl",
+      "envFiles", "trustedDeps", "peerDeps", "peerDepsMeta",
+      "installPeer", "securityScanner",
+    ];
+    for (const p of projects) {
+      for (const field of requiredFields) {
+        expect(p).toHaveProperty(field);
+      }
+    }
+  });
+
+  test("every project with a lockfile has a non-empty lockHash", async () => {
+    const proc = Bun.spawn(["bun", "run", scanTs, "--json"], {
+      stdout: "pipe", stderr: "pipe",
+    });
+    const out = await new Response(proc.stdout).text();
+    await proc.exited;
+    const projects = JSON.parse(out);
+
+    const withLock = projects.filter((p: any) => p.lock === "bun.lock" || p.lock === "bun.lockb");
+    expect(withLock.length).toBeGreaterThan(0);
+    for (const p of withLock) {
+      expect(p.lockHash).not.toBe("-");
+      expect(p.lockHash.length).toBeGreaterThan(4); // hex hash
+    }
+  });
+
+  test("all projects with package.json are scanned (none dropped)", async () => {
+    const proc = Bun.spawn(["bun", "run", scanTs, "--json"], {
+      stdout: "pipe", stderr: "pipe",
+    });
+    const out = await new Response(proc.stdout).text();
+    await proc.exited;
+    const projects = JSON.parse(out);
+
+    const withPkg = projects.filter((p: any) => p.hasPkg);
+    // Must match the known project count from --audit (50)
+    expect(withPkg.length).toBeGreaterThanOrEqual(50);
+
+    // Every project with package.json should have a name
+    for (const p of withPkg) {
+      expect(p.name).not.toBe("-");
+      expect(typeof p.deps).toBe("number");
+      expect(typeof p.devDeps).toBe("number");
+      expect(p.totalDeps).toBe(p.deps + p.devDeps);
+    }
+  });
+});
+
 describe("timezone subprocess (real TZ from command line)", () => {
   const scanTs = `${import.meta.dir}/scan.ts`;
 
