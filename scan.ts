@@ -271,8 +271,12 @@ export interface ProjectInfo {
   hasPkg: boolean;
   // bunfig [install] settings
   frozenLockfile: boolean;
+  dryRun: boolean;              // install.dryRun (default: false)
   production: boolean;
   exact: boolean;
+  installOptional: boolean;     // install.optional (default: true)
+  installDev: boolean;          // install.dev (default: true)
+  installAuto: string;          // install.auto: "auto" | "force" | "disable" | "fallback" | "-"
   linker: string;               // "hoisted" | "isolated" | "-"
   configVersion: number;        // lockfile configVersion: 0 | 1 | -1 (unknown/binary)
   backend: string;              // "clonefile" | "hardlink" | "symlink" | "copyfile" | "-"
@@ -281,6 +285,12 @@ export interface ProjectInfo {
   saveTextLockfile: boolean;
   cacheDisabled: boolean;
   cacheDir: string;             // "-" = not set
+  cacheDisableManifest: boolean; // install.cache.disableManifest (default: false)
+  globalDir: string;            // install.globalDir | "-"
+  globalBinDir: string;         // install.globalBinDir | "-"
+  hasCa: boolean;               // install.ca or install.cafile configured
+  lockfileSave: boolean;        // install.lockfile.save (default: true)
+  lockfilePrint: string;        // install.lockfile.print: "yarn" | "-"
   installSecurityScanner: string;      // install.security.scanner | "-" = not set
   linkWorkspacePackages: boolean;
   noVerify: boolean;            // skip integrity verification
@@ -315,6 +325,9 @@ export interface ProjectInfo {
   workspacesList: string[];       // pkg.workspaces array entries
   lockHash: string;               // wyhash of lockfile content | "-"
 }
+
+// ── Accepted install.auto values ──────────────────────────────────────
+const VALID_AUTO = new Set(["auto", "force", "disable", "fallback"]);
 
 // ── Accepted bun install --cpu / --os values ──────────────────────────
 const VALID_CPU = new Set(["arm64", "x64", "ia32", "ppc64", "s390x"]);
@@ -562,8 +575,12 @@ export async function scanProject(dir: string): Promise<ProjectInfo> {
     resilient: false,
     hasPkg: false,
     frozenLockfile: false,
+    dryRun: false,
     production: false,
     exact: false,
+    installOptional: true,
+    installDev: true,
+    installAuto: "-",
     linker: "-",
     configVersion: -1,
     backend: "-",
@@ -572,6 +589,12 @@ export async function scanProject(dir: string): Promise<ProjectInfo> {
     saveTextLockfile: false,
     cacheDisabled: false,
     cacheDir: "-",
+    cacheDisableManifest: false,
+    globalDir: "-",
+    globalBinDir: "-",
+    hasCa: false,
+    lockfileSave: true,
+    lockfilePrint: "-",
     installSecurityScanner: "-",
     linkWorkspacePackages: false,
     noVerify: false,
@@ -765,12 +788,17 @@ export async function scanProject(dir: string): Promise<ProjectInfo> {
         return m?.[1] === "true";
       };
       base.frozenLockfile = boolOpt("frozenLockfile");
+      base.dryRun = boolOpt("dryRun");
       base.production = boolOpt("production");
       base.exact = boolOpt("exact");
       base.saveTextLockfile = boolOpt("saveTextLockfile");
       base.linkWorkspacePackages = boolOpt("linkWorkspacePackages");
 
-      // peer defaults to true in Bun — only store false as explicit override
+      // optional, dev, peer default to true in Bun — only store false as explicit override
+      const optionalVal = toml.match(/^\s*optional\s*=\s*(true|false)/m);
+      if (optionalVal) base.installOptional = optionalVal[1] === "true";
+      const devVal = toml.match(/^\s*dev\s*=\s*(true|false)/m);
+      if (devVal) base.installDev = devVal[1] === "true";
       const peerVal = toml.match(/^\s*peer\s*=\s*(true|false)/m);
       if (peerVal) base.installPeer = peerVal[1] === "true";
 
@@ -779,6 +807,8 @@ export async function scanProject(dir: string): Promise<ProjectInfo> {
         const m = toml.match(new RegExp(`^\\s*${key}\\s*=\\s*"([^"]+)"`, "m"));
         return m?.[1];
       };
+      const autoVal = strOpt("auto");
+      if (autoVal) base.installAuto = autoVal;
       const linkerVal = strOpt("linker");
       if (linkerVal) base.linker = linkerVal;
       const backendVal = strOpt("backend");
@@ -812,6 +842,16 @@ export async function scanProject(dir: string): Promise<ProjectInfo> {
       if (flatCacheDir) base.cacheDir = flatCacheDir[1];
       base.cacheDisabled = toml.includes("cache.disable = true") ||
         (toml.includes("[install.cache]") && boolOpt("disable"));
+      base.cacheDisableManifest = toml.includes("disableManifest = true");
+
+      // install.globalDir / install.globalBinDir
+      const globalDirVal = strOpt("globalDir");
+      if (globalDirVal) base.globalDir = globalDirVal;
+      const globalBinDirVal = strOpt("globalBinDir");
+      if (globalBinDirVal) base.globalBinDir = globalBinDirVal;
+
+      // install.ca / install.cafile
+      base.hasCa = /^\s*ca\s*=\s*/m.test(toml) || /^\s*cafile\s*=\s*/m.test(toml);
 
       // install.security.scanner — all valid TOML representations:
       // [install.security] scanner = "...", install.security.scanner = "...",
@@ -831,6 +871,14 @@ export async function scanProject(dir: string): Promise<ProjectInfo> {
         const re = new RegExp(`^\\[${name.replace(/\./g, "\\.")}\\]\\s*\\n([\\s\\S]*?)(?=^\\[|$)`, "m");
         return re.exec(toml)?.[1] ?? null;
       };
+
+      // [install.lockfile] save / print
+      const lockfileBlock = section("install.lockfile");
+      if (lockfileBlock) {
+        if (/^\s*save\s*=\s*false/m.test(lockfileBlock)) base.lockfileSave = false;
+        const printMatch = lockfileBlock.match(/^\s*print\s*=\s*"([^"]+)"/m);
+        if (printMatch) base.lockfilePrint = printMatch[1];
+      }
 
       // [run] section
       const runBlock = section("run");
@@ -1056,7 +1104,14 @@ function inspectProject(p: ProjectInfo) {
     console.log();
     console.log(`  ${c.bold(c.cyan("bunfig [install]"))}`);
     console.log();
+    line("Auto",          p.installAuto !== "-"
+      ? (!VALID_AUTO.has(p.installAuto) ? c.red(`${p.installAuto} (invalid)`)
+        : p.installAuto === "disable" ? c.yellow(p.installAuto)
+        : p.installAuto === "force" ? c.cyan(p.installAuto)
+        : p.installAuto)
+      : c.dim("auto (default)"));
     line("Frozen Lock",   p.frozenLockfile ? c.green("yes") : c.dim("no"));
+    line("Dry Run",       p.dryRun ? c.yellow("yes") : c.dim("no"));
     line("Production",    p.production ? c.yellow("yes") : c.dim("no"));
     line("Exact",         p.exact ? c.green("yes") : c.dim("no"));
     const eff = effectiveLinker(p);
@@ -1071,9 +1126,17 @@ function inspectProject(p: ProjectInfo) {
       line("  Excludes",   p.minimumReleaseAgeExcludes.join(", "));
     }
     line("Text Lock",     p.saveTextLockfile ? c.green("yes") : c.dim("no"));
-    line("Peer Install", p.installPeer ? c.green("yes (default)") : c.yellow("disabled"));
+    line("Optional",     p.installOptional ? c.green("yes (default)") : c.yellow("disabled"));
+    line("Dev",           p.installDev ? c.green("yes (default)") : c.yellow("disabled"));
+    line("Peer",          p.installPeer ? c.green("yes (default)") : c.yellow("disabled"));
     line("Link WS Pkgs",  p.linkWorkspacePackages ? c.green("yes") : c.dim("no"));
     line("Cache",         p.cacheDisabled ? c.yellow("disabled") : p.cacheDir !== "-" ? p.cacheDir : c.dim("default"));
+    if (p.cacheDisableManifest) line("  Manifest",  c.yellow("disabled (always resolve latest)"));
+    if (p.globalDir !== "-") line("Global Dir",  p.globalDir);
+    if (p.globalBinDir !== "-") line("Global Bin",  p.globalBinDir);
+    if (p.hasCa) line("CA/TLS",       c.green("configured"));
+    if (!p.lockfileSave) line("Lockfile",     c.yellow("save disabled"));
+    if (p.lockfilePrint !== "-") line("Lock Print",  p.lockfilePrint);
     line("No Verify",     p.noVerify ? c.red("yes") : c.dim("no"));
     line("Logging",        p.verbose ? c.yellow("verbose (lifecycle scripts visible)") : p.silent ? c.dim("silent") : c.dim("default"));
     const cpuCount = navigator?.hardwareConcurrency ?? 0;
@@ -1757,7 +1820,9 @@ async function renderAudit(projects: ProjectInfo[]) {
   console.log(c.bold(`  bunfig [install] coverage (${withBunfig.length} projects with bunfig.toml):`));
   console.log();
   const installStats: { label: string; count: number; desc: string }[] = [
+    { label: "auto",             count: withBunfig.filter((p) => p.installAuto !== "-").length,     desc: "install.auto (auto|force|disable|fallback)" },
     { label: "frozenLockfile",   count: withBunfig.filter((p) => p.frozenLockfile).length,          desc: "CI-safe lockfile enforcement" },
+    { label: "dryRun",           count: withBunfig.filter((p) => p.dryRun).length,                  desc: "install.dryRun (no actual install)" },
     { label: "production",       count: withBunfig.filter((p) => p.production).length,              desc: "skip devDependencies" },
     { label: "exact",            count: withBunfig.filter((p) => p.exact).length,                   desc: "pin exact versions (no ^/~)" },
     { label: "linker",           count: withBunfig.filter((p) => p.linker !== "-").length,           desc: "explicit linker strategy" },
@@ -1768,6 +1833,12 @@ async function renderAudit(projects: ProjectInfo[]) {
     { label: "linkWsPkgs",       count: withBunfig.filter((p) => p.linkWorkspacePackages).length,    desc: "workspace linking" },
     { label: "cacheDisabled",    count: withBunfig.filter((p) => p.cacheDisabled).length,            desc: "global cache bypassed" },
     { label: "cacheDir",         count: withBunfig.filter((p) => p.cacheDir !== "-").length,         desc: "custom cache path" },
+    { label: "  disableManifest",count: withBunfig.filter((p) => p.cacheDisableManifest).length,     desc: "always resolve latest from registry" },
+    { label: "globalDir",        count: withBunfig.filter((p) => p.globalDir !== "-").length,        desc: "custom global install dir" },
+    { label: "globalBinDir",     count: withBunfig.filter((p) => p.globalBinDir !== "-").length,     desc: "custom global bin dir" },
+    { label: "ca/cafile",        count: withBunfig.filter((p) => p.hasCa).length,                   desc: "CA certificate configured" },
+    { label: "lockfile.save",    count: withBunfig.filter((p) => !p.lockfileSave).length,           desc: "lockfile generation disabled" },
+    { label: "lockfile.print",   count: withBunfig.filter((p) => p.lockfilePrint !== "-").length,   desc: "non-Bun lockfile output (yarn)" },
     { label: "noVerify",         count: withBunfig.filter((p) => p.noVerify).length,                 desc: "skip integrity verification" },
     { label: "verbose",          count: withBunfig.filter((p) => p.verbose).length,                  desc: "debug logging (lifecycle scripts visible)" },
     { label: "silent",           count: withBunfig.filter((p) => p.silent).length,                   desc: "no logging" },
@@ -1777,6 +1848,8 @@ async function renderAudit(projects: ProjectInfo[]) {
     { label: "targetOs",         count: withBunfig.filter((p) => p.targetOs !== "-").length,         desc: "cross-platform os override" },
     { label: "security.scanner", count: withBunfig.filter((p) => p.installSecurityScanner !== "-").length,  desc: "install.security.scanner" },
     { label: "trustedDeps",      count: withBunfig.filter((p) => p.trustedDeps.length > 0).length,   desc: "lifecycle scripts allowed" },
+    { label: "optional",         count: withBunfig.filter((p) => !p.installOptional).length,      desc: "optional deps disabled (default: on)" },
+    { label: "dev",              count: withBunfig.filter((p) => !p.installDev).length,           desc: "dev deps disabled (default: on)" },
     { label: "peer",             count: withBunfig.filter((p) => !p.installPeer).length,          desc: "peer auto-install disabled (default: on)" },
   ];
   for (const { label, count, desc } of installStats) {
