@@ -1,5 +1,5 @@
 import { describe, test, expect } from "bun:test";
-import { isFeatureFlagActive, classifyEnvFlag, effectiveLinker, platformHelp, shouldWarnMise, parseTzFromEnv, parseEnvVar, validateThreatFeed, ThreatFeedItemSchema, semverBumpType, isVulnerable, semverCompare, ProjectInfoSchema, XrefSnapshotSchema, XrefEntrySchema, PackageJsonSchema, classifyKeychainError, tokenSource, timeSince, keychainGet, keychainSet, keychainDelete, BUN_KEYCHAIN_SERVICE, BUN_KEYCHAIN_TOKEN_NAMES, isValidTokenName, validateTokenValue, tokenValueWarnings, escapeXml, decodeXmlEntities, generateRssXml, parseRssFeed, BUN_TOKEN_AUDIT_RSS_PATH, BUN_SCAN_RESULTS_RSS_PATH, BUN_ADVISORY_MATCHES_PATH, type KeychainErr } from "./scan.ts";
+import { isFeatureFlagActive, classifyEnvFlag, effectiveLinker, platformHelp, shouldWarnMise, parseTzFromEnv, parseEnvVar, validateThreatFeed, ThreatFeedItemSchema, semverBumpType, isVulnerable, semverCompare, ProjectInfoSchema, XrefSnapshotSchema, XrefEntrySchema, PackageJsonSchema, classifyKeychainError, tokenSource, timeSince, keychainGet, keychainSet, keychainDelete, BUN_KEYCHAIN_SERVICE, BUN_KEYCHAIN_TOKEN_NAMES, isValidTokenName, validateTokenValue, tokenValueWarnings, escapeXml, decodeXmlEntities, generateRssXml, parseRssFeed, BUN_TOKEN_AUDIT_RSS_PATH, BUN_SCAN_RESULTS_RSS_PATH, BUN_ADVISORY_MATCHES_PATH, getGitCommitHash, getGitCommitHashShort, type KeychainErr } from "./scan.ts";
 
 describe("isFeatureFlagActive", () => {
   test("returns true for '1'", () => {
@@ -1460,5 +1460,32 @@ describe("RSS round-trip (generate → parse)", () => {
     expect(parsed).toHaveLength(1);
     expect(parsed[0].title).toBe('He said "hello" & <goodbye>');
     expect(parsed[0].description).toBe("It's a 'test'");
+  });
+});
+
+describe("getGitCommitHash", () => {
+  test("returns a 40-char hex SHA from the scanner repo", () => {
+    const hash = getGitCommitHash();
+    expect(hash).toMatch(/^[0-9a-f]{40}$/);
+  });
+
+  test("matches git rev-parse HEAD via Bun.spawnSync", () => {
+    const { stdout } = Bun.spawnSync(["git", "rev-parse", "HEAD"], { stdout: "pipe", stderr: "ignore" });
+    expect(getGitCommitHash()).toBe(stdout.toString().trim());
+  });
+
+  test("returns empty string for non-git directory", () => {
+    expect(getGitCommitHash("/")).toBe("");
+  });
+
+  test("short form returns first 9 chars", () => {
+    const full = getGitCommitHash();
+    const short = getGitCommitHashShort();
+    expect(short).toBe(full.slice(0, 9));
+    expect(short).toHaveLength(9);
+  });
+
+  test("short form returns empty string for non-git directory", () => {
+    expect(getGitCommitHashShort("/")).toBe("");
   });
 });

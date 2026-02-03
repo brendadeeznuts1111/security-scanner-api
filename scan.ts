@@ -353,6 +353,30 @@ export function semverCompare(a: string, b: string): 0 | 1 | -1 {
   return Bun.semver.order(a, b);
 }
 
+/**
+ * Get the current git commit hash via Bun.spawnSync.
+ * Returns the full SHA, or "" if not in a git repo.
+ * @see https://bun.sh/docs/bundler/macros#embed-latest-git-commit-hash
+ */
+export function getGitCommitHash(cwd?: string): string {
+  try {
+    const { stdout, success } = Bun.spawnSync(["git", "rev-parse", "HEAD"], {
+      cwd: cwd ?? import.meta.dir,
+      stdout: "pipe",
+      stderr: "ignore",
+    });
+    return success ? stdout.toString().trim() : "";
+  } catch {
+    return "";
+  }
+}
+
+/** Short form (first 9 chars) matching Bun.revision display convention. */
+export function getGitCommitHashShort(cwd?: string): string {
+  const full = getGitCommitHash(cwd);
+  return full ? full.slice(0, 9) : "";
+}
+
 // ── Shared outdated parsing ───────────────────────────────────────────
 const stripAnsi = Bun.stripANSI;
 
@@ -4803,7 +4827,9 @@ ${c.bold("  Other:")}
   const now = new Date();
   const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
   const scanTime = `${now.getFullYear()}-${pad2(now.getMonth() + 1)}-${pad2(now.getDate())} ${pad2(now.getHours())}:${pad2(now.getMinutes())}:${pad2(now.getSeconds())} ${tz}${_tzExplicit ? ` (TZ=${process.env.TZ})` : ""}`;
-  console.log(c.bold(c.cyan(`  Project Scanner — ${projects.length} projects scanned in ${elapsed}ms (bun ${Bun.version} ${Bun.revision.slice(0, 9)})`)));
+  const _commitHash = getGitCommitHash();
+  const _commitShort = _commitHash ? _commitHash.slice(0, 9) : "";
+  console.log(c.bold(c.cyan(`  Project Scanner — ${projects.length} projects scanned in ${elapsed}ms (bun ${Bun.version} ${Bun.revision.slice(0, 9)}${_commitShort ? ` ${_commitShort}` : ""})`)));
   console.log(c.dim(`  ${scanTime}`));
   console.log();
 
@@ -4858,7 +4884,7 @@ ${c.bold("  Other:")}
       scanDuration: elapsed,
       projectsScanned: projects.length,
       projectsChanged: changedCount,
-      snapshotHash: "",
+      snapshotHash: _commitHash,
       driftDetected: hasDrift,
       user: Bun.env.USER ?? "unknown",
       cwd: import.meta.dir,
