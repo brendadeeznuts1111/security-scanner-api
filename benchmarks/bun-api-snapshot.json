@@ -1,5 +1,5 @@
 {
-  "generated": "2026-02-03T14:20:34.679Z",
+  "generated": "2026-02-03T14:22:00.654Z",
   "file": "scan.ts",
   "fileSizeBytes": 198029,
   "fileLines": 4360,
@@ -807,6 +807,198 @@
             3642
           ]
         }
+      }
+    ]
+  },
+  "signals": {
+    "doc": "https://bun.sh/docs/runtime/child-process#reference",
+    "total_available": 37,
+    "total_used": 2,
+    "contexts": {
+      "process.removeListener": 1,
+      "process.on": 3,
+      "process.off": 2
+    },
+    "coverage": {
+      "SIGABRT": {
+        "used": false,
+        "sites": 0
+      },
+      "SIGALRM": {
+        "used": false,
+        "sites": 0
+      },
+      "SIGBUS": {
+        "used": false,
+        "sites": 0
+      },
+      "SIGCHLD": {
+        "used": false,
+        "sites": 0
+      },
+      "SIGCONT": {
+        "used": false,
+        "sites": 0
+      },
+      "SIGFPE": {
+        "used": false,
+        "sites": 0
+      },
+      "SIGHUP": {
+        "used": false,
+        "sites": 0
+      },
+      "SIGILL": {
+        "used": false,
+        "sites": 0
+      },
+      "SIGINT": {
+        "used": true,
+        "sites": 4
+      },
+      "SIGIO": {
+        "used": false,
+        "sites": 0
+      },
+      "SIGIOT": {
+        "used": false,
+        "sites": 0
+      },
+      "SIGKILL": {
+        "used": false,
+        "sites": 0
+      },
+      "SIGPIPE": {
+        "used": false,
+        "sites": 0
+      },
+      "SIGPOLL": {
+        "used": false,
+        "sites": 0
+      },
+      "SIGPROF": {
+        "used": false,
+        "sites": 0
+      },
+      "SIGPWR": {
+        "used": false,
+        "sites": 0
+      },
+      "SIGQUIT": {
+        "used": false,
+        "sites": 0
+      },
+      "SIGSEGV": {
+        "used": false,
+        "sites": 0
+      },
+      "SIGSTKFLT": {
+        "used": false,
+        "sites": 0
+      },
+      "SIGSTOP": {
+        "used": false,
+        "sites": 0
+      },
+      "SIGSYS": {
+        "used": false,
+        "sites": 0
+      },
+      "SIGTERM": {
+        "used": true,
+        "sites": 2
+      },
+      "SIGTRAP": {
+        "used": false,
+        "sites": 0
+      },
+      "SIGTSTP": {
+        "used": false,
+        "sites": 0
+      },
+      "SIGTTIN": {
+        "used": false,
+        "sites": 0
+      },
+      "SIGTTOU": {
+        "used": false,
+        "sites": 0
+      },
+      "SIGUNUSED": {
+        "used": false,
+        "sites": 0
+      },
+      "SIGURG": {
+        "used": false,
+        "sites": 0
+      },
+      "SIGUSR1": {
+        "used": false,
+        "sites": 0
+      },
+      "SIGUSR2": {
+        "used": false,
+        "sites": 0
+      },
+      "SIGVTALRM": {
+        "used": false,
+        "sites": 0
+      },
+      "SIGWINCH": {
+        "used": false,
+        "sites": 0
+      },
+      "SIGXCPU": {
+        "used": false,
+        "sites": 0
+      },
+      "SIGXFSZ": {
+        "used": false,
+        "sites": 0
+      },
+      "SIGBREAK": {
+        "used": false,
+        "sites": 0
+      },
+      "SIGLOST": {
+        "used": false,
+        "sites": 0
+      },
+      "SIGINFO": {
+        "used": false,
+        "sites": 0
+      }
+    },
+    "sites": [
+      {
+        "signal": "SIGINT",
+        "line": 1368,
+        "context": "process.removeListener"
+      },
+      {
+        "signal": "SIGINT",
+        "line": 1443,
+        "context": "process.on"
+      },
+      {
+        "signal": "SIGINT",
+        "line": 3451,
+        "context": "process.on"
+      },
+      {
+        "signal": "SIGTERM",
+        "line": 3452,
+        "context": "process.on"
+      },
+      {
+        "signal": "SIGINT",
+        "line": 3550,
+        "context": "process.off"
+      },
+      {
+        "signal": "SIGTERM",
+        "line": 3551,
+        "context": "process.off"
       }
     ]
   },

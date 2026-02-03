@@ -224,6 +224,73 @@ function analyzeSpawnSites() {
 
 const spawnAnalysis = analyzeSpawnSites();
 
+// ── Signal analysis ─────────────────────────────────────────────────
+// Ref: https://bun.sh/docs/runtime/child-process#reference (Signal type)
+// Tracks all POSIX/platform signals and where they appear in the codebase.
+
+const SIGNALS = [
+  "SIGABRT", "SIGALRM", "SIGBUS", "SIGCHLD", "SIGCONT",
+  "SIGFPE", "SIGHUP", "SIGILL", "SIGINT", "SIGIO",
+  "SIGIOT", "SIGKILL", "SIGPIPE", "SIGPOLL", "SIGPROF",
+  "SIGPWR", "SIGQUIT", "SIGSEGV", "SIGSTKFLT", "SIGSTOP",
+  "SIGSYS", "SIGTERM", "SIGTRAP", "SIGTSTP", "SIGTTIN",
+  "SIGTTOU", "SIGUNUSED", "SIGURG", "SIGUSR1", "SIGUSR2",
+  "SIGVTALRM", "SIGWINCH", "SIGXCPU", "SIGXFSZ",
+  "SIGBREAK", "SIGLOST", "SIGINFO",
+] as const;
+
+type SignalContext = "process.on" | "process.off" | "process.removeListener" | "proc.kill" | "spawn.killSignal" | "spawn.signal" | "other";
+
+interface SignalSite {
+  signal: string;
+  line: number;
+  context: SignalContext;
+}
+
+function analyzeSignals() {
+  const sites: SignalSite[] = [];
+  const signalUsage: Record<string, number> = {};
+
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    for (const sig of SIGNALS) {
+      if (!line.includes(sig)) continue;
+
+      // Determine context
+      let context: SignalContext = "other";
+      if (/process\.on\s*\(/.test(line)) context = "process.on";
+      else if (/process\.off\s*\(/.test(line)) context = "process.off";
+      else if (/process\.removeListener\s*\(/.test(line)) context = "process.removeListener";
+      else if (/\.kill\s*\(/.test(line)) context = "proc.kill";
+      else if (/killSignal\s*:/.test(line)) context = "spawn.killSignal";
+      else if (/\bsignal\s*:/.test(line)) context = "spawn.signal";
+
+      sites.push({ signal: sig, line: i + 1, context });
+      signalUsage[sig] = (signalUsage[sig] ?? 0) + 1;
+    }
+  }
+
+  const coverage: Record<string, { used: boolean; sites: number }> = {};
+  for (const sig of SIGNALS) {
+    coverage[sig] = { used: (signalUsage[sig] ?? 0) > 0, sites: signalUsage[sig] ?? 0 };
+  }
+
+  const contexts: Record<string, number> = {};
+  for (const site of sites) {
+    contexts[site.context] = (contexts[site.context] ?? 0) + 1;
+  }
+
+  return {
+    total_signals_available: SIGNALS.length,
+    total_signals_used: Object.keys(signalUsage).length,
+    contexts,
+    coverage,
+    sites,
+  };
+}
+
+const signalAnalysis = analyzeSignals();
+
 // ── Legacy pattern detection ────────────────────────────────────────
 
 function countPattern(re: RegExp): number {
@@ -282,6 +349,14 @@ const snapshot = {
     option_coverage: spawnAnalysis.optionCoverage,
     member_coverage: spawnAnalysis.memberCoverage,
     sites: spawnAnalysis.sites,
+  },
+  signals: {
+    doc: "https://bun.sh/docs/runtime/child-process#reference",
+    total_available: signalAnalysis.total_signals_available,
+    total_used: signalAnalysis.total_signals_used,
+    contexts: signalAnalysis.contexts,
+    coverage: signalAnalysis.coverage,
+    sites: signalAnalysis.sites,
   },
   summary: {
     unique_apis: results.length,
