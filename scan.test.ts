@@ -1,5 +1,5 @@
 import { describe, test, expect } from "bun:test";
-import { isFeatureFlagActive, classifyEnvFlag, effectiveLinker, platformHelp, shouldWarnMise, parseTzFromEnv, parseEnvVar, validateThreatFeed, ThreatFeedItemSchema, semverBumpType, isVulnerable, semverCompare, ProjectInfoSchema, XrefSnapshotSchema, XrefEntrySchema, PackageJsonSchema } from "./scan.ts";
+import { isFeatureFlagActive, classifyEnvFlag, effectiveLinker, platformHelp, shouldWarnMise, parseTzFromEnv, parseEnvVar, validateThreatFeed, ThreatFeedItemSchema, semverBumpType, isVulnerable, semverCompare, ProjectInfoSchema, XrefSnapshotSchema, XrefEntrySchema, PackageJsonSchema, classifyKeychainError, tokenSource, timeSince, keychainGet, keychainSet, keychainDelete, KEYCHAIN_SERVICE, KEYCHAIN_TOKEN_NAMES, type KeychainErr } from "./scan.ts";
 
 describe("isFeatureFlagActive", () => {
   test("returns true for '1'", () => {
@@ -1007,5 +1007,216 @@ describe("DNS prefetch dry-run", () => {
     expect(stdout).toMatch(/domain\(s\) detected|DRY|SKIP/);
     // Should mention dry run
     expect(stdout).toMatch(/dry.run|Run without/i);
+  });
+});
+
+// ── Keychain token security tests ─────────────────────────────────────
+describe("classifyKeychainError", () => {
+  test("classifies permission errors as ACCESS_DENIED", () => {
+    const result = classifyKeychainError(new Error("User denied access"));
+    expect(result.ok).toBe(false);
+    expect(result.code).toBe("ACCESS_DENIED");
+    expect(result.reason).toContain("denied");
+  });
+
+  test("classifies authorization errors as ACCESS_DENIED", () => {
+    const result = classifyKeychainError(new Error("authorization failed"));
+    expect(result.code).toBe("ACCESS_DENIED");
+  });
+
+  test("classifies permission not allowed as ACCESS_DENIED", () => {
+    const result = classifyKeychainError(new Error("operation not allowed"));
+    expect(result.code).toBe("ACCESS_DENIED");
+  });
+
+  test("classifies not found errors as NOT_FOUND", () => {
+    const result = classifyKeychainError(new Error("The specified item could not be found in the keychain"));
+    expect(result.code).toBe("NOT_FOUND");
+  });
+
+  test("classifies 'no such' errors as NOT_FOUND", () => {
+    const result = classifyKeychainError(new Error("no such keychain item"));
+    expect(result.code).toBe("NOT_FOUND");
+  });
+
+  test("classifies unknown errors as OS_ERROR", () => {
+    const result = classifyKeychainError(new Error("unexpected internal failure"));
+    expect(result.code).toBe("OS_ERROR");
+    expect(result.reason).toContain("unexpected internal failure");
+  });
+
+  test("handles non-Error values", () => {
+    const result = classifyKeychainError("string error");
+    expect(result.ok).toBe(false);
+    expect(result.code).toBe("OS_ERROR");
+    expect(result.reason).toContain("string error");
+  });
+
+  test("handles null/undefined", () => {
+    const result = classifyKeychainError(null);
+    expect(result.ok).toBe(false);
+    expect(result.code).toBe("OS_ERROR");
+  });
+});
+
+describe("tokenSource", () => {
+  const origEnv: Record<string, string | undefined> = {};
+
+  test("returns 'env' when env var is set", () => {
+    origEnv.FW_REGISTRY_TOKEN = Bun.env.FW_REGISTRY_TOKEN;
+    process.env.FW_REGISTRY_TOKEN = "from-env";
+    expect(tokenSource("FW_REGISTRY_TOKEN")).toBe("env");
+    // restore
+    if (origEnv.FW_REGISTRY_TOKEN === undefined) delete process.env.FW_REGISTRY_TOKEN;
+    else process.env.FW_REGISTRY_TOKEN = origEnv.FW_REGISTRY_TOKEN;
+  });
+
+  test("returns 'not set' for unknown token names", () => {
+    delete process.env.__TEST_NONEXISTENT_TOKEN__;
+    expect(tokenSource("__TEST_NONEXISTENT_TOKEN__")).toBe("not set");
+  });
+});
+
+describe("timeSince", () => {
+  test("returns seconds for recent dates", () => {
+    const recent = new Date(Date.now() - 30_000);
+    expect(timeSince(recent)).toBe("30s ago");
+  });
+
+  test("returns minutes", () => {
+    const fiveMin = new Date(Date.now() - 5 * 60_000);
+    expect(timeSince(fiveMin)).toBe("5m ago");
+  });
+
+  test("returns hours", () => {
+    const threeHours = new Date(Date.now() - 3 * 3_600_000);
+    expect(timeSince(threeHours)).toBe("3h ago");
+  });
+
+  test("returns days", () => {
+    const twoDays = new Date(Date.now() - 2 * 86_400_000);
+    expect(timeSince(twoDays)).toBe("2d ago");
+  });
+
+  test("90 days shows rotation-worthy age", () => {
+    const ninetyDays = new Date(Date.now() - 90 * 86_400_000);
+    expect(timeSince(ninetyDays)).toBe("90d ago");
+  });
+});
+
+describe("keychainGet / keychainSet / keychainDelete (live keychain)", () => {
+  const TEST_TOKEN = "__SCANNER_TEST_TOKEN__";
+
+  test("stores and retrieves a token", async () => {
+    const setResult = await keychainSet(TEST_TOKEN, "test-value-123");
+    expect(setResult.ok).toBe(true);
+
+    const getResult = await keychainGet(TEST_TOKEN);
+    expect(getResult.ok).toBe(true);
+    if (getResult.ok) expect(getResult.value).toBe("test-value-123");
+  });
+
+  test("overwrites an existing token", async () => {
+    await keychainSet(TEST_TOKEN, "old-value");
+    await keychainSet(TEST_TOKEN, "new-value");
+
+    const result = await keychainGet(TEST_TOKEN);
+    expect(result.ok).toBe(true);
+    if (result.ok) expect(result.value).toBe("new-value");
+  });
+
+  test("deletes a token and confirms absence", async () => {
+    await keychainSet(TEST_TOKEN, "to-be-deleted");
+    const delResult = await keychainDelete(TEST_TOKEN);
+    expect(delResult.ok).toBe(true);
+    if (delResult.ok) expect(delResult.value).toBe(true);
+
+    const getResult = await keychainGet(TEST_TOKEN);
+    expect(getResult.ok).toBe(true);
+    if (getResult.ok) expect(getResult.value).toBeNull();
+  });
+
+  test("delete returns false for non-existent token", async () => {
+    // ensure it doesn't exist
+    await keychainDelete(TEST_TOKEN);
+    const result = await keychainDelete(TEST_TOKEN);
+    expect(result.ok).toBe(true);
+    if (result.ok) expect(result.value).toBe(false);
+  });
+
+  test("get returns null for non-existent token", async () => {
+    await keychainDelete(TEST_TOKEN);
+    const result = await keychainGet("__SCANNER_DOES_NOT_EXIST__");
+    expect(result.ok).toBe(true);
+    if (result.ok) expect(result.value).toBeNull();
+  });
+
+  // Cleanup
+  test("cleanup test token", async () => {
+    await keychainDelete(TEST_TOKEN);
+    const result = await keychainGet(TEST_TOKEN);
+    expect(result.ok).toBe(true);
+    if (result.ok) expect(result.value).toBeNull();
+  });
+});
+
+describe("token security edge cases", () => {
+  test("empty string token value is stored and retrieved", async () => {
+    const name = "__SCANNER_EMPTY_TEST__";
+    const setResult = await keychainSet(name, "");
+    expect(setResult.ok).toBe(true);
+    const getResult = await keychainGet(name);
+    expect(getResult.ok).toBe(true);
+    // empty string stored — security CLI returns empty which maps to null
+    if (getResult.ok) expect(getResult.value).toBeNull();
+    await keychainDelete(name);
+  });
+
+  test("token with special characters", async () => {
+    const name = "__SCANNER_SPECIAL_TEST__";
+    const value = "t0k3n!@#$%^&*()_+-={}[]|;':\",./<>?";
+    const setResult = await keychainSet(name, value);
+    expect(setResult.ok).toBe(true);
+    const getResult = await keychainGet(name);
+    expect(getResult.ok).toBe(true);
+    if (getResult.ok) expect(getResult.value).toBe(value);
+    await keychainDelete(name);
+  });
+
+  test("token with newlines", async () => {
+    const name = "__SCANNER_NEWLINE_TEST__";
+    const value = "line1\nline2\nline3";
+    const setResult = await keychainSet(name, value);
+    expect(setResult.ok).toBe(true);
+    const getResult = await keychainGet(name);
+    expect(getResult.ok).toBe(true);
+    // security CLI -w strips trailing newline, multiline may not round-trip
+    if (getResult.ok) expect(getResult.value).toContain("line1");
+    await keychainDelete(name);
+  });
+
+  test("KEYCHAIN_SERVICE is reverse-domain format", () => {
+    expect(KEYCHAIN_SERVICE).toBe("dev.bun.scanner");
+    expect(KEYCHAIN_SERVICE).toMatch(/^[a-z]+\.[a-z]+\.[a-z]+$/);
+  });
+
+  test("KEYCHAIN_TOKEN_NAMES contains expected tokens", () => {
+    expect(KEYCHAIN_TOKEN_NAMES).toContain("FW_REGISTRY_TOKEN");
+    expect(KEYCHAIN_TOKEN_NAMES).toContain("REGISTRY_TOKEN");
+    expect(KEYCHAIN_TOKEN_NAMES.length).toBe(2);
+  });
+
+  test("rotation detection: 90+ day old token", () => {
+    const stored = new Date(Date.now() - 91 * 86_400_000);
+    const ageDays = Math.floor((Date.now() - stored.getTime()) / 86_400_000);
+    expect(ageDays).toBeGreaterThanOrEqual(90);
+    expect(timeSince(stored)).toBe("91d ago");
+  });
+
+  test("rotation detection: fresh token within policy", () => {
+    const stored = new Date(Date.now() - 5 * 86_400_000);
+    const ageDays = Math.floor((Date.now() - stored.getTime()) / 86_400_000);
+    expect(ageDays).toBeLessThan(90);
+    expect(timeSince(stored)).toBe("5d ago");
   });
 });

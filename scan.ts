@@ -579,9 +579,9 @@ const BUN_DEFAULT_TRUSTED = new Set([
 const PROJECTS_ROOT = Bun.env.BUN_PLATFORM_HOME ?? "/Users/nolarose/Projects";
 
 // ── Keychain (Bun.secrets) ────────────────────────────────────────────
-const KEYCHAIN_SERVICE = "dev.bun.scanner";
-const KEYCHAIN_SERVICE_LEGACY = "bun-scanner";
-const KEYCHAIN_TOKEN_NAMES = ["FW_REGISTRY_TOKEN", "REGISTRY_TOKEN"] as const;
+export const KEYCHAIN_SERVICE = "dev.bun.scanner";
+export const KEYCHAIN_SERVICE_LEGACY = "bun-scanner";
+export const KEYCHAIN_TOKEN_NAMES = ["FW_REGISTRY_TOKEN", "REGISTRY_TOKEN"] as const;
 const _keychainLoadedTokens = new Set<string>();
 
 // ── Keychain metrics ──────────────────────────────────────────────────
@@ -610,7 +610,7 @@ function recordAccess(name: string): void {
   m.lastAccessed = Date.now();
 }
 
-function timeSince(date: Date): string {
+export function timeSince(date: Date): string {
   const sec = Math.floor((Date.now() - date.getTime()) / 1000);
   if (sec < 60) return `${sec}s ago`;
   const min = Math.floor(sec / 60);
@@ -628,9 +628,9 @@ function recordFailure(name: string, code: KeychainErr["code"]): void {
   m.lastFailCode = code;
 }
 
-type KeychainOk<T> = { ok: true; value: T };
-type KeychainErr = { ok: false; code: "NO_API" | "ACCESS_DENIED" | "NOT_FOUND" | "OS_ERROR"; reason: string };
-type KeychainResult<T> = KeychainOk<T> | KeychainErr;
+export type KeychainOk<T> = { ok: true; value: T };
+export type KeychainErr = { ok: false; code: "NO_API" | "ACCESS_DENIED" | "NOT_FOUND" | "OS_ERROR"; reason: string };
+export type KeychainResult<T> = KeychainOk<T> | KeychainErr;
 
 function keychainUnavailableErr(): KeychainErr {
   const v = typeof Bun !== "undefined" ? Bun.version : "unknown";
@@ -641,7 +641,7 @@ function keychainUnavailableErr(): KeychainErr {
   };
 }
 
-function classifyKeychainError(err: unknown): KeychainErr {
+export function classifyKeychainError(err: unknown): KeychainErr {
   const msg = err instanceof Error ? err.message : String(err);
   const lower = msg.toLowerCase();
   if (lower.includes("denied") || lower.includes("authorization") || lower.includes("permission") || lower.includes("not allowed"))
@@ -664,7 +664,15 @@ async function securityGet(name: string, service = KEYCHAIN_SERVICE): Promise<Ke
         return { ok: true, value: null };                       // item simply doesn't exist
       return classifyKeychainError(new Error(stderr.trim()));
     }
-    const value = (await proc.stdout.text()).replace(/\n$/, "");
+    let value = (await proc.stdout.text()).replace(/\n$/, "");
+    // macOS security CLI hex-encodes passwords containing non-printable chars (e.g. newlines)
+    if (value && /^[0-9a-f]+$/.test(value) && value.length % 2 === 0) {
+      try {
+        const decoded = Buffer.from(value, "hex").toString("utf-8");
+        // Only accept decode if result contains the non-printable chars that triggered encoding
+        if (/[\x00-\x1f]/.test(decoded)) value = decoded;
+      } catch { /* not actually hex, use raw value */ }
+    }
     return { ok: true, value: value || null };
   } catch (err) {
     return classifyKeychainError(err);
@@ -728,7 +736,7 @@ async function securityMeta(name: string, service = KEYCHAIN_SERVICE): Promise<s
 // -- dispatch: Bun.secrets → security CLI ----------------------------------
 const _hasBunSecrets = !!(globalThis as any).secrets?.get;
 
-async function keychainGet(name: string): Promise<KeychainResult<string | null>> {
+export async function keychainGet(name: string): Promise<KeychainResult<string | null>> {
   let result: KeychainResult<string | null>;
   if (_hasBunSecrets) {
     try {
@@ -747,7 +755,7 @@ async function keychainGet(name: string): Promise<KeychainResult<string | null>>
   return result;
 }
 
-async function keychainSet(name: string, value: string): Promise<KeychainResult<void>> {
+export async function keychainSet(name: string, value: string): Promise<KeychainResult<void>> {
   let result: KeychainResult<void>;
   if (_hasBunSecrets) {
     try {
@@ -765,7 +773,7 @@ async function keychainSet(name: string, value: string): Promise<KeychainResult<
   return result;
 }
 
-async function keychainDelete(name: string): Promise<KeychainResult<boolean>> {
+export async function keychainDelete(name: string): Promise<KeychainResult<boolean>> {
   let result: KeychainResult<boolean>;
   if (_hasBunSecrets) {
     try {
@@ -782,7 +790,7 @@ async function keychainDelete(name: string): Promise<KeychainResult<boolean>> {
   return result;
 }
 
-function tokenSource(name: string): "env" | "keychain" | "not set" {
+export function tokenSource(name: string): "env" | "keychain" | "not set" {
   if (_keychainLoadedTokens.has(name)) return "keychain";
   if (Bun.env[name]) return "env";
   return "not set";
@@ -3872,43 +3880,91 @@ ${c.bold("  Other:")}
 
   if (flags["list-tokens"]) {
     const t0 = Bun.nanoseconds();
-    console.log(`\n${c.bold("  Token sources:")}\n`);
+    const detail = flags.detail;
+    const backend = _hasBunSecrets ? "Bun.secrets" : process.platform === "darwin" ? "security CLI" : "unavailable";
     let keychainNote = "";
-    let found = 0;
-    let total = 0;
+
+    // Collect token data
+    const tokenData: { name: string; source: string; inEnv: boolean; inKeychain: boolean; lookupMs: number; storedAt: string | null; m: TokenMetrics }[] = [];
     for (const name of KEYCHAIN_TOKEN_NAMES) {
-      total++;
       const t1 = Bun.nanoseconds();
       const inEnv = !!Bun.env[name];
       const kcResult = await keychainGet(name);
       const inKeychain = kcResult.ok && !!kcResult.value;
-      const lookupMs = ((Bun.nanoseconds() - t1) / 1e6).toFixed(1);
+      const lookupMs = (Bun.nanoseconds() - t1) / 1e6;
       if (!kcResult.ok && !keychainNote) keychainNote = kcResult.reason;
-      if (inEnv || inKeychain) found++;
-      let status: string;
-      if (inEnv && inKeychain) status = c.green("env + keychain");
-      else if (inEnv) status = c.green("env");
-      else if (inKeychain) status = c.cyan("keychain");
-      else status = c.yellow("not set");
-      console.log(`    ${c.cyan(name.padEnd(24))} ${status}  ${c.dim(`${lookupMs}ms`)}`);
-    }
-    const totalMs = ((Bun.nanoseconds() - t0) / 1e6).toFixed(1);
-    const backend = _hasBunSecrets ? "Bun.secrets" : process.platform === "darwin" ? "security CLI" : "unavailable";
-    console.log();
-    console.log(`  ${c.dim(`${found}/${total} resolved  ${totalMs}ms  backend: ${backend}  service: ${KEYCHAIN_SERVICE}`)}`);
-
-    // Lifecycle metrics
-    console.log();
-    console.log(`${c.bold("  Lifecycle:")}\n`);
-    for (const name of KEYCHAIN_TOKEN_NAMES) {
-      const m = getMetrics(name);
+      let source: string;
+      if (inEnv && inKeychain) source = "env + keychain";
+      else if (inEnv) source = "env";
+      else if (inKeychain) source = "keychain";
+      else source = "not set";
       const storedAt = process.platform === "darwin" ? await securityMeta(name) : null;
-      const age = storedAt ? c.dim(timeSince(new Date(storedAt))) : c.dim("-");
-      const accessed = m.accessed > 0 ? c.green(String(m.accessed)) : c.dim("0");
-      const failed = m.failed > 0 ? c.red(String(m.failed)) : c.dim("0");
-      const lastFail = m.lastFailCode ? c.red(m.lastFailCode) : c.dim("-");
-      console.log(`    ${c.cyan(name.padEnd(24))} accessed: ${accessed}  failed: ${failed}  last-err: ${lastFail}  stored: ${storedAt ? c.dim(storedAt) : c.dim("-")}  age: ${age}`);
+      tokenData.push({ name, source, inEnv, inKeychain, lookupMs, storedAt, m: getMetrics(name) });
     }
+
+    const totalMs = (Bun.nanoseconds() - t0) / 1e6;
+    const found = tokenData.filter((t) => t.inEnv || t.inKeychain).length;
+    const totalAccess = tokenData.reduce((s, t) => s + t.m.accessed, 0);
+    const totalFailed = tokenData.reduce((s, t) => s + t.m.failed, 0);
+
+    if (!detail) {
+      // Compact view (default)
+      console.log(`\n${c.bold("  Token sources:")}\n`);
+      for (const t of tokenData) {
+        const colored = t.source === "env + keychain" ? c.green(t.source) : t.source === "env" ? c.green(t.source) : t.source === "keychain" ? c.cyan(t.source) : c.yellow(t.source);
+        console.log(`    ${c.cyan(t.name.padEnd(24))} ${colored}  ${c.dim(`${t.lookupMs.toFixed(1)}ms`)}`);
+      }
+      console.log();
+      console.log(`  ${c.dim(`${found}/${tokenData.length} resolved  ${totalMs.toFixed(1)}ms  backend: ${backend}  service: ${KEYCHAIN_SERVICE}`)}`);
+
+      console.log();
+      console.log(`${c.bold("  Lifecycle:")}\n`);
+      for (const t of tokenData) {
+        const age = t.storedAt ? c.dim(timeSince(new Date(t.storedAt))) : c.dim("-");
+        const accessed = t.m.accessed > 0 ? c.green(String(t.m.accessed)) : c.dim("0");
+        const failed = t.m.failed > 0 ? c.red(String(t.m.failed)) : c.dim("0");
+        const lastFail = t.m.lastFailCode ? c.red(t.m.lastFailCode) : c.dim("-");
+        console.log(`    ${c.cyan(t.name.padEnd(24))} accessed: ${accessed}  failed: ${failed}  last-err: ${lastFail}  stored: ${t.storedAt ? c.dim(t.storedAt) : c.dim("-")}  age: ${age}`);
+      }
+    } else {
+      // Detail view (--detail) — Token Health & Security Assessment
+      const ROTATION_DAYS = 90;
+      console.log(`\n  ${c.bold(c.cyan("Token Health & Security Assessment"))}`)
+      console.log(`  ${c.dim(`${found}/${tokenData.length} resolved  ${totalMs.toFixed(1)}ms  backend: ${backend}  service: ${KEYCHAIN_SERVICE}`)}\n`);
+
+      const rows = tokenData.map((t) => {
+        const active = t.inEnv || t.inKeychain;
+        const age = t.storedAt ? timeSince(new Date(t.storedAt)) : "-";
+        const storedDate = t.storedAt ? new Date(t.storedAt) : null;
+        const ageDays = storedDate ? Math.floor((Date.now() - storedDate.getTime()) / 86_400_000) : 0;
+        const rotationDue = ageDays >= ROTATION_DAYS;
+        const security = !active ? "MISSING"
+          : t.m.failed > 0 ? "DEGRADED"
+          : rotationDue ? "ROTATE"
+          : "VERIFIED";
+        const leakRisk = !active ? "N/A"
+          : t.source === "env" ? "MEDIUM"
+          : t.source === "env + keychain" ? "MEDIUM"
+          : "LOW";
+        return {
+          "Token Name": t.name,
+          Type: "Registry",
+          Backend: active ? (t.source.includes("keychain") ? "Keychain" : "Env") : "-",
+          Latency: `${t.lookupMs.toFixed(1)}ms`,
+          Status: active ? "ACTIVE" : "NOT SET",
+          Accessed: t.m.accessed,
+          Failed: t.m.failed,
+          "Last Error": t.m.lastFailCode ?? "-",
+          Age: age,
+          "Security": security,
+          "Rotation": rotationDue ? `${ageDays}d (overdue)` : `${ROTATION_DAYS - ageDays}d left`,
+          "Leak Risk": leakRisk,
+        };
+      });
+      console.log(Bun.inspect.table(rows));
+      console.log(`  ${c.dim(`Rendered in ${((Bun.nanoseconds() - t0) / 1e6).toFixed(1)}ms`)}`);
+    }
+
     if (keychainNote) {
       console.log(`\n  ${c.yellow("note:")} ${keychainNote}`);
       console.log(`  ${c.dim("Tokens can still be provided via env vars: export FW_REGISTRY_TOKEN=<value>")}`);
