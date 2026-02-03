@@ -1,5 +1,5 @@
 import { describe, test, expect } from "bun:test";
-import { isFeatureFlagActive, classifyEnvFlag, effectiveLinker, platformHelp, shouldWarnMise, parseTzFromEnv, parseEnvVar, validateThreatFeed, ThreatFeedItemSchema, semverBumpType, isVulnerable, semverCompare, ProjectInfoSchema, XrefSnapshotSchema, XrefEntrySchema, PackageJsonSchema, classifyKeychainError, tokenSource, timeSince, keychainGet, keychainSet, keychainDelete, KEYCHAIN_SERVICE, KEYCHAIN_TOKEN_NAMES, type KeychainErr } from "./scan.ts";
+import { isFeatureFlagActive, classifyEnvFlag, effectiveLinker, platformHelp, shouldWarnMise, parseTzFromEnv, parseEnvVar, validateThreatFeed, ThreatFeedItemSchema, semverBumpType, isVulnerable, semverCompare, ProjectInfoSchema, XrefSnapshotSchema, XrefEntrySchema, PackageJsonSchema, classifyKeychainError, tokenSource, timeSince, keychainGet, keychainSet, keychainDelete, KEYCHAIN_SERVICE, KEYCHAIN_TOKEN_NAMES, isValidTokenName, validateTokenValue, tokenValueWarnings, type KeychainErr } from "./scan.ts";
 
 describe("isFeatureFlagActive", () => {
   test("returns true for '1'", () => {
@@ -1218,5 +1218,61 @@ describe("token security edge cases", () => {
     const ageDays = Math.floor((Date.now() - stored.getTime()) / 86_400_000);
     expect(ageDays).toBeLessThan(90);
     expect(timeSince(stored)).toBe("5d ago");
+  });
+
+  // ── isValidTokenName ──────────────────────────────────────────────────
+  test("isValidTokenName accepts known names", () => {
+    expect(isValidTokenName("FW_REGISTRY_TOKEN")).toBe(true);
+    expect(isValidTokenName("REGISTRY_TOKEN")).toBe(true);
+  });
+
+  test("isValidTokenName rejects arbitrary names", () => {
+    expect(isValidTokenName("RANDOM_NAME")).toBe(false);
+    expect(isValidTokenName("")).toBe(false);
+    expect(isValidTokenName("fw_registry_token")).toBe(false); // case-sensitive
+  });
+
+  // ── validateTokenValue ────────────────────────────────────────────────
+  test("validateTokenValue rejects empty string", () => {
+    const r = validateTokenValue("");
+    expect(r.valid).toBe(false);
+    if (!r.valid) expect(r.reason).toContain("empty");
+  });
+
+  test("validateTokenValue rejects whitespace-only", () => {
+    const r = validateTokenValue("   \t\n  ");
+    expect(r.valid).toBe(false);
+    if (!r.valid) expect(r.reason).toContain("whitespace");
+  });
+
+  test("validateTokenValue rejects values under 8 chars", () => {
+    const r = validateTokenValue("abc");
+    expect(r.valid).toBe(false);
+    if (!r.valid) expect(r.reason).toContain("too short");
+  });
+
+  test("validateTokenValue rejects single repeated character", () => {
+    const r = validateTokenValue("aaaaaaaa");
+    expect(r.valid).toBe(false);
+    if (!r.valid) expect(r.reason).toContain("repeated");
+  });
+
+  test("validateTokenValue accepts real-looking tokens", () => {
+    expect(validateTokenValue("npm_Abc123XyZ4567890")).toEqual({ valid: true });
+    expect(validateTokenValue("ghp_abcdefghijklmnop")).toEqual({ valid: true });
+    expect(validateTokenValue("t0k3n!@#$%^&*()")).toEqual({ valid: true });
+  });
+
+  // ── tokenValueWarnings ────────────────────────────────────────────────
+  test("tokenValueWarnings warns on placeholder values", () => {
+    expect(tokenValueWarnings("test1234").length).toBeGreaterThan(0);
+    expect(tokenValueWarnings("password").length).toBeGreaterThan(0);
+    expect(tokenValueWarnings("changeme").length).toBeGreaterThan(0);
+    expect(tokenValueWarnings("CHANGEME").length).toBeGreaterThan(0);
+  });
+
+  test("tokenValueWarnings returns empty for real tokens", () => {
+    expect(tokenValueWarnings("npm_Abc123XyZ4567890")).toEqual([]);
+    expect(tokenValueWarnings("ghp_abcdefghijklmnop")).toEqual([]);
   });
 });

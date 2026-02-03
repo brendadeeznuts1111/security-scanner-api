@@ -69,6 +69,7 @@ const { values: flags, positionals } = parseArgs({
     "store-token":  { type: "string" },
     "delete-token": { type: "string" },
     "list-tokens":  { type: "boolean", default: false },
+    "check-tokens": { type: "boolean", default: false },
   },
   strict: true,
 });
@@ -594,6 +595,32 @@ const PROJECTS_ROOT = Bun.env.BUN_PLATFORM_HOME ?? "/Users/nolarose/Projects";
 export const KEYCHAIN_SERVICE = "dev.bun.scanner";
 export const KEYCHAIN_SERVICE_LEGACY = "bun-scanner";
 export const KEYCHAIN_TOKEN_NAMES = ["FW_REGISTRY_TOKEN", "REGISTRY_TOKEN"] as const;
+
+export function isValidTokenName(name: string): boolean {
+  return (KEYCHAIN_TOKEN_NAMES as readonly string[]).includes(name);
+}
+
+export function validateTokenValue(value: string): { valid: true } | { valid: false; reason: string } {
+  if (!value || value.length === 0) return { valid: false, reason: "token value is empty" };
+  if (value.trim().length === 0) return { valid: false, reason: "token value is only whitespace" };
+  if (value.length < 8) return { valid: false, reason: `token value is too short (${value.length} chars, minimum 8)` };
+  if (new Set(value).size === 1) return { valid: false, reason: "token value is a single repeated character" };
+  return { valid: true };
+}
+
+const _PLACEHOLDER_TOKENS = new Set([
+  "test1234", "password", "changeme", "12345678", "abcdefgh",
+  "xxxxxxxx", "tokenhere", "secretkey", "changeit", "testtoken",
+]);
+
+export function tokenValueWarnings(value: string): string[] {
+  const warnings: string[] = [];
+  if (_PLACEHOLDER_TOKENS.has(value.toLowerCase())) {
+    warnings.push(`"${value}" looks like a placeholder — make sure this is a real token`);
+  }
+  return warnings;
+}
+
 const _keychainLoadedTokens = new Set<string>();
 
 // ── Keychain metrics ──────────────────────────────────────────────────
@@ -830,10 +857,113 @@ async function autoLoadKeychainTokens(): Promise<void> {
     if (Bun.env[name]) continue;
     const result = await keychainGet(name);
     if (result.ok && result.value) {
+      const check = validateTokenValue(result.value);
+      if (!check.valid) {
+        console.error(`${c.yellow("⚠")} Skipping keychain token ${c.cyan(name)}: ${check.reason}`);
+        await logTokenEvent({ event: "load_skip", tokenName: name, result: "invalid", detail: check.reason });
+        continue;
+      }
       process.env[name] = result.value;
       _keychainLoadedTokens.add(name);
+      await logTokenEvent({ event: "load", tokenName: name, result: "ok" });
     }
   }
+}
+
+async function readTokenFromStdin(): Promise<string> {
+  if (process.stdin.isTTY) {
+    // Interactive terminal — prompt the user
+    process.stderr.write("Enter token value: ");
+    const reader = process.stdin.getReader();
+    const chunks: Uint8Array[] = [];
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done || !value) break;
+      chunks.push(value);
+      // Stop at first newline for interactive input
+      if (new TextDecoder().decode(value).includes("\n")) break;
+    }
+    reader.releaseLock();
+    return new TextDecoder().decode(Buffer.concat(chunks)).replace(/\n$/, "").replace(/\r$/, "");
+  }
+  // Piped input — read entire stdin
+  const text = await Bun.stdin.text();
+  return text.replace(/\n$/, "").replace(/\r$/, "");
+}
+
+async function discoverRegistryUrl(): Promise<string> {
+  // 1. BUN_CONFIG_REGISTRY env var
+  if (Bun.env.BUN_CONFIG_REGISTRY) return Bun.env.BUN_CONFIG_REGISTRY.replace(/\/$/, "");
+  // 2. First project's bunfig.toml
+  try {
+    const entries = await readdir(PROJECTS_ROOT, { withFileTypes: true });
+    for (const e of entries) {
+      if (!e.isDirectory() || e.name.startsWith(".") || e.name === "scanner") continue;
+      const bunfigFile = Bun.file(`${PROJECTS_ROOT}/${e.name}/bunfig.toml`);
+      if (await bunfigFile.exists()) {
+        const text = await bunfigFile.text();
+        const match = text.match(/registry\s*=\s*"([^"]+)"/);
+        if (match) return match[1].replace(/\/$/, "");
+      }
+    }
+  } catch { /* fall through */ }
+  return "https://registry.npmjs.org";
+}
+
+async function checkTokenHealth(): Promise<void> {
+  const registryUrl = await discoverRegistryUrl();
+  console.log(`\n${c.bold("  Token Health Check")}`);
+  console.log(`  ${c.dim(`registry: ${registryUrl}`)}\n`);
+
+  for (const name of KEYCHAIN_TOKEN_NAMES) {
+    const kcResult = await keychainGet(name);
+    const envVal = Bun.env[name];
+    const value = (kcResult.ok && kcResult.value) ? kcResult.value : envVal;
+
+    if (!value) {
+      console.log(`    ${c.cyan(name.padEnd(24))} ${c.yellow("MISS")}  not set in keychain or env`);
+      continue;
+    }
+
+    const check = validateTokenValue(value);
+    if (!check.valid) {
+      console.log(`    ${c.cyan(name.padEnd(24))} ${c.red("BAD ")}  ${check.reason}`);
+      await logTokenEvent({ event: "check_fail", tokenName: name, result: "bad_format", detail: check.reason });
+      continue;
+    }
+
+    // Hit /-/whoami on the registry
+    try {
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 5000);
+      const res = await fetch(`${registryUrl}/-/whoami`, {
+        headers: { Authorization: `Bearer ${value}` },
+        signal: controller.signal,
+      });
+      clearTimeout(timeout);
+
+      if (res.ok) {
+        let username = "";
+        try {
+          const body = await res.json() as { username?: string };
+          if (body.username) username = `  (${body.username})`;
+        } catch { /* no body */ }
+        console.log(`    ${c.cyan(name.padEnd(24))} ${c.green("AUTH")}  registry returned 200${username}`);
+      } else if (res.status === 401 || res.status === 403) {
+        console.log(`    ${c.cyan(name.padEnd(24))} ${c.red("DENY")}  registry returned ${res.status} (token rejected)`);
+        await logTokenEvent({ event: "check_fail", tokenName: name, result: "denied", detail: `HTTP ${res.status}` });
+      } else {
+        console.log(`    ${c.cyan(name.padEnd(24))} ${c.yellow("WARN")}  unexpected HTTP ${res.status}`);
+        await logTokenEvent({ event: "check_fail", tokenName: name, result: "unexpected", detail: `HTTP ${res.status}` });
+      }
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      const label = msg.includes("abort") ? "timeout" : "network error";
+      console.log(`    ${c.cyan(name.padEnd(24))} ${c.red("NET ")}  ${label}: ${msg}`);
+      await logTokenEvent({ event: "check_fail", tokenName: name, result: "network", detail: msg });
+    }
+  }
+  console.log();
 }
 
 // ── Xref types ────────────────────────────────────────────────────────
@@ -861,6 +991,27 @@ export type XrefSnapshot = z.infer<typeof XrefSnapshotSchema>;
 
 const SNAPSHOT_DIR = `${import.meta.dir}/.audit`;
 const SNAPSHOT_PATH = `${SNAPSHOT_DIR}/xref-snapshot.json`;
+const TOKEN_AUDIT_PATH = `${SNAPSHOT_DIR}/token-events.jsonl`;
+
+type TokenEvent = "store" | "delete" | "load" | "load_skip" | "store_fail" | "delete_fail" | "check_fail";
+
+async function logTokenEvent(evt: { event: TokenEvent; tokenName: string; result: string; detail?: string }): Promise<void> {
+  try {
+    const { mkdir } = await import("node:fs/promises");
+    await mkdir(SNAPSHOT_DIR, { recursive: true });
+    const entry = {
+      timestamp: new Date().toISOString(),
+      event: evt.event,
+      tokenName: evt.tokenName,
+      user: Bun.env.USER ?? Bun.env.LOGNAME ?? "unknown",
+      result: evt.result,
+      ...(evt.detail ? { detail: evt.detail } : {}),
+    };
+    await appendFile(TOKEN_AUDIT_PATH, JSON.stringify(entry) + "\n");
+  } catch {
+    // audit must never break operations
+  }
+}
 
 async function saveXrefSnapshot(data: XrefEntry[], totalProjects: number): Promise<void> {
   const { mkdir } = await import("node:fs/promises");
@@ -1903,7 +2054,7 @@ async function renderAudit(projects: ProjectInfo[]) {
   for (const tkn of KEYCHAIN_TOKEN_NAMES) {
     const src = tokenSource(tkn);
     const colored = src === "env" ? c.green(src) : src === "keychain" ? c.cyan(src) : c.yellow(src);
-    const hint = src === "not set" ? c.dim(`  (--store-token ${tkn} <value>)`) : "";
+    const hint = src === "not set" ? c.dim(`  (--store-token ${tkn})`) : "";
     console.log(`    ${c.cyan(tkn.padEnd(24))} ${colored}${hint}`);
   }
 
@@ -3810,9 +3961,10 @@ ${c.bold("  Modes:")}
     ${c.cyan("--verify")}                           bun install --frozen-lockfile across all projects
     ${c.cyan("--info")} <pkg> [--json]              Registry metadata + local cross-reference
     ${c.cyan("--path")}                             Emit export PATH for projects with bin/
-    ${c.cyan("--store-token")} <name> <value>       Store a token in OS keychain
+    ${c.cyan("--store-token")} <name>               Store a token in OS keychain (reads from stdin)
     ${c.cyan("--delete-token")} <name>              Remove a token from OS keychain
     ${c.cyan("--list-tokens")}                      Show stored token names and sources
+    ${c.cyan("--check-tokens")}                     Verify stored tokens authenticate with registry
 
 ${c.bold("  Filters:")}
     ${c.cyan("--filter")} <glob|bool>               Filter by name, folder, or boolean field
@@ -3847,14 +3999,31 @@ ${c.bold("  Other:")}
   // ── Keychain token commands ───────────────────────────────────────────
   if (flags["store-token"]) {
     const name = flags["store-token"];
-    const value = positionals[0];
-    if (!value) {
-      console.error(`${c.red("error:")} --store-token requires a value argument\n  usage: --store-token <name> <value>`);
+    if (!isValidTokenName(name)) {
+      console.error(`${c.red("error:")} unknown token name ${c.cyan(name)}`);
+      console.error(`  ${c.dim("allowed:")} ${KEYCHAIN_TOKEN_NAMES.join(", ")}`);
       process.exit(1);
+    }
+    let value: string;
+    if (positionals[0]) {
+      console.error(`${c.yellow("⚠")} Token passed as argument — visible in ps/history. Prefer: echo $TOKEN | bun run scan.ts --store-token ${name}`);
+      value = positionals[0];
+    } else {
+      value = await readTokenFromStdin();
+    }
+    const check = validateTokenValue(value);
+    if (!check.valid) {
+      console.error(`${c.red("error:")} ${check.reason}`);
+      await logTokenEvent({ event: "store_fail", tokenName: name, result: "invalid", detail: check.reason });
+      process.exit(1);
+    }
+    for (const w of tokenValueWarnings(value)) {
+      console.error(`${c.yellow("⚠")} ${w}`);
     }
     const result = await keychainSet(name, value);
     if (result.ok) {
       console.log(`${c.green("✓")} Stored ${c.cyan(name)} in OS keychain (service: ${KEYCHAIN_SERVICE})`);
+      await logTokenEvent({ event: "store", tokenName: name, result: "ok" });
     } else {
       const hints: Record<KeychainErr["code"], string> = {
         NO_API:         "upgrade Bun to a version with keychain support, or export the token as an env var instead",
@@ -3864,6 +4033,7 @@ ${c.bold("  Other:")}
       };
       console.error(`${c.red("error:")} failed to store ${c.cyan(name)}: ${result.reason}`);
       console.error(`  ${c.dim("hint:")} ${hints[result.code]}`);
+      await logTokenEvent({ event: "store_fail", tokenName: name, result: result.code, detail: result.reason });
       process.exit(1);
     }
     return;
@@ -3871,6 +4041,11 @@ ${c.bold("  Other:")}
 
   if (flags["delete-token"]) {
     const name = flags["delete-token"];
+    if (!isValidTokenName(name)) {
+      console.error(`${c.red("error:")} unknown token name ${c.cyan(name)}`);
+      console.error(`  ${c.dim("allowed:")} ${KEYCHAIN_TOKEN_NAMES.join(", ")}`);
+      process.exit(1);
+    }
     const result = await keychainDelete(name);
     if (!result.ok) {
       const hints: Record<KeychainErr["code"], string> = {
@@ -3881,9 +4056,11 @@ ${c.bold("  Other:")}
       };
       console.error(`${c.red("error:")} failed to delete ${c.cyan(name)}: ${result.reason}`);
       console.error(`  ${c.dim("hint:")} ${hints[result.code]}`);
+      await logTokenEvent({ event: "delete_fail", tokenName: name, result: result.code, detail: result.reason });
       process.exit(1);
     } else if (result.value) {
       console.log(`${c.green("✓")} Removed ${c.cyan(name)} from OS keychain`);
+      await logTokenEvent({ event: "delete", tokenName: name, result: "ok" });
     } else {
       console.log(`${c.yellow("⚠")} ${c.cyan(name)} not found in OS keychain (nothing to remove)`);
     }
@@ -3982,6 +4159,11 @@ ${c.bold("  Other:")}
       console.log(`  ${c.dim("Tokens can still be provided via env vars: export FW_REGISTRY_TOKEN=<value>")}`);
     }
     console.log();
+    return;
+  }
+
+  if (flags["check-tokens"]) {
+    await checkTokenHealth();
     return;
   }
 
