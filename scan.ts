@@ -94,6 +94,7 @@ const c = {
 /** Pad a string (possibly containing ANSI codes) to a target display width. */
 const _padEnd   = (s: string, w: number) => s + ' '.repeat(Math.max(0, w - Bun.stringWidth(s)));
 const _padStart = (s: string, w: number) => ' '.repeat(Math.max(0, w - Bun.stringWidth(s))) + s;
+const pad2 = (n: number) => String(n).padStart(2, "0");
 
 /** Extract the first meaningful error line from bun stderr, skipping .env diagnostics and version banners. */
 function extractBunError(stderr: string, fallback: string): string {
@@ -771,7 +772,6 @@ async function saveXrefSnapshot(data: XrefEntry[], totalProjects: number): Promi
   await mkdir(SNAPSHOT_DIR, { recursive: true });
   const now = new Date();
   const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
-  const pad2 = (n: number) => String(n).padStart(2, "0");
   const snapshot: XrefSnapshot = {
     timestamp: now.toISOString(),
     date: `${now.getFullYear()}-${pad2(now.getMonth() + 1)}-${pad2(now.getDate())} ${pad2(now.getHours())}:${pad2(now.getMinutes())}:${pad2(now.getSeconds())}`,
@@ -795,7 +795,7 @@ async function loadXrefSnapshot(path?: string): Promise<XrefSnapshot | null> {
   }
 }
 
-const XREF_HOOKS = ["preinstall", "postinstall", "preuninstall", "prepare", "preprepare", "postprepare", "prepublishOnly"] as const;
+const LIFECYCLE_HOOKS = ["preinstall", "postinstall", "preuninstall", "prepare", "preprepare", "postprepare", "prepublishOnly"] as const;
 
 async function scanXrefData(projects: ProjectInfo[], prev?: XrefSnapshot | null): Promise<{ entries: XrefEntry[]; skipped: number }> {
   const prevMap = prev ? new Map(prev.projects.map((x) => [x.folder, x])) : null;
@@ -819,7 +819,7 @@ async function scanXrefData(projects: ProjectInfo[], prev?: XrefSnapshot | null)
     const seen = new Set<string>();
     const classify = (pkgName: string, scripts: Record<string, string>) => {
       let hasAnyHook = false;
-      for (const h of XREF_HOOKS) { if (scripts[h]) { hasAnyHook = true; break; } }
+      for (const h of LIFECYCLE_HOOKS) { if (scripts[h]) { hasAnyHook = true; break; } }
       if (hasAnyHook && !seen.has(pkgName)) {
         seen.add(pkgName);
         if (BUN_DEFAULT_TRUSTED.has(pkgName)) xref.bunDefault.push(pkgName);
@@ -1344,7 +1344,15 @@ async function scanProjectsViaIPC(dirs: string[]): Promise<ProjectInfo[]> {
       const worker = Bun.spawn(["bun", workerPath], {
         stdio: ["ignore", "ignore", "ignore"],
         ipc(message) {
-          handleMessage(worker, IPCFromWorkerSchema.parse(message));
+          try {
+            handleMessage(worker, IPCFromWorkerSchema.parse(message));
+          } catch {
+            if (!settled) {
+              settled = true;
+              cleanup();
+              reject(new Error("IPC worker sent invalid message"));
+            }
+          }
         },
       });
       workers.push(worker);
@@ -1592,7 +1600,11 @@ function sortProjects(projects: ProjectInfo[], key: string): ProjectInfo[] {
     case "deps":
       return sorted.sort((a, b) => b.totalDeps - a.totalDeps);
     case "version":
-      return sorted.sort((a, b) => a.version.localeCompare(b.version));
+      return sorted.sort((a, b) => {
+        if (a.version === "-") return 1;
+        if (b.version === "-") return -1;
+        return semverCompare(a.version, b.version);
+      });
     case "lock":
       return sorted.sort((a, b) => a.lock.localeCompare(b.lock));
     default:
@@ -1637,7 +1649,6 @@ async function renderAudit(projects: ProjectInfo[]) {
 
   const auditNow = new Date();
   const auditTz = Intl.DateTimeFormat().resolvedOptions().timeZone;
-  const pad2 = (n: number) => String(n).padStart(2, "0");
   const auditTime = `${auditNow.getFullYear()}-${pad2(auditNow.getMonth() + 1)}-${pad2(auditNow.getDate())} ${pad2(auditNow.getHours())}:${pad2(auditNow.getMinutes())}:${pad2(auditNow.getSeconds())} ${auditTz}${_tzExplicit ? ` (TZ=${process.env.TZ})` : ""}`;
 
   console.log();
@@ -1747,11 +1758,8 @@ async function renderAudit(projects: ProjectInfo[]) {
   console.log(`    ${c.dim("Monitor: bun install --verbose shows DNS prefetch activity in real time.")}`);
 
   // dns-prefetch.ts coverage
-  let prefetchCount = 0;
-  for (const p of withPkg) {
-    const f = Bun.file(`${PROJECTS_ROOT}/${p.folder}/dns-prefetch.ts`);
-    if (await f.exists()) prefetchCount++;
-  }
+  const prefetchChecks = await Promise.all(withPkg.map((p) => Bun.file(`${PROJECTS_ROOT}/${p.folder}/dns-prefetch.ts`).exists()));
+  const prefetchCount = prefetchChecks.filter(Boolean).length;
   const prefetchPct = ((prefetchCount / withPkg.length) * 100).toFixed(0);
   const prefetchBar = prefetchCount === withPkg.length ? c.green("OK")
     : prefetchCount === 0 ? c.yellow(`0/${withPkg.length}`) : c.yellow(`${prefetchCount}/${withPkg.length}`);
@@ -1910,9 +1918,8 @@ async function renderAudit(projects: ProjectInfo[]) {
   const envOverride = isFeatureFlagActive(Bun.env.BUN_FEATURE_FLAG_DISABLE_IGNORE_SCRIPTS);
 
   // Scan node_modules for actual lifecycle scripts per hook
-  const HOOKS = ["preinstall", "postinstall", "preuninstall", "prepare", "preprepare", "postprepare", "prepublishOnly"] as const;
   const hookTotals: Record<string, { found: number; trusted: number; blocked: number; nativeDetected: number; nativeTrusted: number }> = {};
-  for (const h of HOOKS) hookTotals[h] = { found: 0, trusted: 0, blocked: 0, nativeDetected: 0, nativeTrusted: 0 };
+  for (const h of LIFECYCLE_HOOKS) hookTotals[h] = { found: 0, trusted: 0, blocked: 0, nativeDetected: 0, nativeTrusted: 0 };
 
   const xrefData: XrefEntry[] = [];
 
@@ -1929,7 +1936,7 @@ async function renderAudit(projects: ProjectInfo[]) {
       const scriptValues = Object.values(scripts).join(" ");
       const isNative = isNativeMatch(pkgName) || isNativeMatch(scriptValues);
       let hasAnyHook = false;
-      for (const h of HOOKS) {
+      for (const h of LIFECYCLE_HOOKS) {
         if (scripts[h]) {
           hasAnyHook = true;
           hookTotals[h].found++;
@@ -2027,7 +2034,7 @@ async function renderAudit(projects: ProjectInfo[]) {
   }
 
   let totalTimeSaved = 0;
-  for (const h of HOOKS) {
+  for (const h of LIFECYCLE_HOOKS) {
     const { found, trusted, blocked, nativeDetected, nativeTrusted } = hookTotals[h];
     const pctSecure = found === 0 ? "100%" : trusted === found ? "100%" : `${((trusted / found) * 100).toFixed(0)}%`;
     const savedMs = blocked * HOOK_AVG_MS[h];
@@ -2058,11 +2065,11 @@ async function renderAudit(projects: ProjectInfo[]) {
   }
   const totalSavedStr = totalTimeSaved >= 60000 ? `${(totalTimeSaved / 60000).toFixed(1)}m` : `${(totalTimeSaved / 1000).toFixed(1)}s`;
   console.log(`    ${c.dim("─".repeat(110))}`);
-  const allFound = HOOKS.reduce((s, h) => s + hookTotals[h].found, 0);
-  const allBlocked = HOOKS.reduce((s, h) => s + hookTotals[h].blocked, 0);
-  const allTrusted = HOOKS.reduce((s, h) => s + hookTotals[h].trusted, 0);
-  const allNative = HOOKS.reduce((s, h) => s + hookTotals[h].nativeDetected, 0);
-  const allNativeTrusted = HOOKS.reduce((s, h) => s + hookTotals[h].nativeTrusted, 0);
+  const allFound = LIFECYCLE_HOOKS.reduce((s, h) => s + hookTotals[h].found, 0);
+  const allBlocked = LIFECYCLE_HOOKS.reduce((s, h) => s + hookTotals[h].blocked, 0);
+  const allTrusted = LIFECYCLE_HOOKS.reduce((s, h) => s + hookTotals[h].trusted, 0);
+  const allNative = LIFECYCLE_HOOKS.reduce((s, h) => s + hookTotals[h].nativeDetected, 0);
+  const allNativeTrusted = LIFECYCLE_HOOKS.reduce((s, h) => s + hookTotals[h].nativeTrusted, 0);
   const totalPct = allFound === 0 ? "100%" : `${((allTrusted / allFound) * 100).toFixed(0)}%`;
   const totalNativeCov = allNative === 0 ? "-" : `${((allNativeTrusted / allNative) * 100).toFixed(0)}%`;
   console.log(`    ${c.bold("total".padEnd(16))} ${String(allFound).padStart(5)}  ${String(allTrusted).padStart(5)}  ${String(allBlocked).padStart(5)}  ${totalPct.padStart(6)}  ${totalSavedStr.padStart(7)}  ${c.dim("      ")}  ${c.dim("              ")}  ${String(allNative).padStart(6)}  ${totalNativeCov}  ${c.dim("100% managed")}`);
@@ -2834,7 +2841,6 @@ async function fixRegistry(projects: ProjectInfo[], registryUrl: string, dryRun:
         let bunfigChanged = false;
 
         // [install] registry
-        const installMatch = toml.match(/^\[install\]\s*\n([\s\S]*?)(?=^\[|$)/m);
         const installRegMatch = toml.match(/^(\s*registry\s*=\s*)"([^"]+)"/m);
         if (installRegMatch && installRegMatch[2] !== url) {
           toml = toml.replace(
@@ -2932,7 +2938,6 @@ async function fixRegistry(projects: ProjectInfo[], registryUrl: string, dryRun:
 
 async function fixTrusted(projects: ProjectInfo[], dryRun: boolean) {
   const withPkg = projects.filter((p) => p.hasPkg);
-  const hooks = ["preinstall", "postinstall", "preuninstall", "prepare", "preprepare", "postprepare", "prepublishOnly"];
 
   console.log();
   console.log(c.bold(c.cyan(`  ${dryRun ? "Dry Run" : "Fixing"} trustedDependencies`)));
@@ -2952,15 +2957,23 @@ async function fixTrusted(projects: ProjectInfo[], dryRun: boolean) {
     const existing = new Set(p.trustedDeps);
     const detected: string[] = [];
 
-    // Scan helper: check a package for lifecycle scripts + native pattern
-    const checkPkg = async (pkgName: string, pkgJsonPath: string) => {
+    const reads: [string, string][] = [];
+    for (const entry of entries) {
+      if (entry.startsWith("@")) {
+        let scoped: string[] = [];
+        try { scoped = await readdir(`${nmDir}/${entry}`); } catch { continue; }
+        for (const sub of scoped) reads.push([`${entry}/${sub}`, `${nmDir}/${entry}/${sub}/package.json`]);
+      } else {
+        reads.push([entry, `${nmDir}/${entry}/package.json`]);
+      }
+    }
+    await Promise.all(reads.map(async ([pkgName, pkgJsonPath]) => {
       try {
         const pkg = await Bun.file(pkgJsonPath).json();
         const scripts = pkg.scripts ?? {};
-        const hasLifecycle = hooks.some((h) => !!scripts[h]);
+        const hasLifecycle = LIFECYCLE_HOOKS.some((h) => !!scripts[h]);
         if (!hasLifecycle) return;
 
-        // Match by package name OR by script content referencing native tools
         const scriptValues = Object.values(scripts).join(" ");
         if (isNativeMatch(pkgName) || isNativeMatch(scriptValues)) {
           if (!existing.has(pkgName)) {
@@ -2968,19 +2981,7 @@ async function fixTrusted(projects: ProjectInfo[], dryRun: boolean) {
           }
         }
       } catch {}
-    };
-
-    for (const entry of entries) {
-      if (entry.startsWith("@")) {
-        let scoped: string[] = [];
-        try { scoped = await readdir(`${nmDir}/${entry}`); } catch { continue; }
-        for (const sub of scoped) {
-          await checkPkg(`${entry}/${sub}`, `${nmDir}/${entry}/${sub}/package.json`);
-        }
-        continue;
-      }
-      await checkPkg(entry, `${nmDir}/${entry}/package.json`);
-    }
+    }));
 
     if (detected.length === 0) continue;
     totalDetected += detected.length;
@@ -3031,7 +3032,7 @@ async function whyAcrossProjects(projects: ProjectInfo[], pkg: string, opts: { t
   type WhyHit = { folder: string; versions: string[]; depType: string; directBy: string };
   const hits: WhyHit[] = [];
 
-  for (const p of withLock) {
+  const whyResults = await Promise.all(withLock.map(async (p) => {
     const dir = `${PROJECTS_ROOT}/${p.folder}`;
     const args = ["bun", "why", pkg];
     if (opts.top) args.push("--top");
@@ -3041,45 +3042,45 @@ async function whyAcrossProjects(projects: ProjectInfo[], pkg: string, opts: { t
     const stdout = await proc.stdout.text();
     const trimmed = stdout.trim();
 
-    if (exitCode === 0 && trimmed.length > 0) {
-      const lines = trimmed.split("\n");
-      const clean = lines.map(stripAnsi);
+    if (exitCode !== 0 || trimmed.length === 0) return null;
 
-      // Collect all resolved versions: lines matching "pkgname@version"
-      const versions = [...new Set(
-        clean.filter((l) => /@\S+/.test(l) && !l.includes("(requires"))
-             .map((l) => l.match(/@(\S+)/)?.[1])
-             .filter(Boolean) as string[]
-      )];
+    const lines = trimmed.split("\n");
+    const clean = lines.map(stripAnsi);
 
-      // Determine dep type from Bun's markers (dev, peer, optional peer, or production)
-      const isDirect = clean.some((l) => l.includes(p.name) && l.includes("(requires"));
-      const hasOptionalPeer = clean.some((l) => /optional peer\s/.test(l));
-      const hasDev = clean.some((l) => /(?:├─|└─)\s+dev\s/.test(l));
-      const hasPeer = clean.some((l) => /(?:├─|└─)\s+peer\s/.test(l));
-      const depType = isDirect ? (hasDev ? "dev" : "direct")
-        : hasOptionalPeer ? "optional"
-        : hasPeer ? "peer"
-        : hasDev ? "dev"
-        : "transitive";
+    const versions = [...new Set(
+      clean.filter((l) => /@\S+/.test(l) && !l.includes("(requires"))
+           .map((l) => l.match(/@(\S+)/)?.[1])
+           .filter(Boolean) as string[]
+    )];
 
-      // Extract top-level requirer from first "(requires" line
-      const reqLine = clean.find((l) => l.includes("(requires"));
-      let directBy = "-";
-      if (reqLine) {
-        const m = reqLine.match(/(?:├─|└─)\s+(?:(?:dev|peer|optional peer)\s+)?(.+?)(?:@|\s*\()/);
-        if (m) directBy = m[1].trim();
-      }
+    const isDirect = clean.some((l) => l.includes(p.name) && l.includes("(requires"));
+    const hasOptionalPeer = clean.some((l) => /optional peer\s/.test(l));
+    const hasDev = clean.some((l) => /(?:├─|└─)\s+dev\s/.test(l));
+    const hasPeer = clean.some((l) => /(?:├─|└─)\s+peer\s/.test(l));
+    const depType = isDirect ? (hasDev ? "dev" : "direct")
+      : hasOptionalPeer ? "optional"
+      : hasPeer ? "peer"
+      : hasDev ? "dev"
+      : "transitive";
 
-      hits.push({ folder: p.folder, versions, depType, directBy });
-
-      console.log(c.bold(c.green(`  ┌─ ${p.folder}`)));
-      for (const line of lines) {
-        console.log(c.dim("  │ ") + line);
-      }
-      console.log(c.dim("  └─"));
-      console.log();
+    const reqLine = clean.find((l) => l.includes("(requires"));
+    let directBy = "-";
+    if (reqLine) {
+      const m = reqLine.match(/(?:├─|└─)\s+(?:(?:dev|peer|optional peer)\s+)?(.+?)(?:@|\s*\()/);
+      if (m) directBy = m[1].trim();
     }
+
+    return { folder: p.folder, versions, depType, directBy, lines };
+  }));
+  for (const r of whyResults) {
+    if (!r) continue;
+    hits.push({ folder: r.folder, versions: r.versions, depType: r.depType, directBy: r.directBy });
+    console.log(c.bold(c.green(`  ┌─ ${r.folder}`)));
+    for (const line of r.lines) {
+      console.log(c.dim("  │ ") + line);
+    }
+    console.log(c.dim("  └─"));
+    console.log();
   }
 
   if (hits.length === 0) {
@@ -3138,7 +3139,7 @@ async function outdatedAcrossProjects(projects: ProjectInfo[], opts: OutdatedOpt
   const hits: ProjectHit[] = [];
   let projectsWithOutdated = 0;
 
-  for (const p of candidates) {
+  const outdatedResults = await Promise.all(candidates.map(async (p) => {
     const dir = `${PROJECTS_ROOT}/${p.folder}`;
 
     // bun ≤1.3 breaks with multiple --filter flags — run separate calls and merge
@@ -3172,9 +3173,12 @@ async function outdatedAcrossProjects(projects: ProjectInfo[], opts: OutdatedOpt
       pkgs = pkgs.filter((pkg) => !omitTypes.includes(pkg.depType));
     }
 
+    return { folder: p.folder, pkgs };
+  }));
+  for (const { folder, pkgs } of outdatedResults) {
     if (pkgs.length > 0) {
       projectsWithOutdated++;
-      console.log(c.bold(c.yellow(`  ┌─ ${p.folder}`)));
+      console.log(c.bold(c.yellow(`  ┌─ ${folder}`)));
       const maxName = Math.max(...pkgs.map((pkg) => pkg.name.length + (pkg.depType !== "prod" ? pkg.depType.length + 3 : 0)));
       const maxCur = Math.max(7, ...pkgs.map((pkg) => pkg.current.length));
       const maxUpd = Math.max(6, ...pkgs.map((pkg) => pkg.update.length));
@@ -3187,7 +3191,7 @@ async function outdatedAcrossProjects(projects: ProjectInfo[], opts: OutdatedOpt
       }
       console.log(c.dim("  └─"));
       console.log();
-      hits.push({ folder: p.folder, pkgs });
+      hits.push({ folder, pkgs });
     }
   }
 
@@ -3272,16 +3276,13 @@ async function updateAcrossProjects(projects: ProjectInfo[], opts: UpdateOpts) {
   const plans: UpdatePlan[] = [];
   let skipped = 0;
 
-  for (const p of withLock) {
+  const discoveryResults = await Promise.all(withLock.map(async (p) => {
     const dir = `${PROJECTS_ROOT}/${p.folder}`;
     const checkProc = Bun.spawn(["bun", "outdated"], { cwd: dir, stdout: "pipe", stderr: "pipe" });
     await checkProc.exited;
     const checkOut = await checkProc.stdout.text();
 
-    if (checkOut.trim().length === 0) {
-      skipped++;
-      continue;
-    }
+    if (checkOut.trim().length === 0) return null;
 
     let pkgs = parseBunOutdated(checkOut);
 
@@ -3293,12 +3294,13 @@ async function updateAcrossProjects(projects: ProjectInfo[], opts: UpdateOpts) {
       });
     }
 
-    if (pkgs.length === 0) {
-      skipped++;
-      continue;
-    }
+    if (pkgs.length === 0) return null;
 
-    plans.push({ project: p, pkgs, names: pkgs.map((pkg) => pkg.name) });
+    return { project: p, pkgs, names: pkgs.map((pkg) => pkg.name) } as UpdatePlan;
+  }));
+  for (const r of discoveryResults) {
+    if (r) plans.push(r);
+    else skipped++;
   }
 
   // ── Phase 2: Preview ───────────────────────────────────────────
@@ -3343,9 +3345,15 @@ async function updateAcrossProjects(projects: ProjectInfo[], opts: UpdateOpts) {
 
   // ── Phase 3: Confirm ───────────────────────────────────────────
   process.stdout.write(c.yellow(`  Apply ${totalPkgs} update(s) across ${plans.length} project(s)? (y/n): `));
+  let confirmed = false;
   for await (const line of console) {
-    if (line.trim().toLowerCase() === "y") break;
+    if (line.trim().toLowerCase() === "y") { confirmed = true; break; }
     console.log(c.dim("\n  Cancelled."));
+    console.log();
+    return;
+  }
+  if (!confirmed) {
+    console.log(c.dim("\n  No input received — cancelled."));
     console.log();
     return;
   }
@@ -3494,19 +3502,21 @@ async function verifyLockfiles(projects: ProjectInfo[]) {
   let failed = 0;
   const failures: { folder: string; error: string }[] = [];
 
-  for (const p of withLock) {
+  const verifyResults = await Promise.all(withLock.map(async (p) => {
     const dir = `${PROJECTS_ROOT}/${p.folder}`;
     const proc = Bun.spawn(["bun", "install", "--frozen-lockfile"], { cwd: dir, stdout: "pipe", stderr: "pipe" });
     const exitCode = await proc.exited;
-
+    const stderr = exitCode !== 0 ? await proc.stderr.text() : "";
+    return { folder: p.folder, exitCode, stderr };
+  }));
+  for (const { folder, exitCode, stderr } of verifyResults) {
     if (exitCode === 0) {
-      console.log(`    ${c.green("PASS")} ${p.folder}`);
+      console.log(`    ${c.green("PASS")} ${folder}`);
       passed++;
     } else {
-      const stderr = await proc.stderr.text();
       const errLine = extractBunError(stderr, `exit code ${exitCode}`);
-      console.log(`    ${c.red("FAIL")} ${p.folder.padEnd(30)} ${c.dim(errLine)}`);
-      failures.push({ folder: p.folder, error: errLine });
+      console.log(`    ${c.red("FAIL")} ${folder.padEnd(30)} ${c.dim(errLine)}`);
+      failures.push({ folder, error: errLine });
       failed++;
     }
   }
@@ -3644,16 +3654,16 @@ async function infoPackage(pkg: string, projects: ProjectInfo[], jsonOut: boolea
   // Cross-reference: which local projects use this package?
   // Strip version qualifier (e.g. react@18.0.0 → react) for local lookup
   const bareName = pkg.replace(/@[^/]+$/, "").replace(/^(@[^/]+\/[^@]+)@.*$/, "$1");
-  const localUsers: string[] = [];
-  for (const p of projects.filter((p) => p.hasPkg)) {
-    try {
-      const pkgJson = await Bun.file(`${PROJECTS_ROOT}/${p.folder}/package.json`).json();
-      const allDeps = { ...pkgJson.dependencies, ...pkgJson.devDependencies };
-      if (allDeps[bareName]) {
-        localUsers.push(`${p.folder} ${c.dim(allDeps[bareName])}`);
-      }
-    } catch {}
-  }
+  const localUsers = (await Promise.all(
+    projects.filter((p) => p.hasPkg).map(async (p) => {
+      try {
+        const pkgJson = await Bun.file(`${PROJECTS_ROOT}/${p.folder}/package.json`).json();
+        const allDeps = { ...pkgJson.dependencies, ...pkgJson.devDependencies };
+        if (allDeps[bareName]) return `${p.folder} ${c.dim(allDeps[bareName])}`;
+      } catch {}
+      return null;
+    }),
+  )).filter((x): x is string => x !== null);
 
   if (localUsers.length > 0) {
     console.log();
@@ -3786,20 +3796,31 @@ ${c.bold("  Other:")}
   }
 
   if (flags["list-tokens"]) {
+    const t0 = Bun.nanoseconds();
     console.log(`\n${c.bold("  Token sources:")}\n`);
     let keychainNote = "";
+    let found = 0;
+    let total = 0;
     for (const name of KEYCHAIN_TOKEN_NAMES) {
+      total++;
+      const t1 = Bun.nanoseconds();
       const inEnv = !!Bun.env[name];
       const kcResult = await keychainGet(name);
       const inKeychain = kcResult.ok && !!kcResult.value;
+      const lookupMs = ((Bun.nanoseconds() - t1) / 1e6).toFixed(1);
       if (!kcResult.ok && !keychainNote) keychainNote = kcResult.reason;
+      if (inEnv || inKeychain) found++;
       let status: string;
       if (inEnv && inKeychain) status = c.green("env + keychain");
       else if (inEnv) status = c.green("env");
       else if (inKeychain) status = c.cyan("keychain");
       else status = c.yellow("not set");
-      console.log(`    ${c.cyan(name.padEnd(24))} ${status}`);
+      console.log(`    ${c.cyan(name.padEnd(24))} ${status}  ${c.dim(`${lookupMs}ms`)}`);
     }
+    const totalMs = ((Bun.nanoseconds() - t0) / 1e6).toFixed(1);
+    const backend = _hasBunSecrets ? "Bun.secrets" : process.platform === "darwin" ? "security CLI" : "unavailable";
+    console.log();
+    console.log(`  ${c.dim(`${found}/${total} resolved  ${totalMs}ms  backend: ${backend}  service: ${KEYCHAIN_SERVICE}`)}`);
     if (keychainNote) {
       console.log(`\n  ${c.yellow("note:")} ${keychainNote}`);
       console.log(`  ${c.dim("Tokens can still be provided via env vars: export FW_REGISTRY_TOKEN=<value>")}`);
@@ -4175,7 +4196,6 @@ ${c.bold("  Other:")}
   console.log();
   const now = new Date();
   const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
-  const pad2 = (n: number) => String(n).padStart(2, "0");
   const scanTime = `${now.getFullYear()}-${pad2(now.getMonth() + 1)}-${pad2(now.getDate())} ${pad2(now.getHours())}:${pad2(now.getMinutes())}:${pad2(now.getSeconds())} ${tz}${_tzExplicit ? ` (TZ=${process.env.TZ})` : ""}`;
   console.log(c.bold(c.cyan(`  Project Scanner — ${projects.length} projects scanned in ${elapsed}ms (bun ${Bun.version} ${Bun.revision.slice(0, 9)})`)));
   console.log(c.dim(`  ${scanTime}`));
@@ -4224,10 +4244,9 @@ ${c.bold("  Other:")}
     const auditLogPath = `${SNAPSHOT_DIR}/audit.jsonl`;
     const logNow = new Date();
     const logTz = Intl.DateTimeFormat().resolvedOptions().timeZone;
-    const lp = (n: number) => String(n).padStart(2, "0");
     const entry = {
       timestamp: logNow.toISOString(),
-      date: `${logNow.getFullYear()}-${lp(logNow.getMonth() + 1)}-${lp(logNow.getDate())} ${lp(logNow.getHours())}:${lp(logNow.getMinutes())}:${lp(logNow.getSeconds())}`,
+      date: `${logNow.getFullYear()}-${pad2(logNow.getMonth() + 1)}-${pad2(logNow.getDate())} ${pad2(logNow.getHours())}:${pad2(logNow.getMinutes())}:${pad2(logNow.getSeconds())}`,
       tz: logTz,
       tzOverride: _tzExplicit,
       scanDuration: elapsed,
