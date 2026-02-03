@@ -291,6 +291,142 @@ function analyzeSignals() {
 
 const signalAnalysis = analyzeSignals();
 
+// ── Terminal (PTY) analysis ──────────────────────────────────────────
+// Ref: https://bun.sh/docs/api/spawn#terminal
+// Type ref: TerminalOptions, Terminal
+// Bun.spawn({ terminal: true }) gives a PTY-backed subprocess.
+// Terminal is accessed via proc.terminal.
+
+// TerminalOptions keys (passed in spawn options when terminal: true/TerminalOptions)
+const TERMINAL_OPTIONS_KEYS = [
+  "cols", "rows", "name",
+  // callbacks
+  "data", "exit", "drain",
+] as const;
+
+// Terminal instance members (from proc.terminal)
+const TERMINAL_MEMBERS = [
+  // methods
+  "write", "resize", "setRawMode", "ref", "unref", "close",
+] as const;
+
+function analyzeTerminal() {
+  const optionSites: { key: string; line: number }[] = [];
+  const memberSites: { member: string; line: number }[] = [];
+  const optionUsage: Record<string, number> = {};
+  const memberUsage: Record<string, number> = {};
+
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+
+    // Check for terminal option usage in spawn calls (terminal: true/TerminalOptions)
+    for (const key of TERMINAL_OPTIONS_KEYS) {
+      // Match as spawn option in a terminal options object
+      const re = new RegExp(`\\b${key}\\s*:`);
+      // Only match within terminal-related context
+      if (re.test(line) && (line.includes("terminal") || line.includes("pty") || line.includes("PTY"))) {
+        optionSites.push({ key, line: i + 1 });
+        optionUsage[key] = (optionUsage[key] ?? 0) + 1;
+      }
+    }
+
+    // Check for Terminal member access (proc.terminal.write, etc.)
+    for (const member of TERMINAL_MEMBERS) {
+      const re = new RegExp(`\\.terminal\\.${member}\\b`);
+      if (re.test(line)) {
+        memberSites.push({ member, line: i + 1 });
+        memberUsage[member] = (memberUsage[member] ?? 0) + 1;
+      }
+    }
+  }
+
+  const optionCoverage: Record<string, { used: boolean; sites: number }> = {};
+  for (const key of TERMINAL_OPTIONS_KEYS) {
+    optionCoverage[key] = { used: (optionUsage[key] ?? 0) > 0, sites: optionUsage[key] ?? 0 };
+  }
+  const memberCoverage: Record<string, { used: boolean; sites: number }> = {};
+  for (const member of TERMINAL_MEMBERS) {
+    memberCoverage[member] = { used: (memberUsage[member] ?? 0) > 0, sites: memberUsage[member] ?? 0 };
+  }
+
+  return {
+    options_used: Object.keys(optionUsage).length,
+    options_available: TERMINAL_OPTIONS_KEYS.length,
+    members_used: Object.keys(memberUsage).length,
+    members_available: TERMINAL_MEMBERS.length,
+    option_coverage: optionCoverage,
+    member_coverage: memberCoverage,
+    option_sites: optionSites,
+    member_sites: memberSites,
+  };
+}
+
+const terminalAnalysis = analyzeTerminal();
+
+// ── ResourceUsage analysis ───────────────────────────────────────────
+// Ref: https://bun.sh/docs/api/spawn#resourceusage
+// Accessed via proc.resourceUsage() (Subprocess) or result.resourceUsage (SyncSubprocess)
+// Returns detailed OS-level resource consumption metrics.
+
+const RESOURCE_USAGE_FIELDS = [
+  "contextSwitches", "cpuTime", "maxRSS", "messages",
+  "ops", "shmSize", "signalCount", "swapCount",
+] as const;
+
+// Sub-fields of cpuTime
+const CPU_TIME_FIELDS = ["user", "system", "total"] as const;
+// Sub-fields of contextSwitches
+const CONTEXT_SWITCH_FIELDS = ["voluntary", "involuntary"] as const;
+// Sub-fields of messages
+const MESSAGES_FIELDS = ["sent", "received"] as const;
+// Sub-fields of ops
+const OPS_FIELDS = ["in", "out"] as const;
+
+function analyzeResourceUsage() {
+  const sites: { field: string; line: number }[] = [];
+  const fieldUsage: Record<string, number> = {};
+
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+
+    // Check for resourceUsage() call
+    if (/\.resourceUsage\b/.test(line)) {
+      sites.push({ field: "resourceUsage", line: i + 1 });
+      fieldUsage["resourceUsage"] = (fieldUsage["resourceUsage"] ?? 0) + 1;
+    }
+
+    // Check for individual field access
+    for (const field of RESOURCE_USAGE_FIELDS) {
+      const re = new RegExp(`resourceUsage[^.]*\\.${field}\\b`);
+      if (re.test(line)) {
+        sites.push({ field, line: i + 1 });
+        fieldUsage[field] = (fieldUsage[field] ?? 0) + 1;
+      }
+    }
+  }
+
+  const fieldCoverage: Record<string, { used: boolean; sites: number }> = {};
+  for (const field of RESOURCE_USAGE_FIELDS) {
+    fieldCoverage[field] = { used: (fieldUsage[field] ?? 0) > 0, sites: fieldUsage[field] ?? 0 };
+  }
+
+  return {
+    call_sites: fieldUsage["resourceUsage"] ?? 0,
+    fields_used: Object.keys(fieldUsage).filter((k) => k !== "resourceUsage").length,
+    fields_available: RESOURCE_USAGE_FIELDS.length,
+    field_coverage: fieldCoverage,
+    sub_fields: {
+      cpuTime: CPU_TIME_FIELDS.slice(),
+      contextSwitches: CONTEXT_SWITCH_FIELDS.slice(),
+      messages: MESSAGES_FIELDS.slice(),
+      ops: OPS_FIELDS.slice(),
+    },
+    sites,
+  };
+}
+
+const resourceUsageAnalysis = analyzeResourceUsage();
+
 // ── Legacy pattern detection ────────────────────────────────────────
 
 function countPattern(re: RegExp): number {
@@ -357,6 +493,28 @@ const snapshot = {
     contexts: signalAnalysis.contexts,
     coverage: signalAnalysis.coverage,
     sites: signalAnalysis.sites,
+  },
+  terminal: {
+    doc: "https://bun.sh/docs/api/spawn#terminal",
+    type_ref: "TerminalOptions, Terminal",
+    options_available: terminalAnalysis.options_available,
+    options_used: terminalAnalysis.options_used,
+    members_available: terminalAnalysis.members_available,
+    members_used: terminalAnalysis.members_used,
+    option_coverage: terminalAnalysis.option_coverage,
+    member_coverage: terminalAnalysis.member_coverage,
+    option_sites: terminalAnalysis.option_sites,
+    member_sites: terminalAnalysis.member_sites,
+  },
+  resource_usage: {
+    doc: "https://bun.sh/docs/api/spawn#resourceusage",
+    type_ref: "ResourceUsage",
+    call_sites: resourceUsageAnalysis.call_sites,
+    fields_available: resourceUsageAnalysis.fields_available,
+    fields_used: resourceUsageAnalysis.fields_used,
+    field_coverage: resourceUsageAnalysis.field_coverage,
+    sub_fields: resourceUsageAnalysis.sub_fields,
+    sites: resourceUsageAnalysis.sites,
   },
   summary: {
     unique_apis: results.length,

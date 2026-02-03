@@ -1,5 +1,5 @@
 {
-  "generated": "2026-02-03T14:22:00.654Z",
+  "generated": "2026-02-03T14:25:47.074Z",
   "file": "scan.ts",
   "fileSizeBytes": 198029,
   "fileLines": 4360,
@@ -1001,6 +1001,129 @@
         "context": "process.off"
       }
     ]
+  },
+  "terminal": {
+    "doc": "https://bun.sh/docs/api/spawn#terminal",
+    "type_ref": "TerminalOptions, Terminal",
+    "options_available": 6,
+    "options_used": 0,
+    "members_available": 6,
+    "members_used": 0,
+    "option_coverage": {
+      "cols": {
+        "used": false,
+        "sites": 0
+      },
+      "rows": {
+        "used": false,
+        "sites": 0
+      },
+      "name": {
+        "used": false,
+        "sites": 0
+      },
+      "data": {
+        "used": false,
+        "sites": 0
+      },
+      "exit": {
+        "used": false,
+        "sites": 0
+      },
+      "drain": {
+        "used": false,
+        "sites": 0
+      }
+    },
+    "member_coverage": {
+      "write": {
+        "used": false,
+        "sites": 0
+      },
+      "resize": {
+        "used": false,
+        "sites": 0
+      },
+      "setRawMode": {
+        "used": false,
+        "sites": 0
+      },
+      "ref": {
+        "used": false,
+        "sites": 0
+      },
+      "unref": {
+        "used": false,
+        "sites": 0
+      },
+      "close": {
+        "used": false,
+        "sites": 0
+      }
+    },
+    "option_sites": [],
+    "member_sites": []
+  },
+  "resource_usage": {
+    "doc": "https://bun.sh/docs/api/spawn#resourceusage",
+    "type_ref": "ResourceUsage",
+    "call_sites": 0,
+    "fields_available": 8,
+    "fields_used": 0,
+    "field_coverage": {
+      "contextSwitches": {
+        "used": false,
+        "sites": 0
+      },
+      "cpuTime": {
+        "used": false,
+        "sites": 0
+      },
+      "maxRSS": {
+        "used": false,
+        "sites": 0
+      },
+      "messages": {
+        "used": false,
+        "sites": 0
+      },
+      "ops": {
+        "used": false,
+        "sites": 0
+      },
+      "shmSize": {
+        "used": false,
+        "sites": 0
+      },
+      "signalCount": {
+        "used": false,
+        "sites": 0
+      },
+      "swapCount": {
+        "used": false,
+        "sites": 0
+      }
+    },
+    "sub_fields": {
+      "cpuTime": [
+        "user",
+        "system",
+        "total"
+      ],
+      "contextSwitches": [
+        "voluntary",
+        "involuntary"
+      ],
+      "messages": [
+        "sent",
+        "received"
+      ],
+      "ops": [
+        "in",
+        "out"
+      ]
+    },
+    "sites": []
   },
   "summary": {
     "unique_apis": 23,
