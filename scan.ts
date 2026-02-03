@@ -51,9 +51,21 @@ const { values: flags, positionals } = parseArgs({
     compare:      { type: "boolean", default: false },
     "audit-compare": { type: "string" },
     "no-auto-snapshot": { type: "boolean", default: false },
+    tz:           { type: "string" },
+    "fix-dns-ttl": { type: "boolean", default: false },
   },
   strict: true,
 });
+
+// ── Timezone ────────────────────────────────────────────────────────────
+// Set process TZ early so all Date ops are consistent for the entire run.
+// Priority: --tz flag > TZ env var > system default
+const _tzExplicit = !!(flags.tz || process.env.TZ);
+if (flags.tz) {
+  process.env.TZ = flags.tz;
+} else if (!process.env.TZ) {
+  process.env.TZ = Intl.DateTimeFormat().resolvedOptions().timeZone;
+}
 
 // ── ANSI helpers ───────────────────────────────────────────────────────
 const c = {
@@ -147,6 +159,21 @@ export function shouldWarnMise(platform: string, miseShell: string | undefined):
   return platform === "win32" && !miseShell;
 }
 
+/** Parse a variable from .env file contents. Returns last match (Bun load-order: last write wins). */
+export function parseEnvVar(contents: string[], key: string): string {
+  let val = "-";
+  for (const text of contents) {
+    const m = text.match(new RegExp(`^${key}\\s*=\\s*["']?([^\\s"'#]+)`, "m"));
+    if (m) val = m[1];
+  }
+  return val;
+}
+
+/** Parse TZ= value from .env file contents. */
+export function parseTzFromEnv(contents: string[]): string {
+  return parseEnvVar(contents, "TZ");
+}
+
 // ── Semver helpers ────────────────────────────────────────────────────
 type SemVer = { major: number; minor: number; patch: number };
 
@@ -223,6 +250,7 @@ export interface ProjectInfo {
   configVersion: number;        // lockfile configVersion: 0 | 1 | -1 (unknown/binary)
   backend: string;              // "clonefile" | "hardlink" | "symlink" | "copyfile" | "-"
   minimumReleaseAge: number;    // 0 = not set, else seconds
+  minReleaseAgeExcludes: string[]; // minimumReleaseAgeExcludes packages
   saveTextLockfile: boolean;
   cacheDisabled: boolean;
   cacheDir: string;             // "-" = not set
@@ -243,10 +271,16 @@ export interface ProjectInfo {
   repoOwner: string;             // GitHub username or org | "-"
   repoHost: string;              // "github.com" etc. | "-"
   envFiles: string[];             // .env files found (.env, .env.local, .env.production, etc.)
+  projectTz: string;              // TZ value from .env files | "-"
+  projectDnsTtl: string;          // BUN_CONFIG_DNS_TIME_TO_LIVE_SECONDS from .env | "-"
   bunfigEnvRefs: string[];        // $VAR / ${VAR} references in bunfig.toml
+  peerDeps: string[];              // peerDependencies keys
+  peerDepsMeta: string[];          // peerDependenciesMeta keys marked optional
+  installPeer: boolean;            // bunfig [install] peer = true (default: true)
   hasTests: boolean;              // pkg.scripts.test exists
   nativeDeps: string[];           // trustedDeps matching NATIVE_PATTERN
   workspacesList: string[];       // pkg.workspaces array entries
+  lockHash: string;               // wyhash of lockfile content | "-"
 }
 
 // ── Accepted bun install --cpu / --os values ──────────────────────────
@@ -265,6 +299,12 @@ const NOTABLE = new Set([
 
 // ── Native dependency detection pattern ───────────────────────────────
 const NATIVE_PATTERN = /napi|prebuild|node-gyp|node-pre-gyp|ffi-napi|binding\.gyp|cmake-js|cargo-cp-artifact/i;
+const _nativeCache = new Map<string, boolean>();
+function isNativeMatch(s: string): boolean {
+  let r = _nativeCache.get(s);
+  if (r === undefined) { r = NATIVE_PATTERN.test(s); _nativeCache.set(s, r); }
+  return r;
+}
 
 /** Bun's built-in default trusted dependencies (bun 1.2.x).
  *  Source: github.com/oven-sh/bun/blob/main/src/install/default-trusted-dependencies.txt */
@@ -346,10 +386,13 @@ const BUN_DEFAULT_TRUSTED = new Set([
 const PROJECTS_ROOT = Bun.env.BUN_PLATFORM_HOME ?? "/Users/nolarose/Projects";
 
 // ── Xref types ────────────────────────────────────────────────────────
-type XrefEntry = { folder: string; bunDefault: string[]; explicit: string[]; blocked: string[] };
+type XrefEntry = { folder: string; bunDefault: string[]; explicit: string[]; blocked: string[]; lockHash?: string };
 
 interface XrefSnapshot {
   timestamp: string;
+  date: string;
+  tz: string;
+  tzOverride: boolean;
   projects: XrefEntry[];
   totalBunDefault: number;
   totalProjects: number;
@@ -361,8 +404,14 @@ const SNAPSHOT_PATH = `${SNAPSHOT_DIR}/xref-snapshot.json`;
 async function saveXrefSnapshot(data: XrefEntry[], totalProjects: number): Promise<void> {
   const { mkdir } = await import("node:fs/promises");
   await mkdir(SNAPSHOT_DIR, { recursive: true });
+  const now = new Date();
+  const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
+  const pad2 = (n: number) => String(n).padStart(2, "0");
   const snapshot: XrefSnapshot = {
-    timestamp: new Date().toISOString(),
+    timestamp: now.toISOString(),
+    date: `${now.getFullYear()}-${pad2(now.getMonth() + 1)}-${pad2(now.getDate())} ${pad2(now.getHours())}:${pad2(now.getMinutes())}:${pad2(now.getSeconds())}`,
+    tz,
+    tzOverride: _tzExplicit,
     projects: data,
     totalBunDefault: data.reduce((s, x) => s + x.bunDefault.length, 0),
     totalProjects,
@@ -382,15 +431,25 @@ async function loadXrefSnapshot(path?: string): Promise<XrefSnapshot | null> {
 
 const XREF_HOOKS = ["preinstall", "postinstall", "preuninstall", "prepare", "preprepare", "postprepare", "prepublishOnly"] as const;
 
-async function scanXrefData(projects: ProjectInfo[]): Promise<XrefEntry[]> {
-  const result: XrefEntry[] = [];
-  for (const p of projects) {
-    if (!p.hasPkg) continue;
+async function scanXrefData(projects: ProjectInfo[], prev?: XrefSnapshot | null): Promise<{ entries: XrefEntry[]; skipped: number }> {
+  const prevMap = prev ? new Map(prev.projects.map((x) => [x.folder, x])) : null;
+  let skipped = 0;
+
+  const scanOne = async (p: ProjectInfo): Promise<XrefEntry | null> => {
+    // Reuse cached entry when lockHash is unchanged
+    if (prevMap && p.lockHash !== "-") {
+      const cached = prevMap.get(p.folder);
+      if (cached?.lockHash && cached.lockHash === p.lockHash) {
+        skipped++;
+        return cached;
+      }
+    }
+
     const nmDir = `${PROJECTS_ROOT}/${p.folder}/node_modules`;
-    let entries: string[] = [];
-    try { entries = await readdir(nmDir); } catch { continue; }
+    let entries: string[];
+    try { entries = await readdir(nmDir); } catch { return null; }
     const trusted = new Set(p.trustedDeps);
-    const xref: XrefEntry = { folder: p.folder, bunDefault: [], explicit: [], blocked: [] };
+    const xref: XrefEntry = { folder: p.folder, bunDefault: [], explicit: [], blocked: [], lockHash: p.lockHash };
     const seen = new Set<string>();
     const classify = (pkgName: string, scripts: Record<string, string>) => {
       let hasAnyHook = false;
@@ -402,28 +461,35 @@ async function scanXrefData(projects: ProjectInfo[]): Promise<XrefEntry[]> {
         else xref.blocked.push(pkgName);
       }
     };
+
+    // Expand scoped entries into flat list of [pkgName, pkgJsonPath] pairs
+    const reads: [string, string][] = [];
     for (const entry of entries) {
       if (entry.startsWith("@")) {
-        let scoped: string[] = [];
+        let scoped: string[];
         try { scoped = await readdir(`${nmDir}/${entry}`); } catch { continue; }
-        for (const sub of scoped) {
-          try {
-            const pkg = JSON.parse(await Bun.file(`${nmDir}/${entry}/${sub}/package.json`).text());
-            if (pkg.scripts) classify(`${entry}/${sub}`, pkg.scripts);
-          } catch { /* skip */ }
-        }
+        for (const sub of scoped) reads.push([`${entry}/${sub}`, `${nmDir}/${entry}/${sub}/package.json`]);
       } else {
-        try {
-          const pkg = JSON.parse(await Bun.file(`${nmDir}/${entry}/package.json`).text());
-          if (pkg.scripts) classify(entry, pkg.scripts);
-        } catch { /* skip */ }
+        reads.push([entry, `${nmDir}/${entry}/package.json`]);
       }
     }
-    if (xref.bunDefault.length + xref.explicit.length + xref.blocked.length > 0) {
-      result.push(xref);
-    }
-  }
-  return result;
+
+    // Read + parse all package.json files in parallel
+    await Promise.all(reads.map(async ([name, path]) => {
+      try {
+        const pkg = JSON.parse(await Bun.file(path).text());
+        if (pkg.scripts) classify(name, pkg.scripts);
+      } catch { /* skip */ }
+    }));
+
+    return (xref.bunDefault.length + xref.explicit.length + xref.blocked.length > 0) ? xref : null;
+  };
+
+  // Scan all projects in parallel
+  const results = await Promise.all(
+    projects.filter((p) => p.hasPkg).map(scanOne)
+  );
+  return { entries: results.filter((x): x is XrefEntry => x !== null), skipped };
 }
 
 // ── Default metadata for --fix ─────────────────────────────────────────
@@ -469,6 +535,7 @@ export async function scanProject(dir: string): Promise<ProjectInfo> {
     configVersion: -1,
     backend: "-",
     minimumReleaseAge: 0,
+    minReleaseAgeExcludes: [],
     saveTextLockfile: false,
     cacheDisabled: false,
     cacheDir: "-",
@@ -489,17 +556,24 @@ export async function scanProject(dir: string): Promise<ProjectInfo> {
     repoOwner: "-",
     repoHost: "-",
     envFiles: [],
+    projectTz: "UTC",
+    projectDnsTtl: "-",
     bunfigEnvRefs: [],
+    peerDeps: [],
+    peerDepsMeta: [],
+    installPeer: true,  // Bun default is true
     hasTests: false,
     nativeDeps: [],
     workspacesList: [],
+    lockHash: "-",
   };
 
   // package.json
+  let pkg: any = null;
   const pkgFile = Bun.file(`${dir}/package.json`);
   if (await pkgFile.exists()) {
     try {
-      const pkg = await pkgFile.json();
+      pkg = await pkgFile.json();
       base.hasPkg = true;
       base.name = pkg.name ?? folder;
       base.version = pkg.version ?? "-";
@@ -511,7 +585,7 @@ export async function scanProject(dir: string): Promise<ProjectInfo> {
       base.totalDeps = base.deps + base.devDeps;
 
       base.engine = pkg.engines?.bun ?? "-";
-      base.workspace = Array.isArray(pkg.workspaces) || typeof pkg.workspaces === "object" && pkg.workspaces !== null;
+      base.workspace = Array.isArray(pkg.workspaces) || (typeof pkg.workspaces === "object" && pkg.workspaces !== null);
       base.author = typeof pkg.author === "string" ? pkg.author : pkg.author?.name ?? "-";
       base.license = pkg.license ?? "-";
       base.description = pkg.description ?? "-";
@@ -547,6 +621,16 @@ export async function scanProject(dir: string): Promise<ProjectInfo> {
       }
       if (pkg.resolutions && typeof pkg.resolutions === "object") {
         base.resolutions = Object.keys(pkg.resolutions);
+      }
+
+      // peerDependencies / peerDependenciesMeta
+      if (pkg.peerDependencies && typeof pkg.peerDependencies === "object") {
+        base.peerDeps = Object.keys(pkg.peerDependencies);
+      }
+      if (pkg.peerDependenciesMeta && typeof pkg.peerDependenciesMeta === "object") {
+        base.peerDepsMeta = Object.entries(pkg.peerDependenciesMeta)
+          .filter(([, v]: [string, any]) => v?.optional === true)
+          .map(([k]) => k);
       }
 
       // repository — string shorthand or { url } object
@@ -585,6 +669,17 @@ export async function scanProject(dir: string): Promise<ProjectInfo> {
   const envChecks = await Promise.all(envCandidates.map((f) => Bun.file(`${dir}/${f}`).exists()));
   base.envFiles = envCandidates.filter((_, i) => envChecks[i]);
 
+  // Scan .env files for TZ= (Bun load order: .env.local > .env.NODE_ENV > .env — last write wins)
+  if (base.envFiles.length > 0) {
+    const contents = await Promise.all(
+      base.envFiles.map((f) => Bun.file(`${dir}/${f}`).text().catch(() => ""))
+    );
+    const envTz = parseTzFromEnv(contents);
+    if (envTz !== "-") base.projectTz = envTz;
+    const envDns = parseEnvVar(contents, "BUN_CONFIG_DNS_TIME_TO_LIVE_SECONDS");
+    if (envDns !== "-") base.projectDnsTtl = envDns;
+  }
+
   // Lock file detection
   const [hasLock, hasLockb] = await Promise.all([
     Bun.file(`${dir}/bun.lock`).exists(),
@@ -593,14 +688,19 @@ export async function scanProject(dir: string): Promise<ProjectInfo> {
   if (hasLock) {
     base.lock = "bun.lock";
     try {
+      const lockContent = await Bun.file(`${dir}/bun.lock`).text();
+      base.lockHash = Bun.hash.wyhash(lockContent).toString(16);
       // bun.lock is JSONC (trailing commas) — regex the header instead of JSON.parse
-      const lockHead = (await Bun.file(`${dir}/bun.lock`).text()).slice(0, 200);
+      const lockHead = lockContent.slice(0, 200);
       const cvMatch = lockHead.match(/"configVersion"\s*:\s*(\d+)/);
       if (cvMatch) base.configVersion = parseInt(cvMatch[1], 10);
     } catch { /* unreadable — leave -1 */ }
   } else if (hasLockb) {
     base.lock = "bun.lockb";
-    // binary format — configVersion not extractable
+    try {
+      const lockBytes = await Bun.file(`${dir}/bun.lockb`).arrayBuffer();
+      base.lockHash = Bun.hash.wyhash(new Uint8Array(lockBytes)).toString(16);
+    } catch { /* unreadable */ }
   }
 
   // bunfig.toml — detect presence, parse registry, scopes, and [install] options
@@ -633,6 +733,10 @@ export async function scanProject(dir: string): Promise<ProjectInfo> {
       base.saveTextLockfile = boolOpt("saveTextLockfile");
       base.linkWorkspacePackages = boolOpt("linkWorkspacePackages");
 
+      // peer defaults to true in Bun — only store false as explicit override
+      const peerVal = toml.match(/^\s*peer\s*=\s*(true|false)/m);
+      if (peerVal) base.installPeer = peerVal[1] === "true";
+
       // String [install] options
       const strOpt = (key: string): string | undefined => {
         const m = toml.match(new RegExp(`^\\s*${key}\\s*=\\s*"([^"]+)"`, "m"));
@@ -656,6 +760,10 @@ export async function scanProject(dir: string): Promise<ProjectInfo> {
         return m ? parseInt(m[1], 10) : 0;
       };
       base.minimumReleaseAge = numOpt("minimumReleaseAge");
+      const excludesMatch = toml.match(/^\s*minimumReleaseAgeExcludes\s*=\s*\[([^\]]*)\]/m);
+      if (excludesMatch) {
+        base.minReleaseAgeExcludes = [...excludesMatch[1].matchAll(/"([^"]+)"/g)].map((m) => m[1]);
+      }
       base.concurrentScripts = numOpt("concurrentScripts");
       base.networkConcurrency = numOpt("networkConcurrency");
 
@@ -683,12 +791,9 @@ export async function scanProject(dir: string): Promise<ProjectInfo> {
   }
 
   // Fallback: package.json publishConfig.registry
-  if (base.registry === "-" && base.hasPkg) {
-    try {
-      const pkg = await Bun.file(`${dir}/package.json`).json();
-      const reg = pkg.publishConfig?.registry;
-      if (reg) base.registry = reg.replace(/^https?:\/\//, "");
-    } catch {}
+  if (base.registry === "-" && pkg) {
+    const reg = pkg.publishConfig?.registry;
+    if (reg) base.registry = reg.replace(/^https?:\/\//, "");
   }
 
   // .npmrc existence + auth token detection
@@ -709,14 +814,8 @@ export async function scanProject(dir: string): Promise<ProjectInfo> {
   }
 
   // bin/ directory detection ($PROJECT_HOME/bin)
-  try {
-    const binStat = await Bun.file(`${dir}/bin`).exists();
-    // Bun.file().exists() returns false for dirs — use readdir instead
-    const binEntries = await readdir(`${dir}/bin`).catch(() => null);
-    base.hasBinDir = binEntries !== null && binEntries.length > 0;
-  } catch {
-    base.hasBinDir = false;
-  }
+  const binEntries = await readdir(`${dir}/bin`).catch(() => null);
+  base.hasBinDir = binEntries !== null && binEntries.length > 0;
 
   return base;
 }
@@ -881,9 +980,15 @@ function inspectProject(p: ProjectInfo) {
   line("Resilient",    p.resilient ? c.green("YES") : c.dim("no"));
   line("bin/",         p.hasBinDir ? c.green("yes") : c.dim("no"));
   line("Has pkg.json", p.hasPkg ? c.green("yes") : c.red("no"));
+  line("TZ",           p.projectTz === "UTC" ? c.dim("UTC (default)") : c.cyan(p.projectTz));
+  line("DNS TTL",       p.projectDnsTtl !== "-" ? c.cyan(`${p.projectDnsTtl}s`) : c.yellow("not set (--fix → 5s)"));
   console.log();
   line("Bin",          p.bin.length ? p.bin.join(", ") : c.dim("none"));
   line("Key Deps",     p.keyDeps.length ? p.keyDeps.join(", ") : c.dim("none"));
+  line("Peer Deps",    p.peerDeps.length ? p.peerDeps.join(", ") : c.dim("none"));
+  if (p.peerDepsMeta.length) {
+    line("  Optional",  p.peerDepsMeta.join(", "));
+  }
 
   // bunfig [install] settings
   if (p.bunfig) {
@@ -901,7 +1006,11 @@ function inspectProject(p: ProjectInfo) {
     const defaultBackend = process.platform === "darwin" ? "clonefile" : "hardlink";
     line("Backend",       p.backend !== "-" ? p.backend : c.dim(`default (${defaultBackend})`));
     line("Min Age",       p.minimumReleaseAge > 0 ? `${p.minimumReleaseAge}s (${(p.minimumReleaseAge / 86400).toFixed(1)}d)` : c.dim("none"));
+    if (p.minReleaseAgeExcludes.length) {
+      line("  Excludes",   p.minReleaseAgeExcludes.join(", "));
+    }
     line("Text Lock",     p.saveTextLockfile ? c.green("yes") : c.dim("no"));
+    line("Peer Install", p.installPeer ? c.green("yes (default)") : c.yellow("disabled"));
     line("Link WS Pkgs",  p.linkWorkspacePackages ? c.green("yes") : c.dim("no"));
     line("Cache",         p.cacheDisabled ? c.yellow("disabled") : p.cacheDir !== "-" ? p.cacheDir : c.dim("default"));
     line("No Verify",     p.noVerify ? c.red("yes") : c.dim("no"));
@@ -1032,8 +1141,14 @@ async function renderAudit(projects: ProjectInfo[]) {
     }
   }
 
+  const auditNow = new Date();
+  const auditTz = Intl.DateTimeFormat().resolvedOptions().timeZone;
+  const pad2 = (n: number) => String(n).padStart(2, "0");
+  const auditTime = `${auditNow.getFullYear()}-${pad2(auditNow.getMonth() + 1)}-${pad2(auditNow.getDate())} ${pad2(auditNow.getHours())}:${pad2(auditNow.getMinutes())}:${pad2(auditNow.getSeconds())} ${auditTz}${_tzExplicit ? ` (TZ=${process.env.TZ})` : ""}`;
+
   console.log();
   console.log(c.bold(c.cyan("  Metadata Audit")));
+  console.log(c.dim(`  ${auditTime}`));
   console.log();
 
   // Summary counts
@@ -1067,6 +1182,7 @@ async function renderAudit(projects: ProjectInfo[]) {
     { key: "BUN_FEATURE_FLAG_DISABLE_IGNORE_SCRIPTS", desc: "lifecycle scripts blocked", offLabel: "BLOCKED" },
     { key: "BUN_FEATURE_FLAG_DISABLE_NATIVE_DEPENDENCY_LINKER", desc: "native bin linking", offLabel: "ON" },
     // Runtime & networking
+    { key: "TZ",                             desc: "runtime timezone (bun test forces UTC)", recommend: "UTC" },
     { key: "NODE_TLS_REJECT_UNAUTHORIZED",   desc: "SSL cert validation (0 = INSECURE)" },
     { key: "BUN_CONFIG_MAX_HTTP_REQUESTS",   desc: "max concurrent HTTP requests (default 256)" },
     { key: "BUN_CONFIG_VERBOSE_FETCH",       desc: "log fetch requests (curl | true | false)", recommend: "curl" },
@@ -1171,6 +1287,16 @@ async function renderAudit(projects: ProjectInfo[]) {
     console.log(`    ${c.cyan(label.padEnd(14))} ${String(count).padStart(2)}/${withPkg.length}  (${pct}%)  ${bar}  ${c.dim(desc)}`);
   }
 
+  // Array field totals
+  const arrayStats = {
+    trustedDeps: withPkg.reduce((sum, p) => sum + p.trustedDeps.length, 0),
+    nativeDeps: withPkg.reduce((sum, p) => sum + p.nativeDeps.length, 0),
+    scopes: withPkg.reduce((sum, p) => sum + p.scopes.length, 0),
+  };
+  console.log(`    ${c.cyan("trustedDeps".padEnd(14))} ${c.green(String(arrayStats.trustedDeps))} total across all projects`);
+  console.log(`    ${c.cyan("nativeDeps".padEnd(14))} ${c.green(String(arrayStats.nativeDeps))} detected`);
+  console.log(`    ${c.cyan("scopes".padEnd(14))} ${c.green(String(arrayStats.scopes))} total scope registrations`);
+
   // Dependency overrides / resolutions
   const withOverrides = withPkg.filter((p) => p.overrides.length > 0);
   const withResolutions = withPkg.filter((p) => p.resolutions.length > 0);
@@ -1194,6 +1320,64 @@ async function renderAudit(projects: ProjectInfo[]) {
     }
   }
 
+  // Peer dependencies
+  const withPeers = withPkg.filter((p) => p.peerDeps.length > 0);
+  const withOptionalPeers = withPkg.filter((p) => p.peerDepsMeta.length > 0);
+  const totalPeerCount = withPeers.reduce((n, p) => n + p.peerDeps.length, 0);
+  const totalOptionalCount = withOptionalPeers.reduce((n, p) => n + p.peerDepsMeta.length, 0);
+  if (withPeers.length > 0) {
+    console.log();
+    console.log(c.bold("  Peer dependencies:"));
+    console.log();
+    console.log(`    ${c.cyan("declared".padEnd(14))} ${c.green(String(withPeers.length))} project(s), ${totalPeerCount} peer(s) total`);
+    for (const p of withPeers) {
+      const optionals = new Set(p.peerDepsMeta);
+      const labels = p.peerDeps.map((d) => optionals.has(d) ? `${d} ${c.dim("(optional)")}` : d);
+      console.log(`      ${c.dim("•")} ${p.folder.padEnd(28)} ${c.dim(labels.join(", "))}`);
+    }
+    if (totalOptionalCount > 0) {
+      console.log(`    ${c.cyan("optional".padEnd(14))} ${totalOptionalCount} peer(s) marked optional via peerDependenciesMeta`);
+    }
+  }
+
+  // Project timezones
+  {
+    const tzGroups = new Map<string, string[]>();
+    for (const p of withPkg) {
+      const list = tzGroups.get(p.projectTz) ?? [];
+      list.push(p.folder);
+      tzGroups.set(p.projectTz, list);
+    }
+    console.log();
+    console.log(c.bold("  Project timezones (.env TZ):"));
+    console.log();
+    for (const [tz, folders] of [...tzGroups.entries()].sort((a, b) => b[1].length - a[1].length)) {
+      const label = tz === "UTC" ? `${tz} (default)` : tz;
+      console.log(`    ${c.cyan(label.padEnd(24))} ${folders.length} project(s)`);
+    }
+  }
+
+  // Per-project DNS TTL
+  {
+    const withDnsTtl = withPkg.filter((p) => p.projectDnsTtl !== "-");
+    const withoutDnsTtl = withPkg.length - withDnsTtl.length;
+    const ttlGroups = new Map<string, string[]>();
+    for (const p of withDnsTtl) {
+      const list = ttlGroups.get(p.projectDnsTtl) ?? [];
+      list.push(p.folder);
+      ttlGroups.set(p.projectDnsTtl, list);
+    }
+    console.log();
+    console.log(c.bold("  DNS cache TTL (.env BUN_CONFIG_DNS_TIME_TO_LIVE_SECONDS):"));
+    console.log();
+    for (const [ttl, folders] of [...ttlGroups.entries()].sort((a, b) => Number(a) - Number(b))) {
+      console.log(`    ${c.cyan(`${ttl}s`.padEnd(24))} ${folders.length} project(s)  ${c.dim(folders.join(", "))}`);
+    }
+    if (withoutDnsTtl > 0) {
+      console.log(`    ${c.yellow("not set".padEnd(24))} ${withoutDnsTtl} project(s)  ${c.dim("--fix → 5s")}`);
+    }
+  }
+
   // Lifecycle security posture — scan node_modules for per-hook metrics
   console.log();
   console.log(c.bold("  Lifecycle security:"));
@@ -1213,12 +1397,12 @@ async function renderAudit(projects: ProjectInfo[]) {
     try { entries = await readdir(nmDir); } catch { continue; }
 
     const trusted = new Set(p.trustedDeps);
-    const xref: XrefEntry = { folder: p.folder, bunDefault: [], explicit: [], blocked: [] };
+    const xref: XrefEntry = { folder: p.folder, bunDefault: [], explicit: [], blocked: [], lockHash: p.lockHash };
     const xrefSeen = new Set<string>();
 
     const classifyPkg = (pkgName: string, scripts: Record<string, string>) => {
       const scriptValues = Object.values(scripts).join(" ");
-      const isNative = NATIVE_PATTERN.test(pkgName) || NATIVE_PATTERN.test(scriptValues);
+      const isNative = isNativeMatch(pkgName) || isNativeMatch(scriptValues);
       let hasAnyHook = false;
       for (const h of HOOKS) {
         if (scripts[h]) {
@@ -1435,7 +1619,7 @@ async function renderAudit(projects: ProjectInfo[]) {
         else unchangedCount.value++;
       }
       console.log();
-      console.log(c.bold(`  Cross-reference delta (vs ${prevSnapshot.timestamp}):`));
+      console.log(c.bold(`  Cross-reference delta (vs ${prevSnapshot.date ?? prevSnapshot.timestamp}${prevSnapshot.tz ? ` ${prevSnapshot.tz}` : ""}):`));
       console.log(`    ${"New projects:".padEnd(18)} ${c.cyan(String(newProjects.length))}${newProjects.length > 0 ? "   " + newProjects.map((x) => x.folder).join(", ") : ""}`);
       console.log(`    ${"Removed:".padEnd(18)} ${removedProjects.length > 0 ? c.red(String(removedProjects.length)) : c.dim(String(removedProjects.length))}${removedProjects.length > 0 ? "   " + removedProjects.map((p) => p.folder).join(", ") : ""}`);
       console.log(`    ${"Changed:".padEnd(18)} ${changedProjects.length > 0 ? c.yellow(String(changedProjects.length)) : c.dim(String(changedProjects.length))}${changedProjects.length > 0 ? "   " + changedProjects.join(", ") : ""}`);
@@ -1499,6 +1683,7 @@ async function renderAudit(projects: ProjectInfo[]) {
     { label: "linker",           count: withBunfig.filter((p) => p.linker !== "-").length,           desc: "explicit linker strategy" },
     { label: "backend",          count: withBunfig.filter((p) => p.backend !== "-").length,          desc: "explicit fs backend" },
     { label: "minReleaseAge",    count: withBunfig.filter((p) => p.minimumReleaseAge > 0).length,   desc: "supply-chain age gate" },
+    { label: "ageExcludes",     count: withBunfig.filter((p) => p.minReleaseAgeExcludes.length > 0).length, desc: "age gate exclusions" },
     { label: "saveTextLock",     count: withBunfig.filter((p) => p.saveTextLockfile).length,         desc: "text-based bun.lock" },
     { label: "linkWsPkgs",       count: withBunfig.filter((p) => p.linkWorkspacePackages).length,    desc: "workspace linking" },
     { label: "cacheDisabled",    count: withBunfig.filter((p) => p.cacheDisabled).length,            desc: "global cache bypassed" },
@@ -1512,6 +1697,7 @@ async function renderAudit(projects: ProjectInfo[]) {
     { label: "targetOs",         count: withBunfig.filter((p) => p.targetOs !== "-").length,         desc: "cross-platform os override" },
     { label: "scanner",          count: withBunfig.filter((p) => p.securityScanner !== "-").length,  desc: "npm security scanner" },
     { label: "trustedDeps",      count: withBunfig.filter((p) => p.trustedDeps.length > 0).length,   desc: "lifecycle scripts allowed" },
+    { label: "peer",             count: withBunfig.filter((p) => !p.installPeer).length,          desc: "peer auto-install disabled (default: on)" },
   ];
   for (const { label, count, desc } of installStats) {
     const display = count > 0 ? c.green(`${count}/${withBunfig.length}`) : c.dim(`${count}/${withBunfig.length}`);
@@ -2203,7 +2389,7 @@ async function fixTrusted(projects: ProjectInfo[], dryRun: boolean) {
 
         // Match by package name OR by script content referencing native tools
         const scriptValues = Object.values(scripts).join(" ");
-        if (NATIVE_PATTERN.test(pkgName) || NATIVE_PATTERN.test(scriptValues)) {
+        if (isNativeMatch(pkgName) || isNativeMatch(scriptValues)) {
           if (!existing.has(pkgName)) {
             detected.push(pkgName);
           }
@@ -3058,10 +3244,11 @@ ${c.bold("  Other:")}
 
   // ── Snapshot-only mode (no full audit) ─────────────────────────
   if (flags.snapshot && !flags.audit) {
-    const xrefResult = await scanXrefData(projects);
+    const prevSnap = await loadXrefSnapshot();
+    const { entries: xrefResult, skipped } = await scanXrefData(projects, prevSnap);
     const withPkg = projects.filter((p) => p.hasPkg);
     await saveXrefSnapshot(xrefResult, withPkg.length);
-    console.log(`  Snapshot saved to .audit/xref-snapshot.json (${xrefResult.length} projects)`);
+    console.log(`  Snapshot saved to .audit/xref-snapshot.json (${xrefResult.length} projects${skipped > 0 ? `, ${skipped} unchanged` : ""})`);
     return;
   }
 
@@ -3074,7 +3261,7 @@ ${c.bold("  Other:")}
       console.log(`  No snapshot found at ${label} — run --audit or --snapshot first.`);
       process.exit(1);
     }
-    const cmpXrefData = await scanXrefData(projects);
+    const { entries: cmpXrefData } = await scanXrefData(projects, prevSnapshot);
 
     const prevMap = new Map<string, XrefEntry>();
     for (const p of prevSnapshot.projects) prevMap.set(p.folder, p);
@@ -3099,7 +3286,7 @@ ${c.bold("  Other:")}
     }
 
     console.log();
-    console.log(c.bold(`  Cross-reference delta (vs ${prevSnapshot.timestamp}):`));
+    console.log(c.bold(`  Cross-reference delta (vs ${prevSnapshot.date ?? prevSnapshot.timestamp}${prevSnapshot.tz ? ` ${prevSnapshot.tz}` : ""}):`));
     console.log(`    ${"New projects:".padEnd(18)} ${c.cyan(String(newProjects.length))}${newProjects.length > 0 ? "   " + newProjects.map((x) => x.folder).join(", ") : ""}`);
     console.log(`    ${"Removed:".padEnd(18)} ${removedProjects.length > 0 ? c.red(String(removedProjects.length)) : c.dim(String(removedProjects.length))}${removedProjects.length > 0 ? "   " + removedProjects.map((p) => p.folder).join(", ") : ""}`);
     console.log(`    ${"Changed:".padEnd(18)} ${changedProjects.length > 0 ? c.yellow(String(changedProjects.length)) : c.dim(String(changedProjects.length))}${changedProjects.length > 0 ? "   " + changedProjects.join(", ") : ""}`);
@@ -3164,6 +3351,35 @@ ${c.bold("  Other:")}
   // ── Fix DNS mode ───────────────────────────────────────────────
   if (flags["fix-dns"]) {
     await fixDns(projects, !!flags["dry-run"]);
+    return;
+  }
+
+  // ── Fix DNS TTL mode ──────────────────────────────────────────
+  if (flags["fix-dns-ttl"]) {
+    const dry = !!flags["dry-run"];
+    const ttlVal = "5";
+    const envKey = "BUN_CONFIG_DNS_TIME_TO_LIVE_SECONDS";
+    const missing = projects.filter((p) => p.hasPkg && p.projectDnsTtl === "-");
+    if (missing.length === 0) {
+      console.log(c.green("  All projects already have DNS TTL configured."));
+      return;
+    }
+    console.log(c.bold(`  Setting ${envKey}=${ttlVal} in ${missing.length} project .env files:`));
+    console.log();
+    for (const p of missing) {
+      const envPath = `${PROJECTS_ROOT}/${p.folder}/.env`;
+      if (dry) {
+        console.log(`    ${c.dim("dry-run")} ${p.folder}/.env  +${envKey}=${ttlVal}`);
+        continue;
+      }
+      const file = Bun.file(envPath);
+      let content = (await file.exists()) ? await file.text() : "";
+      if (!content.endsWith("\n") && content.length > 0) content += "\n";
+      content += `${envKey}=${ttlVal}\n`;
+      await Bun.write(envPath, content);
+      console.log(`    ${c.green("✓")} ${p.folder}/.env`);
+    }
+    if (!dry) console.log(c.green(`\n  Done — ${missing.length} projects updated.`));
     return;
   }
 
@@ -3266,7 +3482,12 @@ ${c.bold("  Other:")}
 
   const elapsed = ((Bun.nanoseconds() - t0) / 1e6).toFixed(1);
   console.log();
+  const now = new Date();
+  const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
+  const pad2 = (n: number) => String(n).padStart(2, "0");
+  const scanTime = `${now.getFullYear()}-${pad2(now.getMonth() + 1)}-${pad2(now.getDate())} ${pad2(now.getHours())}:${pad2(now.getMinutes())}:${pad2(now.getSeconds())} ${tz}${_tzExplicit ? ` (TZ=${process.env.TZ})` : ""}`;
   console.log(c.bold(c.cyan(`  Project Scanner — ${projects.length} projects scanned in ${elapsed}ms (bun ${Bun.version} ${Bun.revision.slice(0, 9)})`)));
+  console.log(c.dim(`  ${scanTime}`));
   console.log();
 
   renderTable(projects, !!flags.detail);
@@ -3274,7 +3495,7 @@ ${c.bold("  Other:")}
   // ── Inline xref delta (default mode) ────────────────────────────
   const prevSnapshot = await loadXrefSnapshot(flags["audit-compare"] ?? undefined);
   if (prevSnapshot) {
-    const currentXref = await scanXrefData(projects);
+    const { entries: currentXref } = await scanXrefData(projects, prevSnapshot);
     const prevMap = new Map<string, XrefEntry>();
     for (const p of prevSnapshot.projects) prevMap.set(p.folder, p);
     const currentFolders = new Set(currentXref.map((x) => x.folder));
@@ -3310,8 +3531,14 @@ ${c.bold("  Other:")}
 
     // ── Audit log entry ────────────────────────────────────────────
     const auditLogPath = `${SNAPSHOT_DIR}/audit.jsonl`;
+    const logNow = new Date();
+    const logTz = Intl.DateTimeFormat().resolvedOptions().timeZone;
+    const lp = (n: number) => String(n).padStart(2, "0");
     const entry = {
-      timestamp: new Date().toISOString(),
+      timestamp: logNow.toISOString(),
+      date: `${logNow.getFullYear()}-${lp(logNow.getMonth() + 1)}-${lp(logNow.getDate())} ${lp(logNow.getHours())}:${lp(logNow.getMinutes())}:${lp(logNow.getSeconds())}`,
+      tz: logTz,
+      tzOverride: _tzExplicit,
       scanDuration: elapsed,
       projectsScanned: projects.length,
       projectsChanged: changedCount,
