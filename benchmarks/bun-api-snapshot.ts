@@ -96,6 +96,61 @@ for (const def of API_DEFS) {
 // Sort by call count descending
 results.sort((a, b) => b.calls - a.calls);
 
+// ── Bun.spawn option analysis ───────────────────────────────────────
+// Ref: https://bun.sh/docs/api/spawn#spawn-options
+
+type SpawnOptionKey = "cwd" | "env" | "stdout" | "stderr" | "stdin" | "stdio" | "ipc" | "onExit";
+
+interface SpawnSite {
+  line: number;
+  cmd: string;
+  options: Record<SpawnOptionKey, string | boolean>;
+}
+
+function analyzeSpawnSites(): { sites: SpawnSite[]; optionUsage: Record<string, number> } {
+  const sites: SpawnSite[] = [];
+  const optionUsage: Record<string, number> = {};
+  const spawnRe = /Bun\.spawn(?:Sync)?\s*\(/g;
+  const optionKeys: SpawnOptionKey[] = ["cwd", "env", "stdout", "stderr", "stdin", "stdio", "ipc", "onExit"];
+
+  for (let i = 0; i < lines.length; i++) {
+    spawnRe.lastIndex = 0;
+    if (!spawnRe.test(lines[i])) continue;
+
+    // Gather context: the spawn call + next several lines to capture the options object
+    const context = lines.slice(i, Math.min(i + 8, lines.length)).join("\n");
+
+    // Extract command array (first arg)
+    const cmdMatch = context.match(/Bun\.spawn(?:Sync)?\s*\(\s*\[([^\]]*)\]/);
+    const cmd = cmdMatch ? cmdMatch[1].replace(/"/g, "").replace(/,\s*/g, " ").trim() : "unknown";
+
+    // Detect which options are present
+    // Handles both `key: value` and shorthand method syntax `key(args) {`
+    const opts: Record<SpawnOptionKey, string | boolean> = {} as any;
+    for (const key of optionKeys) {
+      // key: value or key = value
+      const kvRe = new RegExp(`\\b${key}\\s*[:=]\\s*([^,}\\n]+)`);
+      // shorthand method: key(args) {
+      const methodRe = new RegExp(`\\b${key}\\s*\\(`);
+      const kvMatch = context.match(kvRe);
+      const methodMatch = context.match(methodRe);
+      if (kvMatch) {
+        opts[key] = kvMatch[1].trim().replace(/,\s*$/, "");
+        optionUsage[key] = (optionUsage[key] ?? 0) + 1;
+      } else if (methodMatch) {
+        opts[key] = "function";
+        optionUsage[key] = (optionUsage[key] ?? 0) + 1;
+      }
+    }
+
+    sites.push({ line: i + 1, cmd, options: opts });
+  }
+
+  return { sites, optionUsage };
+}
+
+const spawnAnalysis = analyzeSpawnSites();
+
 // ── Legacy pattern detection ────────────────────────────────────────
 
 function countPattern(re: RegExp): number {
@@ -147,6 +202,12 @@ const snapshot = {
     coverage: `${((results.length / availableApis.length) * 100).toFixed(1)}%`,
   },
   apis: results,
+  spawn: {
+    doc: "https://bun.sh/docs/api/spawn#spawn-options",
+    total_sites: spawnAnalysis.sites.length,
+    option_usage: spawnAnalysis.optionUsage,
+    sites: spawnAnalysis.sites,
+  },
   summary: {
     unique_apis: results.length,
     total_call_sites: totalCalls,

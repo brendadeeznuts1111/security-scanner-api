@@ -1,5 +1,5 @@
 {
-  "generated": "2026-02-03T14:06:19.026Z",
+  "generated": "2026-02-03T14:13:35.845Z",
   "file": "scan.ts",
   "fileSizeBytes": 198029,
   "fileLines": 4360,
@@ -369,6 +369,155 @@
       "note": "true if file is direct entry point"
     }
   ],
+  "spawn": {
+    "doc": "https://bun.sh/docs/api/spawn#spawn-options",
+    "total_sites": 16,
+    "option_usage": {
+      "stdout": 15,
+      "stderr": 15,
+      "cwd": 8,
+      "stdio": 1,
+      "ipc": 1
+    },
+    "sites": [
+      {
+        "line": 657,
+        "cmd": "security find-generic-password -s service -a name -w",
+        "options": {
+          "stdout": "\"pipe\"",
+          "stderr": "\"pipe\""
+        }
+      },
+      {
+        "line": 677,
+        "cmd": "security delete-generic-password -s service -a name",
+        "options": {
+          "stdout": "\"ignore\"",
+          "stderr": "\"ignore\""
+        }
+      },
+      {
+        "line": 681,
+        "cmd": "security add-generic-password -s service -a name -w value -U -j `stored:${new Date().toISOString()}`",
+        "options": {
+          "stdout": "\"pipe\"",
+          "stderr": "\"pipe\""
+        }
+      },
+      {
+        "line": 697,
+        "cmd": "security delete-generic-password -s service -a name",
+        "options": {
+          "stdout": "\"pipe\"",
+          "stderr": "\"pipe\""
+        }
+      },
+      {
+        "line": 716,
+        "cmd": "security find-generic-password -s service -a name",
+        "options": {
+          "stdout": "\"pipe\"",
+          "stderr": "\"pipe\""
+        }
+      },
+      {
+        "line": 1112,
+        "cmd": "git remote get-url origin",
+        "options": {
+          "cwd": "dir",
+          "stdout": "\"pipe\"",
+          "stderr": "\"ignore\""
+        }
+      },
+      {
+        "line": 1419,
+        "cmd": "bun workerPath",
+        "options": {
+          "stdio": "[\"ignore\"",
+          "ipc": "function"
+        }
+      },
+      {
+        "line": 2506,
+        "cmd": "bun install",
+        "options": {
+          "cwd": "dir",
+          "stdout": "\"pipe\"",
+          "stderr": "\"pipe\""
+        }
+      },
+      {
+        "line": 3115,
+        "cmd": "unknown",
+        "options": {
+          "cwd": "dir",
+          "stdout": "\"pipe\"",
+          "stderr": "\"pipe\""
+        }
+      },
+      {
+        "line": 3229,
+        "cmd": "unknown",
+        "options": {
+          "cwd": "dir",
+          "stdout": "\"pipe\"",
+          "stderr": "\"pipe\""
+        }
+      },
+      {
+        "line": 3356,
+        "cmd": "bun outdated",
+        "options": {
+          "cwd": "dir",
+          "stdout": "\"pipe\"",
+          "stderr": "\"pipe\""
+        }
+      },
+      {
+        "line": 3501,
+        "cmd": "unknown",
+        "options": {
+          "cwd": "dir",
+          "stdout": "\"inherit\"",
+          "stderr": "\"pipe\""
+        }
+      },
+      {
+        "line": 3529,
+        "cmd": "unknown",
+        "options": {
+          "cwd": "dir",
+          "stdout": "\"inherit\"",
+          "stderr": "\"pipe\""
+        }
+      },
+      {
+        "line": 3582,
+        "cmd": "bun install --frozen-lockfile",
+        "options": {
+          "cwd": "dir",
+          "stdout": "\"pipe\"",
+          "stderr": "\"pipe\""
+        }
+      },
+      {
+        "line": 3627,
+        "cmd": "unknown",
+        "options": {
+          "stdout": "\"pipe\"",
+          "stderr": "\"pipe\""
+        }
+      },
+      {
+        "line": 3639,
+        "cmd": "bun info pkg --json",
+        "options": {
+          "stdout": "\"pipe\"",
+          "stderr": "\"pipe\""
+        }
+      }
+    ]
+  },
   "summary": {
     "unique_apis": 23,
     "total_call_sites": 125,
