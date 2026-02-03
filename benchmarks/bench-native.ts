@@ -2,14 +2,14 @@
  * Benchmark: Bun native API replacements
  *
  * Tests the 3 patterns replaced in scan.ts against their userland equivalents.
- * Uses Bun.nanoseconds() for timing per https://bun.sh/docs/runtime/utils#bun-nanoseconds
+ * Uses Bun.nanoseconds() for timing per https://bun.sh/docs/api/utils#bun-nanoseconds
  *
  * Run: bun run benchmarks/bench-native.ts
  *
  * References:
- *   - Bun.stripANSI: https://bun.sh/docs/runtime/utils#bun-stripansi
+ *   - Bun.stripANSI: https://bun.sh/docs/api/utils#bun-stripansi
  *   - proc.stdout.text(): https://bun.sh/docs/api/spawn#reading-stdout
- *   - Bun.fileURLToPath: https://bun.sh/docs/runtime/utils#bun-fileurltopath
+ *   - Bun.fileURLToPath: https://bun.sh/docs/api/utils#bun-fileurltopath
  */
 
 const ITERATIONS = 10_000;
@@ -71,12 +71,12 @@ function report(label: string, old: ReturnType<typeof bench>, neo: ReturnType<ty
 }
 
 // ── Bench 1: stripAnsi ──────────────────────────────────────────────
-// Ref: https://bun.sh/docs/runtime/utils#bun-stripansi
-// Bun docs claim 6-57x faster than npm strip-ansi (Zig + SIMD).
+// Ref: https://bun.sh/docs/api/utils#bun-stripansi
+// Bun docs: ~6-57x faster strip-ansi alternative (vs npm package).
 // We compare against a simple inline regex (not the npm package).
 
 console.log("═══ 1. stripAnsi: regex vs Bun.stripANSI ═══");
-console.log(`   ref: https://bun.sh/docs/runtime/utils#bun-stripansi\n`);
+console.log(`   ref: https://bun.sh/docs/api/utils#bun-stripansi\n`);
 
 const ANSI_INPUTS = {
   short: "\x1b[1m\x1b[32mok\x1b[0m",
@@ -106,7 +106,7 @@ for (const [name, input] of Object.entries(ANSI_INPUTS)) {
 // ── Bench 2: ReadableStream.text() vs new Response(stream).text() ──
 // Ref: https://bun.sh/docs/api/spawn#reading-stdout
 // proc.stdout is a ReadableStream when stdout: "pipe".
-// Bun extends ReadableStream with body-mixin methods (.text(), .json(), etc).
+// Bun.spawn ReadableStream includes .text(), .json(), .bytes() methods.
 // Old pattern: new Response(proc.stderr).text()
 // New pattern: proc.stderr.text()
 
@@ -156,12 +156,12 @@ const r2subNew = await benchAsync("proc.stdout.text()", async () => {
 report("subprocess", r2subOld, r2subNew);
 
 // ── Bench 3: URL.pathname vs Bun.fileURLToPath ──────────────────────
-// Ref: https://bun.sh/docs/runtime/utils#bun-fileurltopath
-// Bun.fileURLToPath correctly decodes percent-encoded characters.
-// URL.pathname does NOT decode %20 → space.
+// Ref: https://bun.sh/docs/api/utils#bun-fileurltopath
+// Bun.fileURLToPath converts file:// URLs to absolute filesystem paths.
+// Observed: correctly decodes percent-encoded characters (confirmed by test).
 
 console.log("\n═══ 3. URL.pathname vs Bun.fileURLToPath ═══");
-console.log(`   ref: https://bun.sh/docs/runtime/utils#bun-fileurltopath\n`);
+console.log(`   ref: https://bun.sh/docs/api/utils#bun-fileurltopath\n`);
 
 const URL_CASES = {
   simple: { base: "file:///Users/test/project/", relative: "./scan-worker.ts" },

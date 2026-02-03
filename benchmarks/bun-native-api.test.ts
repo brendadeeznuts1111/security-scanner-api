@@ -2,9 +2,9 @@
  * Tests: Bun native API replacements used in scan.ts
  *
  * Validates correctness of:
- *   1. Bun.stripANSI — https://bun.sh/docs/runtime/utils#bun-stripansi
+ *   1. Bun.stripANSI — https://bun.sh/docs/api/utils#bun-stripansi
  *   2. proc.stdout.text() / proc.stderr.text() — https://bun.sh/docs/api/spawn#reading-stdout
- *   3. Bun.fileURLToPath — https://bun.sh/docs/runtime/utils#bun-fileurltopath
+ *   3. Bun.fileURLToPath — https://bun.sh/docs/api/utils#bun-fileurltopath
  *
  * Run: bun test benchmarks/bun-native-api.test.ts
  */
@@ -12,8 +12,8 @@
 import { describe, test, expect } from "bun:test";
 
 // ── 1. Bun.stripANSI ───────────────────────────────────────────────
-// Ref: https://bun.sh/docs/runtime/utils#bun-stripansi
-// Implemented in Zig with SIMD. Strips all ANSI escape codes.
+// Ref: https://bun.sh/docs/api/utils#bun-stripansi
+// ~6-57x faster strip-ansi alternative (vs npm package). Strips all ANSI escape codes.
 
 describe("Bun.stripANSI", () => {
   test("strips basic SGR color codes", () => {
@@ -67,7 +67,7 @@ describe("Bun.stripANSI", () => {
 
 // ── 2. proc.stdout.text() / proc.stderr.text() ─────────────────────
 // Ref: https://bun.sh/docs/api/spawn#reading-stdout
-// Bun extends ReadableStream with body-mixin methods: .text(), .json(), etc.
+// Bun.spawn stdout is a ReadableStream with .text(), .json(), .bytes() methods.
 // proc.stdout defaults to "pipe" (ReadableStream), proc.stderr defaults to "inherit" (null).
 // Must set stderr: "pipe" to read it.
 
@@ -142,9 +142,9 @@ describe("proc.stdout.text() / proc.stderr.text()", () => {
     expect(text).toBe("line1\nline2\nline3\n");
   });
 
-  test("Bun.spawn stdout ReadableStream has .text() body-mixin method", async () => {
-    // Bun adds body-mixin methods to ReadableStream from Bun.spawn,
-    // but not necessarily to manually constructed ReadableStreams.
+  test("Bun.spawn stdout ReadableStream has .text() method", async () => {
+    // Bun.spawn stdout ReadableStream includes .text(), .json(), .bytes() methods.
+    // Manually constructed ReadableStreams may also have these in newer Bun versions.
     const proc = Bun.spawn(["echo", "mixin check"], {
       stdout: "pipe",
       stderr: "pipe",
@@ -170,9 +170,9 @@ describe("proc.stdout.text() / proc.stderr.text()", () => {
 });
 
 // ── 3. Bun.fileURLToPath ────────────────────────────────────────────
-// Ref: https://bun.sh/docs/runtime/utils#bun-fileurltopath
+// Ref: https://bun.sh/docs/api/utils#bun-fileurltopath
 // Converts file:// URLs to absolute filesystem paths.
-// Correctly decodes percent-encoded characters (unlike URL.pathname).
+// Observed: correctly decodes percent-encoded characters (confirmed by tests below).
 
 describe("Bun.fileURLToPath", () => {
   test("converts simple file URL to path", () => {

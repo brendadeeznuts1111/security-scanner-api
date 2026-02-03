@@ -1,6 +1,6 @@
 {
-  "generated": "2026-02-03T15:00:55.166Z",
-  "previous_generated": "2026-02-03T15:00:54.496Z",
+  "generated": "2026-02-03T15:31:19.173Z",
+  "previous_generated": "2026-02-03T15:31:01.793Z",
   "file": "scan.ts",
   "runtime": {
     "name": "bun",
@@ -9,12 +9,12 @@
     "platform": "darwin arm64"
   },
   "metrics": {
-    "file.size_bytes": 198029,
-    "file.lines": 4360,
+    "file.size_bytes": 200531,
+    "file.lines": 4408,
     "runtime.available_apis": 104,
     "runtime.used_apis": 23,
     "apis.unique": 23,
-    "apis.total_call_sites": 125,
+    "apis.total_call_sites": 127,
     "unicode.full": 12,
     "unicode.passthrough": 4,
     "unicode.binary": 1,
@@ -49,10 +49,10 @@
     "api.Bun.write.calls": 17,
     "api.Bun.env.calls": 14,
     "api.proc.stderr.text().calls": 9,
-    "api.Bun.nanoseconds.calls": 6,
+    "api.Bun.nanoseconds.calls": 7,
     "api.proc.stdout.text().calls": 6,
+    "api.Bun.inspect.table.calls": 4,
     "api.Bun.version.calls": 3,
-    "api.Bun.inspect.table.calls": 3,
     "api.Bun.stringWidth.calls": 2,
     "api.Bun.semver.order.calls": 2,
     "api.Bun.hash.*.calls": 2,
@@ -105,9 +105,17 @@
   "delta": {
     "has_baseline": true,
     "total_metrics": 92,
-    "changed_count": 0,
-    "unchanged_count": 92,
-    "changes": []
+    "changed_count": 1,
+    "unchanged_count": 91,
+    "changes": [
+      {
+        "metric": "file.size_bytes",
+        "previous": 200468,
+        "current": 200531,
+        "delta": 63,
+        "changed": true
+      }
+    ]
   },
   "coverage": {
     "runtime_apis": "22.1%",
@@ -159,7 +167,7 @@
       },
       {
         "surface": "API Call Sites",
-        "used": 125,
+        "used": 127,
         "available": null,
         "coverage": null
       },
@@ -255,8 +263,8 @@
       }
     ],
     "min_bun_version": "1.0.0",
-    "file_size_bytes": 198029,
-    "file_lines": 4360
+    "file_size_bytes": 200531,
+    "file_lines": 4408
   },
   "api_categories": {
     "Shell & Process": {
@@ -731,7 +739,7 @@
     {
       "api": "Bun.file",
       "doc": "https://bun.sh/docs/api/file-io#reading-files-bun-file",
-      "since": "1.0.0",
+      "since": "≤1.0.0",
       "lines": [
         863,
         921,
@@ -762,8 +770,8 @@
         3047,
         3071,
         3735,
-        4084,
-        4175
+        4132,
+        4223
       ],
       "calls": 31,
       "unicode": "full",
@@ -772,7 +780,7 @@
     {
       "api": "Bun.spawn",
       "doc": "https://bun.sh/docs/api/spawn",
-      "since": "1.0.0",
+      "since": "≤1.0.0",
       "lines": [
         657,
         677,
@@ -795,12 +803,12 @@
       ],
       "calls": 18,
       "unicode": "passthrough",
-      "note": "Async subprocess; stdout→pipe (ReadableStream), stderr→inherit (undefined)"
+      "note": "Async subprocess; stdout→pipe (ReadableStream), stderr→inherit (undefined) [docs]"
     },
     {
       "api": "Bun.write",
       "doc": "https://bun.sh/docs/api/file-io#writing-files-bun-write",
-      "since": "1.0.0",
+      "since": "≤1.0.0",
       "lines": [
         859,
         2467,
@@ -817,8 +825,8 @@
         2978,
         2988,
         3073,
-        4142,
-        4179
+        4190,
+        4227
       ],
       "calls": 17,
       "unicode": "full",
@@ -827,7 +835,7 @@
     {
       "api": "Bun.env",
       "doc": "https://bun.sh/docs/runtime/env",
-      "since": "1.0.0",
+      "since": "≤1.0.0",
       "lines": [
         76,
         77,
@@ -841,8 +849,8 @@
         2246,
         2247,
         3758,
-        3882,
-        4345
+        3883,
+        4393
       ],
       "calls": 14,
       "unicode": "passthrough",
@@ -851,7 +859,7 @@
     {
       "api": "proc.stderr.text()",
       "doc": "https://bun.sh/docs/api/spawn#reading-stdout",
-      "since": "1.0.0",
+      "since": "≤1.0.0",
       "lines": [
         662,
         686,
@@ -865,28 +873,29 @@
       ],
       "calls": 9,
       "unicode": "full",
-      "note": "Requires stderr:'pipe'; defaults to inherit (undefined) if not set"
+      "note": "Requires stderr:'pipe'; defaults to inherit (undefined) if not set [docs]"
     },
     {
       "api": "Bun.nanoseconds",
-      "doc": "https://bun.sh/docs/runtime/utils#bun-nanoseconds",
-      "since": "1.0.0",
+      "doc": "https://bun.sh/docs/api/utils#bun-nanoseconds",
+      "since": "≤1.0.0",
       "lines": [
         3874,
-        3881,
-        3885,
-        3895,
-        3922,
-        4283
+        3882,
+        3886,
+        3897,
+        3957,
+        3970,
+        4331
       ],
-      "calls": 6,
+      "calls": 7,
       "unicode": "n/a",
-      "note": "High-precision timer; nanoseconds since process start"
+      "note": "High-precision timer; nanoseconds since process start [docs]"
     },
     {
       "api": "proc.stdout.text()",
       "doc": "https://bun.sh/docs/api/spawn#reading-stdout",
-      "since": "1.0.0",
+      "since": "≤1.0.0",
       "lines": [
         667,
         720,
@@ -897,50 +906,51 @@
       ],
       "calls": 6,
       "unicode": "full",
-      "note": "Bun body-mixin on ReadableStream; decodes UTF-8"
+      "note": "ReadableStream from Bun.spawn stdout; .text() reads full stream as UTF-8 string [docs]"
+    },
+    {
+      "api": "Bun.inspect.table",
+      "doc": "https://bun.sh/docs/api/utils#bun-inspect-table",
+      "since": "1.1.31",
+      "lines": [
+        1665,
+        1821,
+        3956,
+        4373
+      ],
+      "calls": 4,
+      "unicode": "full",
+      "note": "Formatted table output with ANSI colors; uses Bun.stringWidth for alignment"
     },
     {
       "api": "Bun.version",
       "doc": "https://bun.sh/docs/runtime/configuration#version",
-      "since": "1.0.0",
+      "since": "≤1.0.0",
       "lines": [
         636,
         2531,
-        4288
+        4336
       ],
       "calls": 3,
       "unicode": "n/a",
       "note": "Semver string of running Bun"
     },
     {
-      "api": "Bun.inspect.table",
-      "doc": "https://bun.sh/docs/runtime/utils#bun-inspect-table",
-      "since": "1.0.0",
-      "lines": [
-        1665,
-        1821,
-        4325
-      ],
-      "calls": 3,
-      "unicode": "full",
-      "note": "Formatted table output with ANSI colors; uses Bun.stringWidth for alignment"
-    },
-    {
       "api": "Bun.stringWidth",
-      "doc": "https://bun.sh/docs/runtime/utils#bun-stringwidth",
-      "since": "1.0.0",
+      "doc": "https://bun.sh/docs/api/utils#bun-stringwidth",
+      "since": "1.0.29",
       "lines": [
         95,
         96
       ],
       "calls": 2,
       "unicode": "full",
-      "note": "ICU-aware display width; handles CJK double-width, emoji, combining marks"
+      "note": "~6,756x faster string-width alternative; implemented in Zig with optimized SIMD instructions [docs]"
     },
     {
       "api": "Bun.semver.order",
-      "doc": "https://bun.sh/docs/runtime/utils#bun-semver",
-      "since": "1.0.0",
+      "doc": "https://bun.sh/docs/api/utils#bun-semver",
+      "since": "1.0.11",
       "lines": [
         320,
         338
@@ -952,22 +962,22 @@
     {
       "api": "Bun.hash.*",
       "doc": "https://bun.sh/docs/api/hashing#bun-hash",
-      "since": "1.0.0",
+      "since": "≤1.0.0",
       "lines": [
         1151,
         1161
       ],
       "calls": 2,
       "unicode": "binary",
-      "note": "Fast non-crypto hash; input treated as raw bytes"
+      "note": "Fast non-crypto hash; input treated as raw bytes (rapidhash added 1.2.16) [blog]"
     },
     {
       "api": "import.meta.dir",
       "doc": "https://bun.sh/docs/api/import-meta",
-      "since": "1.0.0",
+      "since": "≤1.0.0",
       "lines": [
         842,
-        4346
+        4394
       ],
       "calls": 2,
       "unicode": "full",
@@ -976,7 +986,7 @@
     {
       "api": "Bun.argv",
       "doc": "https://bun.sh/docs/runtime/configuration#argv",
-      "since": "1.0.0",
+      "since": "≤1.0.0",
       "lines": [
         13
       ],
@@ -986,8 +996,8 @@
     },
     {
       "api": "Bun.semver.satisfies",
-      "doc": "https://bun.sh/docs/runtime/utils#bun-semver",
-      "since": "1.0.0",
+      "doc": "https://bun.sh/docs/api/utils#bun-semver",
+      "since": "1.0.11",
       "lines": [
         333
       ],
@@ -997,21 +1007,21 @@
     },
     {
       "api": "Bun.stripANSI",
-      "doc": "https://bun.sh/docs/runtime/utils#bun-stripansi",
-      "since": "1.0.0",
+      "doc": "https://bun.sh/docs/api/utils#bun-stripansi",
+      "since": "1.2.21",
       "lines": [
         342
       ],
       "calls": 1,
       "unicode": "full",
-      "note": "Zig+SIMD ANSI stripping; handles all CSI sequences"
+      "note": "SIMD-accelerated [blog]; ~6-57x faster strip-ansi alternative (vs npm package) [docs]"
     },
     {
       "api": "Bun.revision",
       "doc": "https://bun.sh/docs/runtime/configuration#revision",
-      "since": "1.0.0",
+      "since": "≤1.0.0",
       "lines": [
-        4288
+        4336
       ],
       "calls": 1,
       "unicode": "n/a",
@@ -1020,29 +1030,29 @@
     {
       "api": "Bun.spawnSync",
       "doc": "https://bun.sh/docs/api/spawn#blocking-api-bun-spawnsync",
-      "since": "1.0.0",
+      "since": "≤1.0.0",
       "lines": [
         1112
       ],
       "calls": 1,
       "unicode": "passthrough",
-      "note": "Sync subprocess; returns Buffer for stdout/stderr"
+      "note": "Sync subprocess; returns Buffer for stdout/stderr [docs]"
     },
     {
       "api": "Bun.fileURLToPath",
-      "doc": "https://bun.sh/docs/runtime/utils#bun-fileurltopath",
-      "since": "1.0.0",
+      "doc": "https://bun.sh/docs/api/utils#bun-fileurltopath",
+      "since": "≤1.0.0",
       "lines": [
         1350
       ],
       "calls": 1,
       "unicode": "full",
-      "note": "Decodes %20, %C3%AB, CJK percent-encoding; URL.pathname does NOT decode"
+      "note": "Converts file:// URL to absolute path; accepts string or URL object [docs]"
     },
     {
       "api": "Bun.Glob",
       "doc": "https://bun.sh/docs/api/glob",
-      "since": "1.0.0",
+      "since": "1.0.14",
       "lines": [
         1467
       ],
@@ -1052,8 +1062,8 @@
     },
     {
       "api": "Bun.openInEditor",
-      "doc": "https://bun.sh/docs/runtime/utils#bun-openineditor",
-      "since": "1.0.0",
+      "doc": "https://bun.sh/docs/api/utils#bun-openineditor",
+      "since": "≤1.0.0",
       "lines": [
         2347
       ],
@@ -1064,7 +1074,7 @@
     {
       "api": "import.meta.url",
       "doc": "https://bun.sh/docs/api/import-meta",
-      "since": "1.0.0",
+      "since": "≤1.0.0",
       "lines": [
         1350
       ],
@@ -1075,9 +1085,9 @@
     {
       "api": "import.meta.main",
       "doc": "https://bun.sh/docs/api/import-meta",
-      "since": "1.0.0",
+      "since": "≤1.0.0",
       "lines": [
-        4354
+        4402
       ],
       "calls": 1,
       "unicode": "n/a",
