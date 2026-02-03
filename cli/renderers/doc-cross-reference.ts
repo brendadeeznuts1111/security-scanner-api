@@ -7,6 +7,14 @@ import { BUN_API_CATALOG, type BunApiEntry, type BunApiCategory } from "./bun-ap
 // TYPES
 // ═══════════════════════════════════════════════════════════════
 
+export interface PerfAnnotation {
+  version: string;
+  change: string;
+  impact: string;
+  contributor?: string;
+  ref?: string;
+}
+
 export interface DocLink {
   api: string;
   docUrl: string;
@@ -15,6 +23,7 @@ export interface DocLink {
   since: string;
   category: BunApiCategory;
   topic: string;
+  perf: readonly PerfAnnotation[];
 }
 
 export interface DocSearchResult {
@@ -85,6 +94,61 @@ export const API_PROVENANCE: Readonly<Record<string, string>> = {
   "Bun.Archive": "1.3.6", "Bun.JSONC": "1.3.6",
   // 1.3.8
   "Bun.markdown": "1.3.8",
+};
+
+// ═══════════════════════════════════════════════════════════════
+// PERF ANNOTATIONS — version-specific performance changes
+// ═══════════════════════════════════════════════════════════════
+
+export const PERF_ANNOTATIONS: Readonly<Record<string, readonly PerfAnnotation[]>> = {
+  "Bun.spawnSync": [
+    {
+      version: "1.3.6",
+      change: "close_range() syscall fix on Linux ARM64",
+      impact: "~30x faster (13ms → 0.4ms) on high-FD-limit systems",
+      contributor: "@sqdshguy",
+      ref: "https://bun.com/blog/bun-v1.3.6#faster-bun-spawnsync-on-linux-arm64",
+    },
+  ],
+  "Bun.spawn": [
+    {
+      version: "1.3.6",
+      change: "close_range() syscall fix on Linux ARM64",
+      impact: "~30x faster spawn on high-FD-limit systems",
+      contributor: "@sqdshguy",
+      ref: "https://bun.com/blog/bun-v1.3.6#faster-bun-spawnsync-on-linux-arm64",
+    },
+  ],
+  "Bun.hash": [
+    {
+      version: "1.3.6",
+      change: "Bun.hash.crc32 SIMD optimization",
+      impact: "20x faster crc32",
+      ref: "https://bun.com/blog/bun-v1.3.6",
+    },
+  ],
+  "Bun.readableStreamToText": [
+    {
+      version: "<1.2",
+      change: "Native C++ stream consumer replaces Response wrapper",
+      impact: "7.1x faster than new Response(stream).text()",
+    },
+  ],
+  "Bun.readableStreamToJSON": [
+    {
+      version: "<1.2",
+      change: "Native C++ stream consumer replaces Response wrapper",
+      impact: "10.2x faster than new Response(stream).json()",
+    },
+  ],
+  "Bun.markdown": [
+    {
+      version: "1.3.8",
+      change: "CommonMark/GFM parser with React renderer",
+      impact: "Native C implementation, zero-copy parsing",
+      ref: "https://bun.com/blog/bun-v1.3.8",
+    },
+  ],
 };
 
 // ═══════════════════════════════════════════════════════════════
@@ -226,7 +290,7 @@ export const SEARCH_KEYWORDS: Readonly<Record<string, readonly string[]>> = {
   "$.braces":      ["shell", "brace", "expansion", "glob"],
   "$.escape":      ["shell", "escape", "sanitize", "injection"],
   "Bun.spawn":     ["process", "child", "exec", "subprocess", "fork", "pipe", "stdout"],
-  "Bun.spawnSync": ["process", "child", "exec", "sync", "blocking"],
+  "Bun.spawnSync": ["process", "child", "exec", "sync", "blocking", "posix_spawn", "close_range", "arm64"],
 
   // File I/O
   "Bun.file":  ["file", "read", "open", "path", "blob", "stream"],
@@ -350,6 +414,7 @@ export class DocLinkGenerator {
       since: API_PROVENANCE[api] ?? "unknown",
       category: entry.category,
       topic: entry.topic,
+      perf: PERF_ANNOTATIONS[api] ?? [],
     };
   }
 
@@ -527,4 +592,8 @@ export function relatedApiCount(): number {
 
 export function keywordCount(): number {
   return Object.keys(SEARCH_KEYWORDS).length;
+}
+
+export function annotationCount(): number {
+  return Object.keys(PERF_ANNOTATIONS).length;
 }

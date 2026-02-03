@@ -2,6 +2,7 @@
 import { test, expect, describe } from "bun:test";
 import {
   API_PROVENANCE,
+  PERF_ANNOTATIONS,
   RELATED_APIS,
   SEARCH_KEYWORDS,
   DocLinkGenerator,
@@ -9,9 +10,11 @@ import {
   provenanceCount,
   relatedApiCount,
   keywordCount,
+  annotationCount,
   type DocLink,
   type DocSearchResult,
   type DocCoverageReport,
+  type PerfAnnotation,
 } from "./doc-cross-reference";
 import { BUN_API_CATALOG, apiCount } from "./bun-api-matrix";
 
@@ -182,6 +185,83 @@ describe("SEARCH_KEYWORDS", () => {
 });
 
 // ═══════════════════════════════════════════════════════════════
+// PERF_ANNOTATIONS
+// ═══════════════════════════════════════════════════════════════
+
+describe("PERF_ANNOTATIONS", () => {
+  test("annotationCount matches object keys", () => {
+    expect(annotationCount()).toBe(Object.keys(PERF_ANNOTATIONS).length);
+  });
+
+  test("all annotated APIs exist in catalog", () => {
+    const catalogApis = new Set(BUN_API_CATALOG.map(e => e.api));
+    const missing: string[] = [];
+    for (const api of Object.keys(PERF_ANNOTATIONS)) {
+      if (!catalogApis.has(api)) missing.push(api);
+    }
+    expect(missing).toEqual([]);
+  });
+
+  test("every annotation has required fields", () => {
+    for (const [api, annotations] of Object.entries(PERF_ANNOTATIONS)) {
+      expect(annotations.length).toBeGreaterThan(0);
+      for (const a of annotations) {
+        expect(a.version.length).toBeGreaterThan(0);
+        expect(a.change.length).toBeGreaterThan(0);
+        expect(a.impact.length).toBeGreaterThan(0);
+      }
+    }
+  });
+
+  test("Bun.spawnSync has close_range annotation for 1.3.6", () => {
+    const annotations = PERF_ANNOTATIONS["Bun.spawnSync"];
+    expect(annotations).toBeDefined();
+    expect(annotations.length).toBeGreaterThanOrEqual(1);
+    const fix = annotations.find(a => a.version === "1.3.6");
+    expect(fix).toBeDefined();
+    expect(fix!.change).toContain("close_range");
+    expect(fix!.impact).toContain("30x");
+    expect(fix!.contributor).toBe("@sqdshguy");
+    expect(fix!.ref).toContain("bun.com/blog/bun-v1.3.6");
+  });
+
+  test("Bun.spawn shares the close_range annotation", () => {
+    const annotations = PERF_ANNOTATIONS["Bun.spawn"];
+    expect(annotations).toBeDefined();
+    const fix = annotations.find(a => a.version === "1.3.6");
+    expect(fix).toBeDefined();
+    expect(fix!.change).toContain("close_range");
+  });
+
+  test("Bun.hash has crc32 SIMD annotation for 1.3.6", () => {
+    const annotations = PERF_ANNOTATIONS["Bun.hash"];
+    expect(annotations).toBeDefined();
+    const fix = annotations.find(a => a.version === "1.3.6");
+    expect(fix).toBeDefined();
+    expect(fix!.impact).toContain("20x");
+  });
+
+  test("valid version strings in all annotations", () => {
+    const validVersions = /^(<1\.2|1\.\d+\.\d+)$/;
+    for (const annotations of Object.values(PERF_ANNOTATIONS)) {
+      for (const a of annotations) {
+        expect(a.version).toMatch(validVersions);
+      }
+    }
+  });
+
+  test("ref URLs are valid when present", () => {
+    for (const annotations of Object.values(PERF_ANNOTATIONS)) {
+      for (const a of annotations) {
+        if (a.ref) {
+          expect(a.ref).toStartWith("https://");
+        }
+      }
+    }
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════
 // DocLinkGenerator
 // ═══════════════════════════════════════════════════════════════
 
@@ -196,6 +276,21 @@ describe("DocLinkGenerator", () => {
       expect(link!.keywords.length).toBeGreaterThan(0);
       expect(link!.since).toBe("<1.2");
       expect(link!.category).toBe("HTTP & Networking");
+      expect(link!.perf).toBeInstanceOf(Array);
+    });
+
+    test("perf annotations populated for annotated APIs", () => {
+      const link = generator.getDocLink("Bun.spawnSync");
+      expect(link).not.toBeNull();
+      expect(link!.perf.length).toBeGreaterThan(0);
+      expect(link!.perf[0].version).toBe("1.3.6");
+      expect(link!.perf[0].change).toContain("close_range");
+    });
+
+    test("perf is empty array for non-annotated APIs", () => {
+      const link = generator.getDocLink("Bun.sleep");
+      expect(link).not.toBeNull();
+      expect(link!.perf).toEqual([]);
     });
 
     test("returns null for unknown API", () => {
