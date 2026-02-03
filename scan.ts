@@ -129,7 +129,8 @@ export function classifyEnvFlag(val: string | undefined, offLabel: string): { la
   return                                    { label: `set (${val})`, state: "ambiguous" };
 }
 
-/** Compute effective linker strategy from explicit bunfig, configVersion, and workspace. */
+/** Compute effective linker strategy from explicit bunfig, configVersion, and workspace.
+ *  Defaults: "isolated" for new workspaces, "hoisted" for new single-package and existing (pre-v1.3.2) projects. */
 export function effectiveLinker(opts: { linker: string; configVersion: number; workspace: boolean }): { strategy: string; source: string } {
   if (opts.linker !== "-") return { strategy: opts.linker, source: "bunfig" };
   if (opts.configVersion === 1) {
@@ -275,12 +276,12 @@ export interface ProjectInfo {
   linker: string;               // "hoisted" | "isolated" | "-"
   configVersion: number;        // lockfile configVersion: 0 | 1 | -1 (unknown/binary)
   backend: string;              // "clonefile" | "hardlink" | "symlink" | "copyfile" | "-"
-  minimumReleaseAge: number;    // 0 = not set, else seconds
-  minReleaseAgeExcludes: string[]; // minimumReleaseAgeExcludes packages
+  minimumReleaseAge: number;    // install.minimumReleaseAge (seconds) | 0 = not set
+  minimumReleaseAgeExcludes: string[]; // install.minimumReleaseAgeExcludes
   saveTextLockfile: boolean;
   cacheDisabled: boolean;
   cacheDir: string;             // "-" = not set
-  securityScanner: string;      // "-" = not set
+  installSecurityScanner: string;      // install.security.scanner | "-" = not set
   linkWorkspacePackages: boolean;
   noVerify: boolean;            // skip integrity verification
   verbose: boolean;             // debug logging
@@ -303,6 +304,12 @@ export interface ProjectInfo {
   peerDeps: string[];              // peerDependencies keys
   peerDepsMeta: string[];          // peerDependenciesMeta keys marked optional
   installPeer: boolean;            // bunfig [install] peer = true (default: true)
+  // bunfig [run] settings
+  runShell: string;                // run.shell: "system" | "bun" | "-"
+  runBun: boolean;                 // run.bun: auto alias node → bun
+  runSilent: boolean;              // run.silent: suppress "Running..." output
+  // bunfig [debug] settings
+  debugEditor: string;             // debug.editor | "-"
   hasTests: boolean;              // pkg.scripts.test exists
   nativeDeps: string[];           // trustedDeps matching NATIVE_PATTERN
   workspacesList: string[];       // pkg.workspaces array entries
@@ -561,11 +568,11 @@ export async function scanProject(dir: string): Promise<ProjectInfo> {
     configVersion: -1,
     backend: "-",
     minimumReleaseAge: 0,
-    minReleaseAgeExcludes: [],
+    minimumReleaseAgeExcludes: [],
     saveTextLockfile: false,
     cacheDisabled: false,
     cacheDir: "-",
-    securityScanner: "-",
+    installSecurityScanner: "-",
     linkWorkspacePackages: false,
     noVerify: false,
     verbose: false,
@@ -588,6 +595,10 @@ export async function scanProject(dir: string): Promise<ProjectInfo> {
     peerDeps: [],
     peerDepsMeta: [],
     installPeer: true,  // Bun default is true
+    runShell: "-",
+    runBun: false,
+    runSilent: false,
+    debugEditor: "-",
     hasTests: false,
     nativeDeps: [],
     workspacesList: [],
@@ -788,7 +799,7 @@ export async function scanProject(dir: string): Promise<ProjectInfo> {
       base.minimumReleaseAge = numOpt("minimumReleaseAge");
       const excludesMatch = toml.match(/^\s*minimumReleaseAgeExcludes\s*=\s*\[([^\]]*)\]/m);
       if (excludesMatch) {
-        base.minReleaseAgeExcludes = [...excludesMatch[1].matchAll(/"([^"]+)"/g)].map((m) => m[1]);
+        base.minimumReleaseAgeExcludes = [...excludesMatch[1].matchAll(/"([^"]+)"/g)].map((m) => m[1]);
       }
       base.concurrentScripts = numOpt("concurrentScripts");
       base.networkConcurrency = numOpt("networkConcurrency");
@@ -802,9 +813,11 @@ export async function scanProject(dir: string): Promise<ProjectInfo> {
       base.cacheDisabled = toml.includes("cache.disable = true") ||
         (toml.includes("[install.cache]") && boolOpt("disable"));
 
-      // Nested: [install.security] or security.scanner = "..."
-      const scannerMatch = toml.match(/^\s*(?:security\.)?scanner\s*=\s*"([^"]+)"/m);
-      if (scannerMatch) base.securityScanner = scannerMatch[1];
+      // install.security.scanner — all valid TOML representations:
+      // [install.security] scanner = "...", install.security.scanner = "...",
+      // security.scanner = "...", security-scanner = "..."
+      const scannerMatch = toml.match(/^\s*(?:install\.)?(?:security[.\-])?scanner\s*=\s*"([^"]+)"/m);
+      if (scannerMatch) base.installSecurityScanner = scannerMatch[1];
 
       // Env var references: $VAR or ${VAR} or ${VAR?} in bunfig.toml
       const envRefs = new Set<string>();
@@ -812,6 +825,28 @@ export async function scanProject(dir: string): Promise<ProjectInfo> {
         envRefs.add(m[1]);
       }
       base.bunfigEnvRefs = [...envRefs].sort();
+
+      // Helper: extract section content between [header] and next [header]
+      const section = (name: string): string | null => {
+        const re = new RegExp(`^\\[${name.replace(/\./g, "\\.")}\\]\\s*\\n([\\s\\S]*?)(?=^\\[|$)`, "m");
+        return re.exec(toml)?.[1] ?? null;
+      };
+
+      // [run] section
+      const runBlock = section("run");
+      if (runBlock) {
+        const shellMatch = runBlock.match(/^\s*shell\s*=\s*"([^"]+)"/m);
+        if (shellMatch) base.runShell = shellMatch[1];
+        if (/^\s*bun\s*=\s*true/m.test(runBlock)) base.runBun = true;
+        if (/^\s*silent\s*=\s*true/m.test(runBlock)) base.runSilent = true;
+      }
+
+      // [debug] section
+      const debugBlock = section("debug");
+      if (debugBlock) {
+        const editorMatch = debugBlock.match(/^\s*editor\s*=\s*"([^"]+)"/m);
+        if (editorMatch) base.debugEditor = editorMatch[1];
+      }
 
     } catch {}
   }
@@ -1031,9 +1066,9 @@ function inspectProject(p: ProjectInfo) {
 
     const defaultBackend = process.platform === "darwin" ? "clonefile" : "hardlink";
     line("Backend",       p.backend !== "-" ? p.backend : c.dim(`default (${defaultBackend})`));
-    line("Min Age",       p.minimumReleaseAge > 0 ? `${p.minimumReleaseAge}s (${(p.minimumReleaseAge / 86400).toFixed(1)}d)` : c.dim("none"));
-    if (p.minReleaseAgeExcludes.length) {
-      line("  Excludes",   p.minReleaseAgeExcludes.join(", "));
+    line("Release Age",   p.minimumReleaseAge > 0 ? `${p.minimumReleaseAge}s (${(p.minimumReleaseAge / 86400).toFixed(1)}d)` : c.dim("none"));
+    if (p.minimumReleaseAgeExcludes.length) {
+      line("  Excludes",   p.minimumReleaseAgeExcludes.join(", "));
     }
     line("Text Lock",     p.saveTextLockfile ? c.green("yes") : c.dim("no"));
     line("Peer Install", p.installPeer ? c.green("yes (default)") : c.yellow("disabled"));
@@ -1053,9 +1088,28 @@ function inspectProject(p: ProjectInfo) {
     } else {
       line("Target",      c.dim(`${process.arch}/${process.platform} (native)`));
     }
-    line("Scanner",       p.securityScanner !== "-" ? p.securityScanner : c.dim("none"));
+    line("Security",      p.installSecurityScanner !== "-" ? p.installSecurityScanner : c.dim("none"));
     line("Lifecycle",     p.trustedDeps.length === 0 ? c.green("BLOCKED (default-secure)") : c.yellow(`${p.trustedDeps.length} trusted`));
     if (p.trustedDeps.length > 0) line("Trusted Deps",  p.trustedDeps.join(", "));
+
+    // bunfig [run] section
+    const hasRun = p.runShell !== "-" || p.runBun || p.runSilent;
+    if (hasRun) {
+      console.log();
+      console.log(c.bold("  bunfig [run]"));
+      console.log();
+      if (p.runShell !== "-") line("Shell", p.runShell);
+      if (p.runBun) line("Bun Alias", c.green("yes (node → bun)"));
+      if (p.runSilent) line("Silent", c.dim("yes"));
+    }
+
+    // bunfig [debug] section
+    if (p.debugEditor !== "-") {
+      console.log();
+      console.log(c.bold("  bunfig [debug]"));
+      console.log();
+      line("Editor", p.debugEditor);
+    }
   }
 
   // Overrides / resolutions (package.json)
@@ -1708,8 +1762,8 @@ async function renderAudit(projects: ProjectInfo[]) {
     { label: "exact",            count: withBunfig.filter((p) => p.exact).length,                   desc: "pin exact versions (no ^/~)" },
     { label: "linker",           count: withBunfig.filter((p) => p.linker !== "-").length,           desc: "explicit linker strategy" },
     { label: "backend",          count: withBunfig.filter((p) => p.backend !== "-").length,          desc: "explicit fs backend" },
-    { label: "minReleaseAge",    count: withBunfig.filter((p) => p.minimumReleaseAge > 0).length,   desc: "supply-chain age gate" },
-    { label: "ageExcludes",     count: withBunfig.filter((p) => p.minReleaseAgeExcludes.length > 0).length, desc: "age gate exclusions" },
+    { label: "minimumReleaseAge",    count: withBunfig.filter((p) => p.minimumReleaseAge > 0).length,   desc: "supply-chain age gate (seconds)" },
+    { label: "  Excludes",          count: withBunfig.filter((p) => p.minimumReleaseAgeExcludes.length > 0).length, desc: "minimumReleaseAgeExcludes" },
     { label: "saveTextLock",     count: withBunfig.filter((p) => p.saveTextLockfile).length,         desc: "text-based bun.lock" },
     { label: "linkWsPkgs",       count: withBunfig.filter((p) => p.linkWorkspacePackages).length,    desc: "workspace linking" },
     { label: "cacheDisabled",    count: withBunfig.filter((p) => p.cacheDisabled).length,            desc: "global cache bypassed" },
@@ -1721,13 +1775,43 @@ async function renderAudit(projects: ProjectInfo[]) {
     { label: "networkConc.",     count: withBunfig.filter((p) => p.networkConcurrency > 0).length,   desc: "custom network concurrency (default 48)" },
     { label: "targetCpu",        count: withBunfig.filter((p) => p.targetCpu !== "-").length,        desc: "cross-platform cpu override" },
     { label: "targetOs",         count: withBunfig.filter((p) => p.targetOs !== "-").length,         desc: "cross-platform os override" },
-    { label: "scanner",          count: withBunfig.filter((p) => p.securityScanner !== "-").length,  desc: "npm security scanner" },
+    { label: "security.scanner", count: withBunfig.filter((p) => p.installSecurityScanner !== "-").length,  desc: "install.security.scanner" },
     { label: "trustedDeps",      count: withBunfig.filter((p) => p.trustedDeps.length > 0).length,   desc: "lifecycle scripts allowed" },
     { label: "peer",             count: withBunfig.filter((p) => !p.installPeer).length,          desc: "peer auto-install disabled (default: on)" },
   ];
   for (const { label, count, desc } of installStats) {
     const display = count > 0 ? c.green(`${count}/${withBunfig.length}`) : c.dim(`${count}/${withBunfig.length}`);
     console.log(`    ${c.cyan(label.padEnd(18))} ${display}  ${c.dim(desc)}`);
+  }
+
+  // bunfig [run] coverage
+  const withRunShell  = withBunfig.filter((p) => p.runShell !== "-");
+  const withRunBun    = withBunfig.filter((p) => p.runBun);
+  const withRunSilent = withBunfig.filter((p) => p.runSilent);
+  const hasAnyRun = withRunShell.length > 0 || withRunBun.length > 0 || withRunSilent.length > 0;
+  if (hasAnyRun) {
+    console.log();
+    console.log(c.bold(`  bunfig [run] coverage:`));
+    console.log();
+    const runStats: { label: string; count: number; desc: string }[] = [
+      { label: "shell",  count: withRunShell.length,  desc: "run.shell (\"system\" | \"bun\")" },
+      { label: "bun",    count: withRunBun.length,    desc: "run.bun (node → bun alias)" },
+      { label: "silent", count: withRunSilent.length, desc: "run.silent (suppress command output)" },
+    ];
+    for (const { label, count, desc } of runStats) {
+      const display = count > 0 ? c.green(`${count}/${withBunfig.length}`) : c.dim(`${count}/${withBunfig.length}`);
+      console.log(`    ${c.cyan(label.padEnd(18))} ${display}  ${c.dim(desc)}`);
+    }
+  }
+
+  // bunfig [debug] coverage
+  const withDebugEditor = withBunfig.filter((p) => p.debugEditor !== "-");
+  if (withDebugEditor.length > 0) {
+    console.log();
+    console.log(c.bold(`  bunfig [debug] coverage:`));
+    console.log();
+    const display = c.green(`${withDebugEditor.length}/${withBunfig.length}`);
+    console.log(`    ${c.cyan("editor".padEnd(18))} ${display}  ${c.dim("debug.editor (Bun.openInEditor)")}`);
   }
 
   // Cross-platform target validation

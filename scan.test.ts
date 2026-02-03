@@ -633,7 +633,8 @@ describe("Bun API integration (scanner uses Bun.hash, Bun.file, Bun.semver, dns)
       "engine", "lock", "bunfig", "workspace",
       "hasPkg", "lockHash", "projectTz", "projectDnsTtl",
       "envFiles", "trustedDeps", "peerDeps", "peerDepsMeta",
-      "installPeer", "securityScanner",
+      "installPeer", "installSecurityScanner",
+      "runShell", "runBun", "runSilent", "debugEditor",
     ];
     for (const p of projects) {
       for (const field of requiredFields) {

@@ -93,8 +93,8 @@ All advisories are displayed to the user regardless of level. If the `scan` func
 The scanner audits whether each project has a security scanner configured via `bunfig.toml`:
 
 ```toml
-[install]
-security-scanner = "@acme/bun"
+[install.security]
+scanner = "@acme/bun-security-scanner"
 ```
 
 See [Bun Security Scanner API docs](https://bun.com/docs/install/security-scanner-api) for the full `Bun.Security.Scanner` interface.
