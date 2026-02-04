@@ -127,15 +127,49 @@ function generateDashboardHTML(registry: VersionRegistry): string {
 	const types = [...new Set(registry.constants.map(c => c.type).filter(Boolean))];
 	const securityLevels = [...new Set(registry.constants.map(c => c.security).filter(Boolean))];
 
-	const categoryStats = categories.map(cat => ({
-		name: cat,
-		count: registry.constants.filter(c => c.category === cat).length,
+	const categoryStats = categories
+		.map(cat => ({
+			name: cat,
+			count: registry.constants.filter(c => c.category === cat).length,
+		}))
+		.sort((a, b) => b.count - a.count);
+
+	const typeStats = types
+		.map(type => ({
+			name: type,
+			count: registry.constants.filter(c => c.type === type).length,
+		}))
+		.sort((a, b) => b.count - a.count);
+
+	const securityStats = securityLevels
+		.map(level => ({
+			name: level,
+			count: registry.constants.filter(c => c.security === level).length,
+		}))
+		.sort((a, b) => b.count - a.count);
+
+	// Project breakdown
+	const projectStats = Object.entries(registry.projects).map(([name, proj]) => ({
+		name,
+		count: registry.constants.filter(c => c.project === name).length,
+		...proj,
 	}));
 
-	const typeStats = types.map(type => ({
-		name: type,
-		count: registry.constants.filter(c => c.type === type).length,
-	}));
+	// Prepare constants data as JSON for JavaScript
+	const constantsJSON = JSON.stringify(
+		registry.constants.map(c => ({
+			name: c.name,
+			project: c.project,
+			type: c.type ?? 'string',
+			category: c.category ?? '-',
+			security: c.security ?? 'low',
+			mcp: c.tier1380?.mcpExposed ?? false,
+			path: c.relPath,
+			line: c.line,
+			value: c.value,
+			description: c.description,
+		})),
+	);
 
 	return `<!DOCTYPE html>
 <html lang="en">
@@ -146,7 +180,7 @@ function generateDashboardHTML(registry: VersionRegistry): string {
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #0d1117; color: #c9d1d9; line-height: 1.6; }
-        .container { max-width: 1200px; margin: 0 auto; padding: 20px; }
+        .container { max-width: 1400px; margin: 0 auto; padding: 20px; }
         .header { text-align: center; margin-bottom: 40px; padding: 40px 0; background: linear-gradient(135deg, #161b22 0%, #21262d 100%); border-radius: 12px; border: 1px solid #30363d; }
         .header h1 { font-size: 2.5rem; margin-bottom: 10px; background: linear-gradient(135deg, #58a6ff 0%, #79c0ff 100%); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
         .header p { font-size: 1.1rem; color: #8b949e; }
@@ -162,11 +196,26 @@ function generateDashboardHTML(registry: VersionRegistry): string {
         .status-non-compliant { color: #f85149; }
         .chart-bar { background: #21262d; height: 8px; border-radius: 4px; margin-top: 4px; overflow: hidden; }
         .chart-fill { background: linear-gradient(90deg, #58a6ff 0%, #79c0ff 100%); height: 100%; border-radius: 4px; transition: width 0.3s ease; }
-        .constants-table { width: 100%; background: #161b22; border-radius: 8px; overflow: hidden; border: 1px solid #30363d; }
-        .constants-table table { width: 100%; border-collapse: collapse; }
-        .constants-table th { background: #21262d; padding: 12px; text-align: left; font-weight: 600; color: #f0f6fc; }
+        .controls { background: #161b22; border: 1px solid #30363d; border-radius: 8px; padding: 20px; margin-bottom: 20px; display: flex; gap: 15px; flex-wrap: wrap; align-items: center; }
+        .search-box { flex: 1; min-width: 200px; padding: 10px 15px; background: #0d1117; border: 1px solid #30363d; border-radius: 6px; color: #c9d1d9; font-size: 14px; }
+        .search-box:focus { outline: none; border-color: #58a6ff; }
+        .filter-group { display: flex; gap: 10px; flex-wrap: wrap; }
+        .filter-btn { padding: 8px 16px; background: #21262d; border: 1px solid #30363d; border-radius: 6px; color: #c9d1d9; cursor: pointer; font-size: 13px; transition: all 0.2s; }
+        .filter-btn:hover { background: #30363d; border-color: #58a6ff; }
+        .filter-btn.active { background: #58a6ff; border-color: #58a6ff; color: white; }
+        .export-btn { padding: 8px 16px; background: #238636; border: 1px solid #2ea043; border-radius: 6px; color: white; cursor: pointer; font-size: 13px; transition: all 0.2s; }
+        .export-btn:hover { background: #2ea043; }
+        .constants-table-wrapper { width: 100%; background: #161b22; border-radius: 8px; overflow: hidden; border: 1px solid #30363d; }
+        .constants-table { width: 100%; border-collapse: collapse; }
+        .constants-table th { background: #21262d; padding: 12px; text-align: left; font-weight: 600; color: #f0f6fc; cursor: pointer; user-select: none; position: relative; }
+        .constants-table th:hover { background: #30363d; }
+        .constants-table th.sortable::after { content: ' ↕'; opacity: 0.5; font-size: 0.8em; }
+        .constants-table th.sort-asc::after { content: ' ↑'; opacity: 1; }
+        .constants-table th.sort-desc::after { content: ' ↓'; opacity: 1; }
         .constants-table td { padding: 12px; border-bottom: 1px solid #21262d; }
-        .constants-table tr:hover { background: #0d1117; }
+        .constants-table tbody tr { transition: background 0.15s; }
+        .constants-table tbody tr:hover { background: #0d1117; }
+        .constants-table tbody tr.hidden { display: none; }
         .type-badge { padding: 2px 8px; border-radius: 12px; font-size: 0.8rem; font-weight: 500; }
         .type-string { background: #0969da; color: white; }
         .type-url { background: #8250df; color: white; }
@@ -175,12 +224,21 @@ function generateDashboardHTML(registry: VersionRegistry): string {
         .security-medium { background: #9a6700; color: white; }
         .security-high { background: #d1242f; color: white; }
         .security-critical { background: #8250df; color: white; }
+        .pagination { display: flex; justify-content: center; align-items: center; gap: 10px; margin-top: 20px; padding: 15px; }
+        .pagination-btn { padding: 8px 12px; background: #21262d; border: 1px solid #30363d; border-radius: 6px; color: #c9d1d9; cursor: pointer; font-size: 13px; transition: all 0.2s; }
+        .pagination-btn:hover:not(:disabled) { background: #30363d; border-color: #58a6ff; }
+        .pagination-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+        .pagination-info { color: #8b949e; font-size: 14px; }
         .footer { text-align: center; margin-top: 40px; padding: 20px; border-top: 1px solid #30363d; color: #8b949e; }
+        .code-link { color: #58a6ff; text-decoration: none; }
+        .code-link:hover { text-decoration: underline; }
         @media (max-width: 768px) {
             .container { padding: 10px; }
             .header h1 { font-size: 2rem; }
             .grid { grid-template-columns: 1fr; }
             .badges { justify-content: center; }
+            .controls { flex-direction: column; align-items: stretch; }
+            .search-box { width: 100%; }
         }
     </style>
 </head>
@@ -296,70 +354,266 @@ function generateDashboardHTML(registry: VersionRegistry): string {
 
             <div class="card">
                 <h3>🔐 Security Classification</h3>
-                ${securityLevels
-					.map(level => {
-						const count = registry.constants.filter(c => c.security === level).length;
-						return `
+                ${securityStats
+					.map(
+						sec => `
                 <div class="metric">
-                    <span>${level.charAt(0).toUpperCase() + level.slice(1)}</span>
-                    <span class="metric-value">${count}</span>
+                    <span>${sec.name.charAt(0).toUpperCase() + sec.name.slice(1)}</span>
+                    <span class="metric-value">${sec.count}</span>
                 </div>
                 <div class="chart-bar">
-                    <div class="chart-fill" style="width: ${(count / registry.metadata.totalConstants) * 100}%"></div>
+                    <div class="chart-fill" style="width: ${(sec.count / registry.metadata.totalConstants) * 100}%"></div>
                 </div>
-                `;
-					})
+                `,
+					)
+					.join('')}
+            </div>
+
+            <div class="card">
+                <h3>📦 Project Breakdown</h3>
+                ${projectStats
+					.map(
+						proj => `
+                <div class="metric">
+                    <span>${proj.name}</span>
+                    <span class="metric-value">${proj.count}</span>
+                </div>
+                <div class="chart-bar">
+                    <div class="chart-fill" style="width: ${(proj.count / registry.metadata.totalConstants) * 100}%"></div>
+                </div>
+                `,
+					)
 					.join('')}
             </div>
         </div>
 
-        <div class="constants-table">
-            <table>
+        <div class="controls">
+            <input type="text" class="search-box" id="searchInput" placeholder="🔍 Search constants, projects, types..." />
+            <div class="filter-group">
+                <button class="filter-btn" data-filter="all">All</button>
+                <button class="filter-btn" data-filter="mcp">MCP Only</button>
+                <button class="filter-btn" data-filter="critical">Critical</button>
+                ${categories.map(cat => `<button class="filter-btn" data-filter="category:${cat}">${cat}</button>`).join('')}
+            </div>
+            <button class="export-btn" onclick="exportData('json')">Export JSON</button>
+            <button class="export-btn" onclick="exportData('csv')">Export CSV</button>
+        </div>
+
+        <div class="constants-table-wrapper">
+            <table class="constants-table">
                 <thead>
                     <tr>
-                        <th>Constant</th>
-                        <th>Project</th>
-                        <th>Type</th>
-                        <th>Category</th>
-                        <th>Security</th>
-                        <th>MCP</th>
+                        <th class="sortable" data-sort="name">Constant</th>
+                        <th class="sortable" data-sort="project">Project</th>
+                        <th class="sortable" data-sort="type">Type</th>
+                        <th class="sortable" data-sort="category">Category</th>
+                        <th class="sortable" data-sort="security">Security</th>
+                        <th class="sortable" data-sort="mcp">MCP</th>
+                        <th>Location</th>
                     </tr>
                 </thead>
-                <tbody>
+                <tbody id="constantsTableBody">
                     ${registry.constants
-						.slice(0, 20)
 						.map(
 							constant => `
-                    <tr>
+                    <tr data-name="${constant.name.toLowerCase()}" data-project="${constant.project}" data-type="${constant.type ?? 'string'}" data-category="${constant.category ?? ''}" data-security="${constant.security ?? 'low'}" data-mcp="${constant.tier1380?.mcpExposed ? 'true' : 'false'}">
                         <td><code>${constant.name}</code></td>
                         <td>${constant.project}</td>
                         <td><span class="type-badge type-${constant.type ?? 'string'}">${constant.type ?? 'string'}</span></td>
                         <td>${constant.category ?? '-'}</td>
                         <td><span class="type-badge security-${constant.security ?? 'low'}">${constant.security ?? 'low'}</span></td>
                         <td>${constant.tier1380?.mcpExposed ? '✅' : '❌'}</td>
+                        <td><a href="#" class="code-link" title="${constant.relPath}:${constant.line}">${constant.relPath}:${constant.line}</a></td>
                     </tr>
                     `,
 						)
 						.join('')}
-                    ${
-						registry.constants.length > 20
-							? `
-                    <tr>
-                        <td colspan="6" style="text-align: center; color: #8b949e;">
-                            ... and ${registry.constants.length - 20} more constants
-                        </td>
-                    </tr>
-                    `
-							: ''
-					}
                 </tbody>
             </table>
+        </div>
+
+        <div class="pagination">
+            <button class="pagination-btn" id="prevBtn" onclick="changePage(-1)">← Previous</button>
+            <span class="pagination-info" id="pageInfo">Page 1 of <span id="totalPages">1</span></span>
+            <button class="pagination-btn" id="nextBtn" onclick="changePage(1)">Next →</button>
         </div>
 
         <div class="footer">
             <p>Generated on ${new Date().toISOString()} | Tier-1380 Certified | BUN Constants Version Management System</p>
         </div>
     </div>
+    <script>
+        const constantsData = ${constantsJSON};
+        let filteredData = [...constantsData];
+        let currentPage = 1;
+        const itemsPerPage = 50;
+        let sortColumn = null;
+        let sortDirection = 'asc';
+
+        // Search functionality
+        document.getElementById('searchInput').addEventListener('input', (e) => {
+            const query = e.target.value.toLowerCase();
+            filterAndRender(query);
+        });
+
+        // Filter buttons
+        document.querySelectorAll('.filter-btn').forEach(btn => {
+            btn.addEventListener('click', () => {
+                document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+                btn.classList.add('active');
+                const filter = btn.dataset.filter;
+                applyFilter(filter);
+            });
+        });
+
+        function applyFilter(filter) {
+            if (filter === 'all') {
+                filteredData = [...constantsData];
+            } else if (filter === 'mcp') {
+                filteredData = constantsData.filter(c => c.mcp);
+            } else if (filter === 'critical') {
+                filteredData = constantsData.filter(c => c.security === 'critical');
+            } else if (filter.startsWith('category:')) {
+                const category = filter.split(':')[1];
+                filteredData = constantsData.filter(c => c.category === category);
+            }
+            currentPage = 1;
+            renderTable();
+        }
+
+        function filterAndRender(query) {
+            const rows = document.querySelectorAll('#constantsTableBody tr');
+            let visibleCount = 0;
+            rows.forEach(row => {
+                const text = row.textContent.toLowerCase();
+                const matches = !query || text.includes(query);
+                row.classList.toggle('hidden', !matches);
+                if (matches) visibleCount++;
+            });
+            updatePagination(visibleCount);
+        }
+
+        // Sorting
+        document.querySelectorAll('.sortable').forEach(th => {
+            th.addEventListener('click', () => {
+                const column = th.dataset.sort;
+                if (sortColumn === column) {
+                    sortDirection = sortDirection === 'asc' ? 'desc' : 'asc';
+                } else {
+                    sortColumn = column;
+                    sortDirection = 'asc';
+                }
+                
+                document.querySelectorAll('.sortable').forEach(t => {
+                    t.classList.remove('sort-asc', 'sort-desc');
+                });
+                th.classList.add(\`sort-\${sortDirection}\`);
+                
+                filteredData.sort((a, b) => {
+                    let aVal = a[column];
+                    let bVal = b[column];
+                    if (column === 'mcp') {
+                        aVal = a.mcp ? 1 : 0;
+                        bVal = b.mcp ? 1 : 0;
+                    }
+                    if (typeof aVal === 'string') {
+                        aVal = aVal.toLowerCase();
+                        bVal = bVal.toLowerCase();
+                    }
+                    const comparison = aVal < bVal ? -1 : aVal > bVal ? 1 : 0;
+                    return sortDirection === 'asc' ? comparison : -comparison;
+                });
+                
+                currentPage = 1;
+                renderTable();
+            });
+        });
+
+        function renderTable() {
+            const tbody = document.getElementById('constantsTableBody');
+            const start = (currentPage - 1) * itemsPerPage;
+            const end = start + itemsPerPage;
+            const pageData = filteredData.slice(start, end);
+            
+            tbody.innerHTML = pageData.map(constant => \`
+                <tr data-name="\${constant.name.toLowerCase()}" data-project="\${constant.project}" data-type="\${constant.type}" data-category="\${constant.category}" data-security="\${constant.security}" data-mcp="\${constant.mcp}">
+                    <td><code>\${constant.name}</code></td>
+                    <td>\${constant.project}</td>
+                    <td><span class="type-badge type-\${constant.type}">\${constant.type}</span></td>
+                    <td>\${constant.category || '-'}</td>
+                    <td><span class="type-badge security-\${constant.security}">\${constant.security}</span></td>
+                    <td>\${constant.mcp ? '✅' : '❌'}</td>
+                    <td><a href="#" class="code-link" title="\${constant.path}:\${constant.line}">\${constant.path}:\${constant.line}</a></td>
+                </tr>
+            \`).join('');
+            
+            updatePagination(filteredData.length);
+            
+            // Re-apply search filter
+            const searchQuery = document.getElementById('searchInput').value.toLowerCase();
+            if (searchQuery) {
+                filterAndRender(searchQuery);
+            }
+        }
+
+        function updatePagination(totalItems) {
+            const totalPages = Math.ceil(totalItems / itemsPerPage);
+            document.getElementById('totalPages').textContent = totalPages;
+            document.getElementById('pageInfo').innerHTML = \`Page \${currentPage} of \${totalPages} (\${totalItems} total)\`;
+            document.getElementById('prevBtn').disabled = currentPage === 1;
+            document.getElementById('nextBtn').disabled = currentPage >= totalPages;
+        }
+
+        function changePage(direction) {
+            const totalPages = Math.ceil(filteredData.length / itemsPerPage);
+            const newPage = currentPage + direction;
+            if (newPage >= 1 && newPage <= totalPages) {
+                currentPage = newPage;
+                renderTable();
+            }
+        }
+
+        // Export functionality
+        function exportData(format) {
+            const data = filteredData.length > 0 ? filteredData : constantsData;
+            let content, filename, mimeType;
+            
+            if (format === 'json') {
+                content = JSON.stringify(data, null, 2);
+                filename = \`bun-constants-\${new Date().toISOString().split('T')[0]}.json\`;
+                mimeType = 'application/json';
+            } else {
+                const headers = ['Name', 'Project', 'Type', 'Category', 'Security', 'MCP', 'Path', 'Line', 'Value', 'Description'];
+                const rows = data.map(c => [
+                    c.name,
+                    c.project,
+                    c.type,
+                    c.category || '',
+                    c.security,
+                    c.mcp ? 'Yes' : 'No',
+                    c.path || '',
+                    c.line || '',
+                    c.value || '',
+                    c.description || ''
+                ]);
+                content = [headers, ...rows].map(row => row.map(cell => \`"\${String(cell).replace(/"/g, '""')}"\`).join(',')).join('\\n');
+                filename = \`bun-constants-\${new Date().toISOString().split('T')[0]}.csv\`;
+                mimeType = 'text/csv';
+            }
+            
+            const blob = new Blob([content], { type: mimeType });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = filename;
+            a.click();
+            URL.revokeObjectURL(url);
+        }
+
+        // Initialize
+        updatePagination(filteredData.length);
+        document.querySelector('.filter-btn[data-filter="all"]').classList.add('active');
+    </script>
 </body>
 </html>`;
 }
