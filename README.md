@@ -113,6 +113,7 @@ scanner/
 - **Bun.secrets**: Cookie sessions stored in OS keychain (macOS Keychain, Linux libsecret, Windows Credential Manager)
 - **Runtime optimizations**: Lazy stats, batched operations, monomorphic shapes, generator backpressure
 - **R2 integration**: Optional R2 storage for cookies with zstd compression and Uint8Array views
+- **Visual analytics dashboard**: Interactive HTML dashboard with filtering, sorting, charts, and export (JSON/CSV) for BUN constants tracking
 - **Type safety**: Full TypeScript types, no `as any` casts
 - **lockHash**: `Bun.hash.wyhash()` of lockfile content for drift detection
 
@@ -159,6 +160,75 @@ The scanner leverages new Bun features:
 - **`--heap-prof-md`**: Markdown heap profiling output
 
 See [Bun v1.3.7 Features](./docs/BUN_V1.3.7_FEATURES.md) for documentation and examples.
+
+## Bun Utilities Used
+
+The scanner leverages many Bun utility functions for optimal performance:
+
+### Text & Formatting
+- **`Bun.escapeHTML()`**: XSS protection for HTML generation (480 MB/s - 20 GB/s)
+- **`Bun.wrapAnsi()`**: ANSI-aware text wrapping (33-88x faster than wrap-ansi)
+- **`Bun.stringWidth()`**: Unicode-aware string width calculation (~6,756x faster than string-width)
+- **`Bun.stripANSI()`**: Remove ANSI escape codes (~6-57x faster than strip-ansi)
+- **`Bun.inspect.table()`**: Formatted table output with ANSI color support
+
+### Timing & Performance
+- **`Bun.nanoseconds()`**: High-precision timing for profiling and benchmarks
+- **`Bun.sleep()`**: Async sleep for testing and async operations
+
+### Environment & Runtime
+- **`Bun.env`**: Environment variable access (alias for `process.env`)
+- **`Bun.version`**: Runtime version string
+- **`Bun.revision`**: Git commit hash of Bun build
+- **`Bun.main`**: Entrypoint path resolution
+
+### File & Path Operations
+- **`Bun.fileURLToPath()`**: Convert `file://` URLs to absolute paths
+- **`Bun.file()`**: File handle creation for reading/writing
+- **`Bun.write()`**: File writing operations
+
+### Process & System
+- **`Bun.which()`**: Binary resolution (alternative to `which` npm package)
+- **`Bun.openInEditor()`**: Open files in default editor
+
+### Utilities
+- **`Bun.deepEquals()`**: Deep object comparison (used by test runner)
+- **`Bun.peek()`**: Read promise results without await (advanced API)
+
+See the [Bun Utils documentation](https://bun.com/docs/runtime/utils) for complete API reference.
+
+## Visual Analytics
+
+The scanner includes a visual dashboard for BUN constants tracking and analytics:
+
+```bash
+# Generate visual dashboard
+bun scripts/generate-visual-docs.ts
+
+# Generate and serve dashboard
+bun scripts/generate-visual-docs.ts --serve
+
+# Generate badges only
+bun scripts/generate-visual-docs.ts --badges-only
+```
+
+**Current Statistics:**
+- **73 BUN constants** across 2 projects
+- **7 categories**: api, cli, runtime, bundler, network, storage, config
+- **4 types**: string, url, number, boolean
+- **4 security levels**: low, medium, high, critical
+- **73 MCP-exposed constants** from mcp-bun-docs project
+
+The dashboard provides:
+- Interactive filtering and search
+- Sortable table with pagination
+- Category, type, and security distribution charts
+- Project breakdown visualization
+- JSON/CSV export functionality
+- Theme-aware dark/light mode
+- XSS protection via `Bun.escapeHTML()`
+
+The dashboard is generated at `docs/visual/dashboard.html` and can be opened directly in a browser or served via HTTP.
 
 ## References
 

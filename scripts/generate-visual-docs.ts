@@ -1,12 +1,25 @@
 #!/usr/bin/env bun
 /**
- * Visual Documentation Generator - Tier-1380 Enhanced
- * Generates HTML dashboard, badges, and visual indicators for BUN constants versioning system
+ * Enhanced Visual Documentation Generator - Tier-1380 Premium
+ * Generates production-grade HTML dashboard, dynamic badges, and comprehensive visual indicators
+ *
+ * Features:
+ * - Dark/Light theme with system preference detection
+ * - Real-time search and filtering
+ * - Interactive charts and animations
+ * - Mobile-responsive design
+ * - Performance optimized with lazy loading
+ * - XSS protection with HTML escaping
+ * - Export functionality (JSON/CSV)
+ * - Dynamic badge generation
+ * - Advanced analytics and metrics
  *
  * Usage:
- *   bun scripts/generate-visual-docs.ts
- *   bun scripts/generate-visual-docs.ts --serve
- *   bun scripts/generate-visual-docs.ts --badges-only
+ *   bun scripts/generate-visual-docs.ts                    # Generate all
+ *   bun scripts/generate-visual-docs.ts --serve           # Launch dashboard server
+ *   bun scripts/generate-visual-docs.ts --badges-only     # Generate badges only
+ *   bun scripts/generate-visual-docs.ts --theme dark      # Force dark theme
+ *   bun scripts/generate-visual-docs.ts --export json     # Export data only
  */
 
 import {readFileSync, writeFileSync, mkdirSync, existsSync, readdirSync} from 'fs';
@@ -17,6 +30,137 @@ const OUTPUT_DIR = join(import.meta.dir, '..', '..', 'docs', 'visual');
 const DASHBOARD_FILE = join(OUTPUT_DIR, 'dashboard.html');
 const BADGES_DIR = join(OUTPUT_DIR, 'badges');
 
+interface BadgeConfig {
+	name: string;
+	value: string;
+	color: string;
+	style?: 'flat' | 'flat-square' | 'plastic' | 'for-the-badge';
+	scale?: number;
+	logo?: string;
+	logoWidth?: number;
+}
+
+interface ChartData {
+	name: string;
+	value: number;
+	percentage: number;
+	color: string;
+}
+
+function generateEnhancedBadgeSVG(config: BadgeConfig): string {
+	const {name, value, color, style = 'flat', scale = 1, logo, logoWidth = 14} = config;
+	const nameWidth = Math.max(60, name.length * 7 + 20);
+	const valueWidth = Math.max(40, value.length * 7 + 20);
+	const width = Math.ceil((nameWidth + valueWidth) * scale);
+	const height = Math.ceil(20 * scale);
+
+	// Style-specific gradients and effects
+	const gradients = {
+		'flat': '',
+		'flat-square': '',
+		'plastic': `
+      <defs>
+        <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stop-color="#ffffff" stop-opacity="0.2"/>
+          <stop offset="100%" stop-color="#000000" stop-opacity="0.1"/>
+        </linearGradient>
+        <linearGradient id="border" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stop-color="#000000" stop-opacity="0.1"/>
+          <stop offset="100%" stop-color="#000000" stop-opacity="0.3"/>
+        </linearGradient>
+      </defs>`,
+		'for-the-badge': `
+      <defs>
+        <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stop-color="#ffffff" stop-opacity="0.1"/>
+          <stop offset="100%" stop-color="#000000" stop-opacity="0.1"/>
+        </linearGradient>
+      </defs>`,
+	};
+
+	const borderStyles = {
+		'flat': '',
+		'flat-square': '',
+		'plastic': `stroke="url(#border)" stroke-width="1"`,
+		'for-the-badge': '',
+	};
+
+	const bgStyles = {
+		'flat': '',
+		'flat-square': '',
+		'plastic': 'fill="url(#bg)"',
+		'for-the-badge': 'fill="url(#bg)"',
+	};
+
+	return `<svg width="${width}" height="${height}" xmlns="http://www.w3.org/2000/svg">
+    ${gradients[style]}
+    <clipPath id="clip">
+      <rect width="${width}" height="${height}" rx="${style === 'flat-square' || style === 'for-the-badge' ? '0' : '3'}" fill="#fff"/>
+    </clipPath>
+    <g clip-path="url(#clip)">
+      <rect width="${nameWidth}" height="${height}" fill="#555" ${bgStyles[style]} ${borderStyles[style]}/>
+      <rect x="${nameWidth}" width="${valueWidth}" height="${height}" fill="${color}" ${bgStyles[style]} ${borderStyles[style]}/>
+      ${
+			logo
+				? `
+        <g transform="translate(${nameWidth / 2 - logoWidth / 2}, ${height / 2 - logoWidth / 2})">
+          <image width="${logoWidth}" height="${logoWidth}" href="${logo}"/>
+        </g>
+      `
+				: ''
+		}
+      <text x="${nameWidth / 2 + (logo ? logoWidth / 2 : 0)}" y="${height / 2 + 4}" 
+            text-anchor="middle" font-family="Verdana, Geneva, sans-serif" 
+            font-size="${11 * scale}" font-weight="bold" fill="#fff">
+        ${name}
+      </text>
+      <text x="${nameWidth + valueWidth / 2}" y="${height / 2 + 4}" 
+            text-anchor="middle" font-family="Verdana, Geneva, sans-serif" 
+            font-size="${11 * scale}" font-weight="bold" fill="#fff">
+        ${value}
+      </text>
+    </g>
+  </svg>`;
+}
+
+function generateChartSVG(data: ChartData[], width = 300, height = 150): string {
+	const barWidth = (width - 40) / data.length;
+	const maxValue = Math.max(...data.map(d => d.value));
+
+	return `<svg width="${width}" height="${height}" xmlns="http://www.w3.org/2000/svg">
+    <defs>
+      <linearGradient id="chartGradient" x1="0%" y1="0%" x2="0%" y2="100%">
+        <stop offset="0%" style="stop-color:#58a6ff;stop-opacity:1" />
+        <stop offset="100%" style="stop-color:#0969da;stop-opacity:1" />
+      </linearGradient>
+    </defs>
+    <style>
+      .chart-text { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 11px; fill: #8b949e; }
+      .chart-label { font-weight: 600; fill: #c9d1d9; }
+    </style>
+    ${data
+		.map((item, index) => {
+			const barHeight = (item.value / maxValue) * (height - 40);
+			const x = 20 + index * barWidth;
+			const y = height - 20 - barHeight;
+
+			return `
+        <rect x="${x}" y="${y}" width="${barWidth - 4}" height="${barHeight}" 
+              fill="url(#chartGradient)" rx="2" opacity="0.8">
+          <animate attributeName="height" from="0" to="${barHeight}" dur="0.5s" begin="${index * 0.1}s" fill="freeze"/>
+          <animate attributeName="y" from="${height - 20}" to="${y}" dur="0.5s" begin="${index * 0.1}s" fill="freeze"/>
+        </rect>
+        <text x="${x + barWidth / 2 - 2}" y="${height - 5}" text-anchor="middle" class="chart-text">
+          ${item.name}
+        </text>
+        <text x="${x + barWidth / 2 - 2}" y="${y - 5}" text-anchor="middle" class="chart-label">
+          ${item.value}
+        </text>
+      `;
+		})
+		.join('')}
+  </svg>`;
+}
 interface VersionRegistry {
 	version: string;
 	schemaVersion: string;
@@ -113,11 +257,17 @@ function generateBadges(registry: VersionRegistry): void {
 		writeFileSync(join(BADGES_DIR, 'README.md'), `# Tier-1380 Badges\n\n${badgesMarkdown}\n`);
 		console.log(`🏷️  Generated ${badges.length} badges in ${BADGES_DIR}`);
 	} catch (error) {
-		console.warn(`⚠️  Failed to generate badges: ${error.message}`);
+		console.warn(`⚠️  Failed to generate badges: ${error instanceof Error ? error.message : String(error)}`);
 	}
 }
 
 function generateDashboardHTML(registry: VersionRegistry): string {
+	// Helper function to escape HTML entities using Bun.escapeHTML()
+	const escape = (value: string | number | boolean | null | undefined): string => {
+		if (value == null) return '';
+		return Bun.escapeHTML(String(value));
+	};
+
 	const lastUpdated = new Date(registry.metadata.extractionTime).toLocaleString();
 	const certifiedDate = new Date(registry.tier1380.certified).toLocaleDateString();
 
@@ -461,19 +611,19 @@ function generateDashboardHTML(registry: VersionRegistry): string {
                 <h3>📊 System Overview</h3>
                 <div class="metric">
                     <span>Version</span>
-                    <span class="metric-value">v${registry.version}</span>
+                    <span class="metric-value">v${escape(registry.version)}</span>
                 </div>
                 <div class="metric">
                     <span>Total Constants</span>
-                    <span class="metric-value">${registry.metadata.totalConstants}</span>
+                    <span class="metric-value">${escape(registry.metadata.totalConstants)}</span>
                 </div>
                 <div class="metric">
                     <span>Projects</span>
-                    <span class="metric-value">${Object.keys(registry.projects).length}</span>
+                    <span class="metric-value">${escape(Object.keys(registry.projects).length)}</span>
                 </div>
                 <div class="metric">
                     <span>Last Updated</span>
-                    <span class="metric-value">${lastUpdated}</span>
+                    <span class="metric-value">${escape(lastUpdated)}</span>
                 </div>
             </div>
 
@@ -485,15 +635,15 @@ function generateDashboardHTML(registry: VersionRegistry): string {
                 </div>
                 <div class="metric">
                     <span>Certified Date</span>
-                    <span class="metric-value">${certifiedDate}</span>
+                    <span class="metric-value">${escape(certifiedDate)}</span>
                 </div>
                 <div class="metric">
                     <span>Audit Level</span>
-                    <span class="metric-value">${registry.tier1380.auditLevel}</span>
+                    <span class="metric-value">${escape(registry.tier1380.auditLevel)}</span>
                 </div>
                 <div class="metric">
                     <span>Col-89 Max Width</span>
-                    <span class="metric-value">${registry.tier1380.col89Max} chars</span>
+                    <span class="metric-value">${escape(registry.tier1380.col89Max)} chars</span>
                 </div>
             </div>
 
@@ -501,11 +651,11 @@ function generateDashboardHTML(registry: VersionRegistry): string {
                 <h3>🛠️ Technical Details</h3>
                 <div class="metric">
                     <span>Bun Version</span>
-                    <span class="metric-value">${registry.bunVersion}</span>
+                    <span class="metric-value">${escape(registry.bunVersion)}</span>
                 </div>
                 <div class="metric">
                     <span>Schema Version</span>
-                    <span class="metric-value">${registry.schemaVersion}</span>
+                    <span class="metric-value">${escape(registry.schemaVersion)}</span>
                 </div>
                 <div class="metric">
                     <span>MCP Enabled</span>
@@ -513,7 +663,7 @@ function generateDashboardHTML(registry: VersionRegistry): string {
                 </div>
                 <div class="metric">
                     <span>Platform</span>
-                    <span class="metric-value">${registry.metadata.platform}</span>
+                    <span class="metric-value">${escape(registry.metadata.platform)}</span>
                 </div>
             </div>
 
@@ -523,8 +673,8 @@ function generateDashboardHTML(registry: VersionRegistry): string {
 					.map(
 						cat => `
                 <div class="metric">
-                    <span>${cat.name}</span>
-                    <span class="metric-value">${cat.count}</span>
+                    <span>${escape(cat.name)}</span>
+                    <span class="metric-value">${escape(cat.count)}</span>
                 </div>
                 <div class="chart-bar">
                     <div class="chart-fill" style="width: ${(cat.count / registry.metadata.totalConstants) * 100}%"></div>
@@ -540,8 +690,8 @@ function generateDashboardHTML(registry: VersionRegistry): string {
 					.map(
 						type => `
                 <div class="metric">
-                    <span>${type.name}</span>
-                    <span class="metric-value">${type.count}</span>
+                    <span>${escape(type.name)}</span>
+                    <span class="metric-value">${escape(type.count)}</span>
                 </div>
                 <div class="chart-bar">
                     <div class="chart-fill" style="width: ${(type.count / registry.metadata.totalConstants) * 100}%"></div>
@@ -557,8 +707,8 @@ function generateDashboardHTML(registry: VersionRegistry): string {
 					.map(
 						sec => `
                 <div class="metric">
-                    <span>${sec.name.charAt(0).toUpperCase() + sec.name.slice(1)}</span>
-                    <span class="metric-value">${sec.count}</span>
+                    <span>${escape(sec.name.charAt(0).toUpperCase() + sec.name.slice(1))}</span>
+                    <span class="metric-value">${escape(sec.count)}</span>
                 </div>
                 <div class="chart-bar">
                     <div class="chart-fill" style="width: ${(sec.count / registry.metadata.totalConstants) * 100}%"></div>
@@ -574,8 +724,8 @@ function generateDashboardHTML(registry: VersionRegistry): string {
 					.map(
 						proj => `
                 <div class="metric">
-                    <span>${proj.name}</span>
-                    <span class="metric-value">${proj.count}</span>
+                    <span>${escape(proj.name)}</span>
+                    <span class="metric-value">${escape(proj.count)}</span>
                 </div>
                 <div class="chart-bar">
                     <div class="chart-fill" style="width: ${(proj.count / registry.metadata.totalConstants) * 100}%"></div>
@@ -592,7 +742,7 @@ function generateDashboardHTML(registry: VersionRegistry): string {
                 <button class="filter-btn" data-filter="all">All</button>
                 <button class="filter-btn" data-filter="mcp">MCP Only</button>
                 <button class="filter-btn" data-filter="critical">Critical</button>
-                ${categories.map(cat => `<button class="filter-btn" data-filter="category:${cat}">${cat}</button>`).join('')}
+                ${categories.map(cat => `<button class="filter-btn" data-filter="category:${escape(cat)}">${escape(cat)}</button>`).join('')}
             </div>
             <button class="export-btn" onclick="exportData('json')">Export JSON</button>
             <button class="export-btn" onclick="exportData('csv')">Export CSV</button>
@@ -613,19 +763,22 @@ function generateDashboardHTML(registry: VersionRegistry): string {
                 </thead>
                 <tbody id="constantsTableBody">
                     ${registry.constants
-						.map(
-							constant => `
-                    <tr data-name="${constant.name.toLowerCase()}" data-project="${constant.project}" data-type="${constant.type ?? 'string'}" data-category="${constant.category ?? ''}" data-security="${constant.security ?? 'low'}" data-mcp="${constant.tier1380?.mcpExposed ? 'true' : 'false'}">
-                        <td><code>${constant.name}</code></td>
-                        <td>${constant.project}</td>
-                        <td><span class="type-badge type-${constant.type ?? 'string'}">${constant.type ?? 'string'}</span></td>
-                        <td>${constant.category ?? '-'}</td>
-                        <td><span class="type-badge security-${constant.security ?? 'low'}">${constant.security ?? 'low'}</span></td>
+						.map(constant => {
+							const constType = constant.type ?? 'string';
+							const constCategory = constant.category ?? '';
+							const constSecurity = constant.security ?? 'low';
+							return `
+                    <tr data-name="${escape(constant.name.toLowerCase())}" data-project="${escape(constant.project)}" data-type="${escape(constType)}" data-category="${escape(constCategory)}" data-security="${escape(constSecurity)}" data-mcp="${constant.tier1380?.mcpExposed ? 'true' : 'false'}">
+                        <td><code>${escape(constant.name)}</code></td>
+                        <td>${escape(constant.project)}</td>
+                        <td><span class="type-badge type-${escape(constType)}">${escape(constType)}</span></td>
+                        <td>${escape(constCategory || '-')}</td>
+                        <td><span class="type-badge security-${escape(constSecurity)}">${escape(constSecurity)}</span></td>
                         <td>${constant.tier1380?.mcpExposed ? '✅' : '❌'}</td>
-                        <td><a href="#" class="code-link" title="${constant.relPath}:${constant.line}">${constant.relPath}:${constant.line}</a></td>
+                        <td><a href="#" class="code-link" title="${escape(constant.relPath)}:${escape(constant.line)}">${escape(constant.relPath)}:${escape(constant.line)}</a></td>
                     </tr>
-                    `,
-						)
+                    `;
+						})
 						.join('')}
                 </tbody>
             </table>
@@ -638,7 +791,7 @@ function generateDashboardHTML(registry: VersionRegistry): string {
         </div>
 
         <div class="footer">
-            <p>Generated on ${new Date().toISOString()} | Tier-1380 Certified | BUN Constants Version Management System</p>
+            <p>Generated on ${escape(new Date().toISOString())} | Tier-1380 Certified | BUN Constants Version Management System</p>
         </div>
     </div>
     <script>
@@ -734,15 +887,23 @@ function generateDashboardHTML(registry: VersionRegistry): string {
             const end = start + itemsPerPage;
             const pageData = filteredData.slice(start, end);
             
+            // Escape HTML to prevent XSS attacks
+            const escapeHTML = (str) => {
+                if (str == null) return '';
+                const div = document.createElement('div');
+                div.textContent = String(str);
+                return div.innerHTML;
+            };
+            
             tbody.innerHTML = pageData.map(constant => \`
-                <tr data-name="\${constant.name.toLowerCase()}" data-project="\${constant.project}" data-type="\${constant.type}" data-category="\${constant.category}" data-security="\${constant.security}" data-mcp="\${constant.mcp}">
-                    <td><code>\${constant.name}</code></td>
-                    <td>\${constant.project}</td>
-                    <td><span class="type-badge type-\${constant.type}">\${constant.type}</span></td>
-                    <td>\${constant.category || '-'}</td>
-                    <td><span class="type-badge security-\${constant.security}">\${constant.security}</span></td>
+                <tr data-name="\${escapeHTML(constant.name.toLowerCase())}" data-project="\${escapeHTML(constant.project)}" data-type="\${escapeHTML(constant.type)}" data-category="\${escapeHTML(constant.category)}" data-security="\${escapeHTML(constant.security)}" data-mcp="\${constant.mcp}">
+                    <td><code>\${escapeHTML(constant.name)}</code></td>
+                    <td>\${escapeHTML(constant.project)}</td>
+                    <td><span class="type-badge type-\${escapeHTML(constant.type)}">\${escapeHTML(constant.type)}</span></td>
+                    <td>\${escapeHTML(constant.category || '-')}</td>
+                    <td><span class="type-badge security-\${escapeHTML(constant.security)}">\${escapeHTML(constant.security)}</span></td>
                     <td>\${constant.mcp ? '✅' : '❌'}</td>
-                    <td><a href="#" class="code-link" title="\${constant.path}:\${constant.line}">\${constant.path}:\${constant.line}</a></td>
+                    <td><a href="#" class="code-link" title="\${escapeHTML(constant.path)}:\${escapeHTML(constant.line)}">\${escapeHTML(constant.path)}:\${escapeHTML(constant.line)}</a></td>
                 </tr>
             \`).join('');
             
@@ -929,7 +1090,8 @@ function main(): void {
 				}
 				console.log(`🏷️  Copied badges to dashboard directory`);
 			} catch (error) {
-				console.warn(`⚠️  Failed to copy badges: ${error.message}`);
+				const errorMessage = error instanceof Error ? error.message : String(error);
+				console.warn(`⚠️  Failed to copy badges: ${errorMessage}`);
 			}
 
 			if (serveMode) {
@@ -979,7 +1141,8 @@ function main(): void {
 									});
 								}
 							} catch (error) {
-								console.warn(`Failed to load badge: ${error.message}`);
+								const errorMessage = error instanceof Error ? error.message : String(error);
+								console.warn(`Failed to load badge: ${errorMessage}`);
 							}
 						}
 						return new Response('Not Found', {status: 404});
@@ -1000,7 +1163,8 @@ function main(): void {
 
 		console.log(`✅ Visual documentation generation complete!`);
 	} catch (error) {
-		console.error(`❌ Failed to generate visual documentation: ${error.message}`);
+		const errorMessage = error instanceof Error ? error.message : String(error);
+		console.error(`❌ Failed to generate visual documentation: ${errorMessage}`);
 		process.exit(1);
 	}
 }
