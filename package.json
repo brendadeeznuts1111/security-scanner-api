@@ -35,6 +35,7 @@
 		"visual:dashboard": "bun scripts/generate-visual-docs.ts --serve",
 		"visual:badges": "bun scripts/generate-visual-docs.ts --badges-only",
 		"demo:wrap-ansi": "bun scripts/demo-wrap-ansi.ts",
+		"profile:example": "bun --cpu-prof-md --heap-prof-md scripts/profile-example.ts",
 		"prepare": "husky"
 	},
 	"keywords": [
