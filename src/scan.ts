@@ -4350,13 +4350,13 @@ async function fixDns(projects: ProjectInfo[], dryRun: boolean): Promise<void> {
 				// global registry
 				for (const m of npmrc.matchAll(/^registry\s*=\s*(.+)$/gm)) {
 					try {
-						domains.add(new URL(m[1].trim()).hostname);
+						domains.add(new URL(m[1]?.trim() ?? '').hostname);
 					} catch {}
 				}
 				// scoped registries
 				for (const m of npmrc.matchAll(/^@[^:\s]+:registry\s*=\s*(.+)$/gm)) {
 					try {
-						domains.add(new URL(m[1].trim()).hostname);
+						domains.add(new URL(m[1]?.trim() ?? '').hostname);
 					} catch {}
 				}
 			} catch {}
@@ -5492,9 +5492,13 @@ async function infoPackage(pkg: string, projects: ProjectInfo[], jsonOut: boolea
 			: (meta ?? {}).author?.name
 				? `${(meta ?? {}).author.name}${typeof (meta ?? {}).author === 'object' && (meta ?? {}).author.email ? ` <${(meta ?? {}).author.email}>` : ''}`
 				: undefined;
-	line('Author', author);
+	line('Author', author ?? '');
 
-	const repo = typeof (meta ?? {}).repository === 'string' ? (meta ?? {}).repository : (meta ?? {}).repository?.url;
+	const repo = typeof (meta ?? {}).repository === 'string' 
+		? (meta ?? {}).repository 
+		: typeof (meta ?? {}).repository === 'object' && (meta ?? {}).repository?.url
+			? (meta ?? {}).repository.url
+			: '';
 	line('Repository', repo);
 
 	// Dependencies
