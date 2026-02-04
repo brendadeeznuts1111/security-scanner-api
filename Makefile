@@ -1,6 +1,6 @@
-# Makefile - Tier-1380 Checkpoint-based execution
-
+# Makefile - Checkpoint-based execution
 CHECKPOINT_DIR := .tier1380-checkpoints
+GUARD := bun -e 'import{interactive}from"./lib/interactive-cli";await interactive.execute("$(@)",async()=>"")'
 
 .PHONY: all validate release check reset demo
 
@@ -9,19 +9,15 @@ all: check validate release
 check:
 	@mkdir -p $(CHECKPOINT_DIR)
 	@if [ -f $(CHECKPOINT_DIR)/validate.done ]; then \
-		echo "⚠️  Validation checkpoint exists"; \
-	fi
-
-validate:
-	@if [ -f $(CHECKPOINT_DIR)/validate.done ]; then \
 		read -p "Validation already done. Re-run? [y/N] " ans; \
 		if [ "$$ans" != "y" ]; then \
 			echo "Skipping validation"; \
 			exit 0; \
 		fi; \
 	fi
-	@echo "🔍 Running Tier-1380 validation..."
-	bun scripts/validate-pointers.ts --bun-native
+
+validate: check
+	$(GUARD) && bun scripts/validate-pointers.ts --bun-native
 	@touch $(CHECKPOINT_DIR)/validate.done
 	@echo "✅ Checkpoint: validate"
 
@@ -30,12 +26,7 @@ release: validate
 		read -p "Release already created. Overwrite? [y/N] " ans; \
 		if [ "$$ans" != "y" ]; then exit 0; fi; \
 	fi
-	@echo "📦 Creating release..."
-	@if [ -f scripts/release-archive.sh ]; then \
-		./scripts/release-archive.sh; \
-	else \
-		echo "Release script not found, skipping"; \
-	fi
+	./scripts/release-archive.sh
 	@touch $(CHECKPOINT_DIR)/release.done
 	@echo "✅ Checkpoint: release"
 
