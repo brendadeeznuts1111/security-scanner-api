@@ -18,8 +18,8 @@ export interface PerfAnnotation {
 export interface DocLink {
 	api: string;
 	docUrl: string;
-	related: string[];
-	keywords: string[];
+	related: readonly string[];
+	keywords: readonly string[];
 	since: string;
 	category: BunApiCategory;
 	topic: string;
@@ -481,8 +481,8 @@ export class DocLinkGenerator {
 		return {
 			api: entry.api,
 			docUrl: entry.docUrl,
-			related: [...(BUN_RELATED_APIS[api] ?? [])],
-			keywords: [...(BUN_SEARCH_KEYWORDS[api] ?? [])],
+			related: BUN_RELATED_APIS[api] ?? [],
+			keywords: BUN_SEARCH_KEYWORDS[api] ?? [],
 			since: BUN_API_PROVENANCE[api] ?? 'unknown',
 			category: entry.category,
 			topic: entry.topic,
@@ -569,7 +569,7 @@ export class DocLinkGenerator {
 		} else if (options?.version) {
 			entries = this.getByVersion(options.version);
 		} else {
-			entries = [...BUN_API_CATALOG];
+			entries = BUN_API_CATALOG;
 		}
 
 		const rows = entries.map(e => ({
@@ -607,9 +607,9 @@ export class DocumentationScanner {
 	scanCode(code: string): string[] {
 		const found = new Set<string>();
 		for (const {pattern, extract} of USAGE_PATTERNS) {
-			const regex = new RegExp(pattern.source, pattern.flags);
+			pattern.lastIndex = 0;
 			let match: RegExpExecArray | null;
-			while ((match = regex.exec(code)) !== null) {
+			while ((match = pattern.exec(code)) !== null) {
 				const api = extract(match);
 				// Only include if it's a known catalog entry
 				if (catalogIndex.has(api)) {
@@ -644,24 +644,4 @@ export class DocumentationScanner {
 			coveragePercent: apisUsed.length > 0 ? Math.round((documented.length / apisUsed.length) * 100) : 100,
 		};
 	}
-}
-
-// ═══════════════════════════════════════════════════════════════
-// HELPERS
-// ═══════════════════════════════════════════════════════════════
-
-export function provenanceCount(): number {
-	return Object.keys(BUN_API_PROVENANCE).length;
-}
-
-export function relatedApiCount(): number {
-	return Object.keys(BUN_RELATED_APIS).length;
-}
-
-export function keywordCount(): number {
-	return Object.keys(BUN_SEARCH_KEYWORDS).length;
-}
-
-export function annotationCount(): number {
-	return Object.keys(BUN_PERF_ANNOTATIONS).length;
 }

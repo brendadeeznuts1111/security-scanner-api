@@ -216,16 +216,19 @@ scanner/
 │   ├── doc-cross-reference.ts           API provenance, relationships, search keywords
 │   ├── packument-matrix.ts              npm packument metadata rendering
 │   ├── process-management.ts            Bun.spawn wrapper and process utilities
+│   ├── status-glyphs.ts                 Unicode status glyph registry with HSL colors
 │   ├── stream-converters.ts             Native stream converter catalog
 │   ├── stream-converters-enhanced.ts    Advanced stream processing patterns
 │   └── stream-converter-scanner.ts      Userland → native migration scanner
 ├── lib/
 │   └── packument-zero-trust.ts          Zero-trust npm registry resolver
-└── benchmarks/
-    ├── bun-api-snapshot.ts              Dynamic API surface scanner with delta tracking
-    ├── bench-native.ts                  Native API replacement benchmarks
-    ├── bench-rss.ts                     RSS helper benchmarks
-    └── team-init.ts                     Team member profile initialization
+├── benchmarks/
+│   ├── bun-api-snapshot.ts              Dynamic API surface scanner with delta tracking
+│   ├── bench-native.ts                  Native API replacement benchmarks
+│   ├── bench-rss.ts                     RSS helper benchmarks
+│   └── team-init.ts                     Team member profile initialization
+└── profiles/
+    └── CPU.*.md                         Bun CPU profiling snapshots
 ```
 
 ### Key internals
@@ -244,6 +247,8 @@ scanner/
   (`BUN_DOC_BASE = "https://bun.sh/docs"`)
 - **Doc cross-reference**: API provenance (which Bun version introduced each API), related API graph, search keywords,
   and performance annotations
+- **Status glyphs**: Unicode glyph registry with per-project HSL color offsets, using `Bun.color()` for ANSI/hex
+  conversion and `Bun.stringWidth()` for terminal-safe column alignment
 - **Stream converters**: Catalog of 11 native `Bun.readableStreamTo*` converters with spawn pipeline mappings and a
   migration scanner for replacing userland patterns
 - **Process management**: Ergonomic wrapper around `Bun.spawn`/`Bun.spawnSync` with stream routing, IPC config, and
@@ -253,11 +258,12 @@ scanner/
 ## Tests
 
 ```bash
-bun test                    # all 11 test files
+bun test                    # all 13 test files
 bun test scan.test.ts       # main scanner tests only
+bun test cli/renderers/     # renderer tests only
 ```
 
-404 tests, 6692 expects across 11 files:
+466 tests, 5737 expects across 13 files:
 
 | File                               | Coverage                                                                                                                                                            |
 | ---------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -270,7 +276,9 @@ bun test scan.test.ts       # main scanner tests only
 | `stream-converter-scanner.test.ts` | Detection patterns, rule matching, migration suggestions                                                                                                            |
 | `stream-converters-shell.test.ts`  | Shell-based stream conversion patterns                                                                                                                              |
 | `bun-process.test.ts`              | Process management, stream config                                                                                                                                   |
+| `status-glyphs.test.ts`            | Glyph registry, HSL math, per-project color generation, unicode widths                                                                                              |
 | `packument-zero-trust.test.ts`     | Registry resolver, schema validation                                                                                                                                |
+| `bun-validator.test.ts`            | Input validation utilities                                                                                                                                          |
 | `bun-native-api.test.ts`           | Native API behavior and signature validation                                                                                                                        |
 
 ## Code quality

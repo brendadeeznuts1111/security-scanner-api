@@ -2,9 +2,7 @@ import {test, expect, describe} from 'bun:test';
 import {
 	BUN_CONVERTERS,
 	BUN_SPAWN_CONVERTER_MATRIX,
-	converterCount,
 	converterByOutput,
-	converterNames,
 } from './stream-converters';
 
 // ═══════════════════════════════════════════════════════════════
@@ -13,11 +11,11 @@ import {
 
 describe('BUN_CONVERTERS catalog', () => {
 	test('has 7 converters', () => {
-		expect(converterCount()).toBe(7);
+		expect(BUN_CONVERTERS.length).toBe(7);
 	});
 
 	test('no duplicate function names', () => {
-		const names = converterNames();
+		const names = BUN_CONVERTERS.map(c => c.function);
 		expect(new Set(names).size).toBe(names.length);
 	});
 
@@ -53,7 +51,7 @@ describe('BUN_CONVERTERS catalog', () => {
 
 describe('BUN_SPAWN_CONVERTER_MATRIX', () => {
 	test('all routes reference valid converters', () => {
-		const names = new Set(converterNames().map(n => n.replace('Bun.', '')));
+		const names = new Set(BUN_CONVERTERS.map(c => c.function.replace('Bun.', '')));
 		for (const route of BUN_SPAWN_CONVERTER_MATRIX) {
 			expect(names.has(route.converter)).toBe(true);
 		}

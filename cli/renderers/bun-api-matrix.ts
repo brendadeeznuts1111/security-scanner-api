@@ -1863,12 +1863,10 @@ export function formatDocUrl(url: string, maxLen?: number): string {
 	return url.slice(0, limit - 1) + '\u2026';
 }
 
-export function filterByCategory(catalog: readonly BunApiEntry[], category: BunApiCategory): BunApiEntry[] {
-	return catalog.filter(entry => entry.category === category);
-}
-
-export function filterByTopic(catalog: readonly BunApiEntry[], topic: string): BunApiEntry[] {
-	return catalog.filter(entry => entry.topic === topic);
+export function filterBy<K extends keyof BunApiEntry>(
+	catalog: readonly BunApiEntry[], key: K, value: BunApiEntry[K],
+): BunApiEntry[] {
+	return catalog.filter(e => e[key] === value);
 }
 
 export function apiCount(): number {
@@ -1879,10 +1877,10 @@ export class BunApiMatrixRenderer {
 	render(options?: {category?: BunApiCategory; topic?: string}): void {
 		let entries: readonly BunApiEntry[] = BUN_API_CATALOG;
 		if (options?.category) {
-			entries = filterByCategory(entries, options.category);
+			entries = filterBy(entries, 'category', options.category);
 		}
 		if (options?.topic) {
-			entries = filterByTopic(entries, options.topic);
+			entries = filterBy(entries, 'topic', options.topic);
 		}
 
 		const rows = entries.map(entry => ({

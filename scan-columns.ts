@@ -4,6 +4,7 @@ export const BUN_SCANNER_COLUMNS = {
 	// Main Project Table
 	PROJECT_SCAN: [
 		{key: 'idx', header: '#', width: 4, default: 0},
+		{key: 'status', header: 'Status', width: 8, default: '-'},
 		{key: 'folder', header: 'Project', width: 28, default: 'unknown'},
 		{key: 'name', header: 'Package Name', width: 34, default: 'unknown'},
 		{key: 'version', header: 'Version', width: 12, default: '0.0.0'},

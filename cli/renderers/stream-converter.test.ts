@@ -6,7 +6,6 @@ import {
 	calcMigrationR,
 	totalComplexityReduction,
 	totalMemorySaved,
-	migrationCount,
 } from './stream-converters-enhanced';
 
 // ── Helpers ──
@@ -170,7 +169,7 @@ describe('Stream Converters', () => {
 
 describe('Stream Migration Matrix', () => {
 	test('matrix has 8 entries', () => {
-		expect(migrationCount()).toBe(8);
+		expect(BUN_STREAM_MIGRATION_MATRIX.length).toBe(8);
 	});
 
 	test('all rScores are between 0.99 and 1.0', () => {

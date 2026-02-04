@@ -3,8 +3,7 @@ import {
 	BUN_API_CATALOG,
 	BUN_SCANNER_APIS,
 	formatDocUrl,
-	filterByCategory,
-	filterByTopic,
+	filterBy,
 	apiCount,
 	colorize,
 	renderStatus,
@@ -161,16 +160,12 @@ describe('BUN_API_CATALOG', () => {
 
 	test('all three status values are represented', () => {
 		const statuses = new Set(BUN_API_CATALOG.map(e => e.status));
-		expect(statuses.has('stable')).toBe(true);
-		expect(statuses.has('new')).toBe(true);
-		expect(statuses.has('experimental')).toBe(true);
+		expect(statuses).toEqual(new Set(['stable', 'new', 'experimental']));
 	});
 
 	test('all three surface levels are represented', () => {
 		const surfaces = new Set(BUN_API_CATALOG.map(e => e.surface));
-		expect(surfaces.has(1)).toBe(true);
-		expect(surfaces.has(2)).toBe(true);
-		expect(surfaces.has(3)).toBe(true);
+		expect(surfaces).toEqual(new Set([1, 2, 3]));
 	});
 });
 
@@ -344,31 +339,29 @@ describe('formatDocUrl', () => {
 	});
 });
 
-describe('filterByCategory', () => {
-	test('correct count for HTTP & Networking', () => {
-		const result = filterByCategory(BUN_API_CATALOG, 'HTTP & Networking');
+describe('filterBy', () => {
+	test('correct count for HTTP & Networking category', () => {
+		const result = filterBy(BUN_API_CATALOG, 'category', 'HTTP & Networking');
 		expect(result.length).toBe(9);
 	});
 
 	test('empty for invalid category', () => {
-		const result = filterByCategory(BUN_API_CATALOG, 'Nonexistent' as BunApiCategory);
+		const result = filterBy(BUN_API_CATALOG, 'category', 'Nonexistent' as BunApiCategory);
 		expect(result.length).toBe(0);
 	});
-});
 
-describe('filterByTopic', () => {
 	test('correct count for DNS topic', () => {
-		const result = filterByTopic(BUN_API_CATALOG, 'DNS');
+		const result = filterBy(BUN_API_CATALOG, 'topic', 'DNS');
 		expect(result.length).toBe(3);
 	});
 
 	test('correct count for Compression topic', () => {
-		const result = filterByTopic(BUN_API_CATALOG, 'Compression');
+		const result = filterBy(BUN_API_CATALOG, 'topic', 'Compression');
 		expect(result.length).toBe(9);
 	});
 
 	test('empty for nonexistent topic', () => {
-		const result = filterByTopic(BUN_API_CATALOG, 'Nonexistent');
+		const result = filterBy(BUN_API_CATALOG, 'topic', 'Nonexistent');
 		expect(result.length).toBe(0);
 	});
 });

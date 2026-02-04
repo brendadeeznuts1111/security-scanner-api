@@ -118,16 +118,8 @@ type FormDataEncoding =
 // HELPERS
 // ═══════════════════════════════════════════════════════════════
 
-function converterCount(): number {
-	return BUN_CONVERTERS.length;
-}
-
 function converterByOutput(output: string): StreamConverter | undefined {
 	return BUN_CONVERTERS.find(c => c.output === output);
-}
-
-function converterNames(): string[] {
-	return BUN_CONVERTERS.map(c => c.function);
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -137,9 +129,7 @@ function converterNames(): string[] {
 export {
 	BUN_CONVERTERS,
 	BUN_SPAWN_CONVERTER_MATRIX,
-	converterCount,
 	converterByOutput,
-	converterNames,
 	type StreamConverter,
 	type SpawnConverterRoute,
 	type FormDataEncoding,

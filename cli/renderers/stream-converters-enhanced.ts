@@ -291,20 +291,12 @@ const BUN_STREAM_MIGRATION_MATRIX: readonly StreamMigrationEntry[] = [
 // HELPERS
 // ═══════════════════════════════════════════════════════════════
 
-function converterCount(): number {
-	return BUN_CONVERTERS.length;
-}
-
 function riskRanking(): {function: string; score: number}[] {
 	return BUN_CONVERTERS.map(c => ({function: c.function, score: calcR(c.risk)})).sort((a, b) => b.score - a.score);
 }
 
 function highRiskConverters(threshold = 1.0): EnhancedStreamConverter[] {
 	return BUN_CONVERTERS.filter(c => calcR(c.risk) >= threshold);
-}
-
-function migrationCount(): number {
-	return BUN_STREAM_MIGRATION_MATRIX.length;
 }
 
 function totalComplexityReduction(): {before: number; after: number; reduction: number} {
@@ -332,10 +324,8 @@ export {
 	BUN_MIGRATION_WEIGHTS,
 	calcR,
 	calcMigrationR,
-	converterCount,
 	riskRanking,
 	highRiskConverters,
-	migrationCount,
 	totalComplexityReduction,
 	totalMemorySaved,
 	migrationsByRScore,

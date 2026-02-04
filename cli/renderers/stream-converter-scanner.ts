@@ -121,10 +121,9 @@ class StreamConverterScanner {
 		const matches: StreamConverterMatch[] = [];
 
 		for (const pattern of BUN_DETECTION_PATTERNS) {
-			// Reset regex state for each scan
-			const regex = new RegExp(pattern.regex.source, pattern.regex.flags);
+			pattern.regex.lastIndex = 0;
 			let match: RegExpExecArray | null;
-			while ((match = regex.exec(code)) !== null) {
+			while ((match = pattern.regex.exec(code)) !== null) {
 				const pos = match.index;
 				const {line, column} = this.getPosition(code, pos);
 				matches.push({

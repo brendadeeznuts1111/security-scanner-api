@@ -24,11 +24,15 @@ bun run scan.ts --help       # all flags
 ## Tests
 
 ```bash
-bun test scan.test.ts
+bun test                              # all test files
+bun test scan.test.ts                 # main scanner tests only
+bun test cli/renderers/               # renderer tests only
+bun test lib/                         # library tests only
+bun test benchmarks/                  # benchmark tests only
 ```
 
-All 59 tests must pass before submitting a PR. The test suite includes subprocess tests that spawn real Bun processes
-with different `TZ` values, so they require a working `bun` binary on `$PATH`.
+466 tests across 13 files must pass before submitting a PR. The test suite includes subprocess tests that spawn real Bun
+processes with different `TZ` values, so they require a working `bun` binary on `$PATH`.
 
 ## Code style
 
