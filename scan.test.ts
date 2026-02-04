@@ -1244,8 +1244,8 @@ describe('token security edge cases', () => {
 		expect(setResult.ok).toBe(true);
 		const getResult = await keychainGet(name);
 		expect(getResult.ok).toBe(true);
-		// empty string stored — security CLI returns empty which maps to null
-		if (getResult.ok) expect(getResult.value).toBeNull();
+		// empty string should round-trip with Bun.secrets
+		if (getResult.ok) expect(getResult.value).toBe('');
 		await keychainDelete(name);
 	});
 
@@ -1267,8 +1267,7 @@ describe('token security edge cases', () => {
 		expect(setResult.ok).toBe(true);
 		const getResult = await keychainGet(name);
 		expect(getResult.ok).toBe(true);
-		// security CLI -w strips trailing newline, multiline may not round-trip
-		if (getResult.ok) expect(getResult.value).toContain('line1');
+		if (getResult.ok) expect(getResult.value).toBe(value);
 		await keychainDelete(name);
 	});
 

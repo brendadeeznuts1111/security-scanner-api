@@ -1440,118 +1440,80 @@ export function classifyKeychainError(err: unknown): KeychainErr {
 	return {ok: false, code: 'OS_ERROR', reason: `Keychain OS error: ${msg}`};
 }
 
-// -- security CLI fallback (macOS) -----------------------------------------
-async function securityGet(name: string, service = BUN_KEYCHAIN_SERVICE): Promise<KeychainResult<string | null>> {
+// -- dispatch: security CLI first, Bun.secrets fallback --------------------
+const _hasBunSecrets = !!(globalThis.secrets?.get || (Bun as unknown as {secrets?: unknown}).secrets);
+const _isDarwin = process.platform === 'darwin';
+
+// macOS `security -w` hex-encodes passwords containing control chars (e.g. newlines).
+// Detect all-hex output and decode it back to the original UTF-8 string.
+function _tryHexDecode(hex: string): string | null {
+	if (hex.length < 2 || hex.length % 2 !== 0 || !/^[0-9a-f]+$/.test(hex)) return null;
+	try {
+		const bytes = new Uint8Array(hex.length / 2);
+		for (let i = 0; i < hex.length; i += 2) {
+			bytes[i / 2] = parseInt(hex.slice(i, i + 2), 16);
+		}
+		return new TextDecoder('utf-8', {fatal: true}).decode(bytes);
+	} catch {
+		return null;
+	}
+}
+
+async function _securityCliGet(service: string, name: string): Promise<string | null> {
+	if (!_isDarwin) return null;
 	try {
 		const proc = Bun.spawn(['security', 'find-generic-password', '-s', service, '-a', name, '-w'], {
 			stdout: 'pipe',
 			stderr: 'pipe',
 		});
 		const exitCode = await proc.exited;
-		if (exitCode !== 0) {
-			const stderr = await proc.stderr.text();
-			if (stderr.includes('could not be found') || stderr.includes('SecKeychainSearchCopyNext'))
-				return {ok: true, value: null}; // item simply doesn't exist
-			return classifyKeychainError(new Error(stderr.trim()));
-		}
-		let value = (await proc.stdout.text()).replace(/\n$/, '');
-		// macOS security CLI hex-encodes passwords containing non-printable chars (e.g. newlines)
-		if (value && /^[0-9a-f]+$/.test(value) && value.length % 2 === 0) {
-			try {
-				const decoded = Buffer.from(value, 'hex').toString('utf-8');
-				// Only accept decode if result contains the non-printable chars that triggered encoding
-				if (/[\x00-\x1f]/.test(decoded)) value = decoded;
-			} catch {
-				/* not actually hex, use raw value */
-			}
-		}
-		return {ok: true, value: value || null};
-	} catch (err) {
-		return classifyKeychainError(err);
-	}
-}
-
-async function securitySet(name: string, value: string, service = BUN_KEYCHAIN_SERVICE): Promise<KeychainResult<void>> {
-	try {
-		// delete first so add doesn't fail with "duplicate item"
-		const del = Bun.spawn(['security', 'delete-generic-password', '-s', service, '-a', name], {
-			stdout: 'ignore',
-			stderr: 'ignore',
-		});
-		await del.exited;
-		const proc = Bun.spawn(
-			[
-				'security',
-				'add-generic-password',
-				'-s',
-				service,
-				'-a',
-				name,
-				'-w',
-				value,
-				'-U',
-				'-j',
-				`stored:${new Date().toISOString()}`,
-			],
-			{
-				stdout: 'pipe',
-				stderr: 'pipe',
-			},
-		);
-		const exitCode = await proc.exited;
-		if (exitCode !== 0) {
-			const stderr = (await proc.stderr.text()).trim();
-			return classifyKeychainError(new Error(stderr || `security add-generic-password exited ${exitCode}`));
-		}
-		return {ok: true, value: undefined};
-	} catch (err) {
-		return classifyKeychainError(err);
-	}
-}
-
-async function securityDelete(name: string, service = BUN_KEYCHAIN_SERVICE): Promise<KeychainResult<boolean>> {
-	try {
-		const proc = Bun.spawn(['security', 'delete-generic-password', '-s', service, '-a', name], {
-			stdout: 'pipe',
-			stderr: 'pipe',
-		});
-		const exitCode = await proc.exited;
-		if (exitCode !== 0) {
-			const stderr = await proc.stderr.text();
-			if (stderr.includes('could not be found') || stderr.includes('SecKeychainSearchCopyNext'))
-				return {ok: true, value: false};
-			return classifyKeychainError(new Error(stderr.trim()));
-		}
-		return {ok: true, value: true};
-	} catch (err) {
-		return classifyKeychainError(err);
-	}
-}
-
-// -- keychain metadata (macOS security CLI) --------------------------------
-async function securityMeta(name: string, service = BUN_KEYCHAIN_SERVICE): Promise<string | null> {
-	try {
-		const proc = Bun.spawn(['security', 'find-generic-password', '-s', service, '-a', name], {
-			stdout: 'pipe',
-			stderr: 'pipe',
-		});
-		if ((await proc.exited) !== 0) return null;
-		const out = await proc.stdout.text();
-		const match = out.match(/"icmt"<blob>="stored:([^"]+)"/);
-		return match?.[1] ?? null;
+		if (exitCode !== 0) return null;
+		const output = await new Response(proc.stdout).text();
+		const trimmed = output.trim();
+		if (trimmed.length === 0) return null;
+		return _tryHexDecode(trimmed) ?? trimmed;
 	} catch {
 		return null;
 	}
 }
 
-// -- dispatch: Bun.secrets → security CLI ----------------------------------
-const _hasBunSecrets = !!(globalThis.secrets?.get || (Bun as unknown as {secrets?: unknown}).secrets);
+async function _securityCliSet(service: string, name: string, value: string): Promise<boolean> {
+	if (!_isDarwin) return false;
+	try {
+		const proc = Bun.spawn(['security', 'add-generic-password', '-U', '-s', service, '-a', name, '-w', value], {
+			stdout: 'pipe',
+			stderr: 'pipe',
+		});
+		return (await proc.exited) === 0;
+	} catch {
+		return false;
+	}
+}
+
+async function _securityCliDelete(service: string, name: string): Promise<boolean> {
+	if (!_isDarwin) return false;
+	try {
+		const proc = Bun.spawn(['security', 'delete-generic-password', '-s', service, '-a', name], {
+			stdout: 'pipe',
+			stderr: 'pipe',
+		});
+		return (await proc.exited) === 0;
+	} catch {
+		return false;
+	}
+}
 
 export async function keychainGet(name: string, service = BUN_KEYCHAIN_SERVICE): Promise<KeychainResult<string | null>> {
+	// macOS: try security CLI first to avoid Keychain popup
+	const cliValue = await _securityCliGet(service, name);
+	if (cliValue !== null) {
+		recordAccess(name);
+		return {ok: true, value: cliValue};
+	}
+
 	let result: KeychainResult<string | null>;
 	if (_hasBunSecrets) {
 		try {
-			// Prefer Bun.secrets if available; fallback to legacy globalThis.secrets
 			const bunSecrets = (Bun as unknown as {secrets?: BunSecretsAPI | undefined}).secrets;
 			const value = bunSecrets
 				? (await bunSecrets.get({service, name})) ?? null
@@ -1560,8 +1522,6 @@ export async function keychainGet(name: string, service = BUN_KEYCHAIN_SERVICE):
 		} catch (err) {
 			result = classifyKeychainError(err);
 		}
-	} else if (process.platform === 'darwin') {
-		result = await securityGet(name, service);
 	} else {
 		result = keychainUnavailableErr();
 	}
@@ -1571,6 +1531,11 @@ export async function keychainGet(name: string, service = BUN_KEYCHAIN_SERVICE):
 }
 
 export async function keychainSet(name: string, value: string): Promise<KeychainResult<void>> {
+	// macOS: try security CLI first to avoid Keychain popup
+	if (await _securityCliSet(BUN_KEYCHAIN_SERVICE, name, value)) {
+		return {ok: true, value: undefined};
+	}
+
 	let result: KeychainResult<void>;
 	if (_hasBunSecrets) {
 		try {
@@ -1581,8 +1546,6 @@ export async function keychainSet(name: string, value: string): Promise<Keychain
 		} catch (err) {
 			result = classifyKeychainError(err);
 		}
-	} else if (process.platform === 'darwin') {
-		result = await securitySet(name, value);
 	} else {
 		result = keychainUnavailableErr();
 	}
@@ -1591,6 +1554,12 @@ export async function keychainSet(name: string, value: string): Promise<Keychain
 }
 
 export async function keychainDelete(name: string): Promise<KeychainResult<boolean>> {
+	// macOS: try security CLI first to avoid Keychain popup
+	const cliDeleted = await _securityCliDelete(BUN_KEYCHAIN_SERVICE, name);
+	if (cliDeleted) {
+		return {ok: true, value: true};
+	}
+
 	let result: KeychainResult<boolean>;
 	if (_hasBunSecrets) {
 		try {
@@ -1603,8 +1572,6 @@ export async function keychainDelete(name: string): Promise<KeychainResult<boole
 		} catch (err) {
 			result = classifyKeychainError(err);
 		}
-	} else if (process.platform === 'darwin') {
-		result = await securityDelete(name);
 	} else {
 		result = keychainUnavailableErr();
 	}
@@ -1619,18 +1586,30 @@ export function tokenSource(name: string): 'env' | 'keychain' | 'not set' {
 }
 
 async function migrateKeychainService(): Promise<void> {
-	if (process.platform !== 'darwin') return;
+	const deleteWithService = async (name: string, service: string): Promise<void> => {
+		if (!_hasBunSecrets) return;
+		const bunSecrets = (Bun as unknown as {secrets?: BunSecretsAPI | undefined}).secrets;
+		try {
+			if (bunSecrets) await bunSecrets.delete({service, name});
+			else await globalThis.secrets!.delete(service, name);
+		} catch {
+			// ignore cleanup failure
+		}
+	};
+
 	for (const name of BUN_KEYCHAIN_TOKEN_NAMES) {
-		const legacy = await securityGet(name, BUN_KEYCHAIN_SERVICE_LEGACY);
+		const legacy = await keychainGet(name, BUN_KEYCHAIN_SERVICE_LEGACY);
 		if (!legacy.ok || !legacy.value) continue;
-		const current = await securityGet(name, BUN_KEYCHAIN_SERVICE);
+		const current = await keychainGet(name, BUN_KEYCHAIN_SERVICE);
 		if (current.ok && current.value) {
 			// already exists under new service — just clean up legacy
-			await securityDelete(name, BUN_KEYCHAIN_SERVICE_LEGACY);
+			await deleteWithService(name, BUN_KEYCHAIN_SERVICE_LEGACY);
 			continue;
 		}
-		const stored = await securitySet(name, legacy.value, BUN_KEYCHAIN_SERVICE);
-		if (stored.ok) await securityDelete(name, BUN_KEYCHAIN_SERVICE_LEGACY);
+		const stored = await keychainSet(name, legacy.value);
+		if (stored.ok) {
+			await deleteWithService(name, BUN_KEYCHAIN_SERVICE_LEGACY);
+		}
 	}
 }
 
@@ -5676,7 +5655,7 @@ ${c.bold('  Other:')}
 			else if (inEnv) source = 'env';
 			else if (inKeychain) source = 'keychain';
 			else source = 'not set';
-			const storedAt = process.platform === 'darwin' ? await securityMeta(name) : null;
+			const storedAt = null;
 			tokenData.push({name, source, inEnv, inKeychain, lookupMs, storedAt, m: getMetrics(name)});
 		}
 
