@@ -131,6 +131,34 @@ bun test optimizations/     # runtime optimization tests
 - Type safety: use `createProjectContext()` for typed `ProjectInfo`, avoid `as any`
 - Runtime patterns: lazy stats, batched ops, monomorphic shapes (see `.cursor/rules/`)
 - `--dry-run` support for every `--fix-*` command
+- Automated linting and formatting via pre-commit hooks
+
+## Profiling
+
+The scanner includes built-in profiling capabilities using Bun's native profiling:
+
+```bash
+# CPU profiling (markdown format)
+bun run profile:cpu:md
+
+# Heap profiling (markdown format)
+bun run profile:heap:md
+
+# Example profiling script
+bun run profile:example
+```
+
+See [Profiling Quick Reference](./docs/PROFILING_QUICK_REFERENCE.md) for details.
+
+## Bun v1.3.7+ Features
+
+The scanner leverages new Bun features:
+
+- **`Bun.wrapAnsi()`**: ANSI-aware text wrapping (33-88x faster than wrap-ansi)
+- **`--cpu-prof-md`**: Markdown CPU profiling output
+- **`--heap-prof-md`**: Markdown heap profiling output
+
+See [Bun v1.3.7 Features](./docs/BUN_V1.3.7_FEATURES.md) for documentation and examples.
 
 ## References
 
