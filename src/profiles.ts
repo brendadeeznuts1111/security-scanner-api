@@ -89,6 +89,9 @@ export interface BunSecretsAPI {
 	delete(opts: {service: string; name: string}): Promise<boolean>;
 	delete(service: string, name: string): Promise<boolean>;
 }
+declare global {
+	var secrets: BunSecretsAPI | undefined;
+}
 export const BUN_KEYCHAIN_ERROR_CODES = ['NO_API', 'ACCESS_DENIED', 'NOT_FOUND', 'OS_ERROR'] as const;
 export type KeychainErrCode = (typeof BUN_KEYCHAIN_ERROR_CODES)[number];
 export type KeychainResult<T> = {ok: true; value: T} | KeychainErr;

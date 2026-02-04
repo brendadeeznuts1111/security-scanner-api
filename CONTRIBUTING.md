@@ -27,25 +27,35 @@ bun run scan.ts --help       # all flags
 bun test                              # all test files
 bun test scan.test.ts                 # main scanner tests only
 bun test cli/renderers/               # renderer tests only
-bun test lib/                         # library tests only
-bun test benchmarks/                  # benchmark tests only
+bun test optimizations/               # runtime optimization tests
 ```
 
-466 tests across 13 files must pass before submitting a PR. The test suite includes subprocess tests that spawn real Bun
-processes with different `TZ` values, so they require a working `bun` binary on `$PATH`.
+All tests must pass before submitting a PR.
 
-## Code style
+## Code Style
 
-- Single file architecture — `scan.ts` is the main entry point
-- No external dependencies; uses Bun built-ins (`Bun.file`, `Bun.spawn`, `Bun.hash`, `parseArgs`)
-- ANSI colors via the `c` helper object, no chalk/picocolors
-- `--dry-run` support for every `--fix-*` command
-- Observability over enforcement — show information, don't force decisions
+- **No external dependencies** — uses Bun built-ins (`Bun.file`, `Bun.spawn`, `Bun.hash`, `Bun.secrets`)
+- **Type safety** — use `createProjectContext()` for typed `ProjectInfo`, avoid `as any` casts
+- **Runtime patterns** — see `.cursor/rules/bun-runtime-patterns.mdc` for optimization patterns
+- **ANSI colors** — via the `c` helper object, no chalk/picocolors
+- **`--dry-run` support** — for every `--fix-*` command
+- **Observability over enforcement** — show information, don't force decisions
+
+## Type Safety Patterns
+
+```typescript
+// ❌ BAD - Using as any
+const service = projectTokenService(projectInfo as any);
+
+// ✅ GOOD - Use createProjectContext
+const projectContext = createProjectContext(projectId);
+const service = projectTokenService(projectContext.projectInfo);
+```
 
 ## Adding a new `--fix-*` command
 
-1. Add the flag to `parseArgs` options at the top of `scan.ts`
-2. Add the fix handler after the existing fix blocks (search for `flags["fix-`)
+1. Add the flag to `parseArgs` options in `src/scan.ts`
+2. Add the fix handler after existing fix blocks (search for `flags["fix-`)
 3. Support `--dry-run` — preview changes without writing
 4. Add relevant fields to the `ProjectInfo` interface if scanning new data
 5. Surface the new data in `--inspect` and `--audit` output
@@ -66,7 +76,8 @@ processes with different `TZ` values, so they require a working `bun` binary on 
 Follow conventional commits:
 
 ```
-feat: add new scanning capability
-fix: correct TZ parsing for quoted values
-docs: update README with new flags
+feat: add cookie session management
+fix: correct projectId resolution with FW_PROJECT_ID fallback
+docs: update README with cookie session commands
+refactor: remove as any casts in scan.ts
 ```

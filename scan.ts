@@ -6,7 +6,7 @@ import {availableParallelism} from 'node:os';
 import {createHmac, createHash} from 'node:crypto';
 import {dns} from 'bun';
 import {z} from 'zod';
-import {BUN_SCANNER_COLUMNS} from './scan-columns';
+import {BUN_SCANNER_COLUMNS} from './src/scan-columns';
 import {formatStatusCell, type StatusKey} from './cli/renderers/status-glyphs';
 
 // ── Bun Secrets API type augmentation ─────────────────────────────────
