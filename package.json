@@ -34,6 +34,7 @@
 		"visual:docs": "bun scripts/generate-visual-docs.ts",
 		"visual:dashboard": "bun scripts/generate-visual-docs.ts --serve",
 		"visual:badges": "bun scripts/generate-visual-docs.ts --badges-only",
+		"demo:wrap-ansi": "bun scripts/demo-wrap-ansi.ts",
 		"prepare": "husky"
 	},
 	"keywords": [
