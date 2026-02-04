@@ -165,6 +165,16 @@ See [Bun v1.3.7 Features](./docs/BUN_V1.3.7_FEATURES.md) for documentation and e
 
 The scanner leverages many Bun utility functions for optimal performance:
 
+### R-Score Framework
+
+The scanner uses an **Enhanced R-Score Framework** to evaluate optimization efficiency:
+
+$$ R\_Score = (P_{ratio} \times 0.35) + (M_{impact} \times 0.30) + (E_{elimination} \times 0.20) + (S_{hardening} \times 0.10) + (D_{ergonomics} \times 0.05) $$
+
+This unified metric evaluates native vs. userland implementations. For high-throughput applications, maintaining an **R-Score > 0.95** is critical for sub-millisecond response times.
+
+See [Enhanced R-Score Framework](./docs/ENHANCED_R_SCORE_FRAMEWORK.md) for complete documentation.
+
 ### Text & Formatting
 - **`Bun.escapeHTML()`**: XSS protection for HTML generation (480 MB/s - 20 GB/s)
 - **`Bun.wrapAnsi()`**: ANSI-aware text wrapping (33-88x faster than wrap-ansi)
