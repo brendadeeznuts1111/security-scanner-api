@@ -5461,8 +5461,8 @@ async function infoPackage(pkg: string, projects: ProjectInfo[], jsonOut: boolea
 	line('Repository', repo);
 
 	// Dependencies
-	const deps = (meta ?? {}).dependencies ? Object.keys((meta ?? {}).dependencies) : [];
-	const devDeps = (meta ?? {}).devDependencies ? Object.keys((meta ?? {}).devDependencies) : [];
+	const deps = (meta ?? {}).dependencies ? Object.keys((meta ?? {}).dependencies ?? {}) : [];
+	const devDeps = (meta ?? {}).devDependencies ? Object.keys((meta ?? {}).devDependencies ?? {}) : [];
 	if (deps.length > 0 || devDeps.length > 0) {
 		console.log();
 		line('Dependencies', deps.length || 0);
