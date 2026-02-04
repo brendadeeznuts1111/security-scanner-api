@@ -41,7 +41,7 @@ export const BUN_SCANNER_COLUMNS = {
 		{key: 'projectsChanged', header: 'Changed', width: 8, default: 0},
 		{key: 'snapshotHash', header: 'Hash', width: 16, default: ''},
 		{key: 'driftDetected', header: 'Drift', width: 8, default: false},
-		{key: 'user', header: 'User', width: 16, default: () => Bun.env.USER || 'unknown'},
+		{key: 'user', header: 'User', width: 16, default: () => Bun.env.USER ?? 'unknown'},
 		{key: 'cwd', header: 'CWD', width: 40, default: () => import.meta.dir},
 	] as const,
 	// Advisory Matches

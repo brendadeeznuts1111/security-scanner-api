@@ -14,7 +14,7 @@ import {spawnSync} from 'bun';
 
 const args = process.argv.slice(2);
 const shouldFix = args.includes('--fix');
-const shouldCheck = args.includes('--check') || !shouldFix;
+const _shouldCheck = args.includes('--check') || !shouldFix;
 
 function runCommand(cmd: string[], description: string): boolean {
 	console.log(`\n${description}...`);
@@ -32,7 +32,7 @@ function runCommand(cmd: string[], description: string): boolean {
 	return true;
 }
 
-async function main(): Promise<void> {
+function main(): void {
 	console.log('🔍 Code Quality Check\n');
 
 	if (shouldFix) {
@@ -75,5 +75,5 @@ async function main(): Promise<void> {
 }
 
 if (import.meta.main) {
-	void main();
+	main();
 }
