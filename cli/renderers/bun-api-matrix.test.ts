@@ -54,9 +54,9 @@ describe('BUN_API_CATALOG', () => {
 		}
 	});
 
-	test('all docUrls start with https://bun.sh/docs', () => {
+	test('all docUrls start with https://bun.com/docs (canonical base)', () => {
 		for (const entry of BUN_API_CATALOG) {
-			expect(entry.docUrl.startsWith('https://bun.sh/docs')).toBe(true);
+			expect(entry.docUrl.startsWith('https://bun.com/docs')).toBe(true);
 		}
 	});
 
@@ -322,7 +322,7 @@ describe('renderScanner', () => {
 
 describe('formatDocUrl', () => {
 	test('short URL returned unchanged', () => {
-		const url = 'https://bun.sh/docs/api/http';
+		const url = 'https://bun.com/docs/api/http';
 		expect(formatDocUrl(url)).toBe(url);
 	});
 

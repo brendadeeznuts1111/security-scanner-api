@@ -24,13 +24,13 @@ import {
 // ── Types ────────────────────────────────────────────────────────────────
 export type SecretSource = 'keychain' | 'env' | 'missing';
 export type SecretKeychainCode = 'ok' | 'empty' | KeychainErrCode;
-export type SecretStatus = {
+export interface SecretStatus {
 	name: SecretName;
 	envVar: EnvVarName | null;
 	status: StatusKey;
 	source: SecretSource;
 	keychainCode: SecretKeychainCode;
-};
+}
 
 // ── Constants ────────────────────────────────────────────────────────────
 export const BUN_SECRET_STATUS_COLUMNS = ['Secret', 'Status', 'Source', 'Env Var'] as const;

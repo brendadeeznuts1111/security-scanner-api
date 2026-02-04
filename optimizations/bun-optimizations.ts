@@ -21,13 +21,13 @@ export function getParentPath(path: string): string | null {
 // ── 2. Concurrency limiting ───────────────────────────────────────────────────
 export class ConcurrencyLimiter {
 	private running = 0;
-	private queue: (() => void)[] = [];
+	private readonly queue: (() => void)[] = [];
 
-	constructor(private maxConcurrency: number = 64) {}
+	constructor(private readonly maxConcurrency: number = 64) {}
 
 	async execute<T>(task: () => Promise<T>): Promise<T> {
 		return new Promise((resolve, reject) => {
-			const run = async () => {
+			const run = async (): Promise<void> => {
 				this.running++;
 				try {
 					const result = await task();
@@ -98,7 +98,7 @@ export async function* scanGenerator(rootPath: string): AsyncGenerator<Optimized
 
 			if (node.isDirectory) {
 				try {
-					const entries = await ioLimiter.execute(() => readdir(currentPath));
+					const entries = await ioLimiter.execute(async () => readdir(currentPath));
 					for (const entry of entries) {
 						if (!entry.startsWith('.')) stack.push(`${currentPath}/${entry}`);
 					}

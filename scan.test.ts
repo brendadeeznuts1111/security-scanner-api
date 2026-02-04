@@ -37,6 +37,7 @@ import {
 	getGitCommitHash,
 	getGitCommitHashShort,
 	type KeychainErr,
+	type ProjectInfo,
 } from './scan.ts';
 
 describe('isFeatureFlagActive', () => {
@@ -728,7 +729,7 @@ describe('Bun API integration (scanner uses Bun.hash, Bun.file, Bun.semver, dns)
 		await proc.exited;
 		const projects = JSON.parse(out);
 
-		const withLock = projects.filter((p: any) => p.lock === 'bun.lock' || p.lock === 'bun.lockb');
+		const withLock = projects.filter((p: ProjectInfo) => p.lock === 'bun.lock' || p.lock === 'bun.lockb');
 		expect(withLock.length).toBeGreaterThan(0);
 		for (const p of withLock) {
 			expect(p.lockHash).not.toBe('-');
@@ -745,7 +746,7 @@ describe('Bun API integration (scanner uses Bun.hash, Bun.file, Bun.semver, dns)
 		await proc.exited;
 		const projects = JSON.parse(out);
 
-		const withPkg = projects.filter((p: any) => p.hasPkg);
+		const withPkg = projects.filter((p: ProjectInfo) => p.hasPkg);
 		// Must match the known project count from --audit (50)
 		expect(withPkg.length).toBeGreaterThanOrEqual(50);
 

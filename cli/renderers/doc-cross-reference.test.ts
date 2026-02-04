@@ -252,7 +252,7 @@ describe('DocLinkGenerator', () => {
 			const link = generator.getDocLink('Bun.serve');
 			expect(link).not.toBeNull();
 			expect(link!.api).toBe('Bun.serve');
-			expect(link!.docUrl).toContain('bun.sh/docs');
+			expect(link!.docUrl).toContain('bun.com/docs');
 			expect(link!.related.length).toBeGreaterThan(0);
 			expect(link!.keywords.length).toBeGreaterThan(0);
 			expect(link!.since).toBe('<1.2');

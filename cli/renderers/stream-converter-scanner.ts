@@ -1,7 +1,7 @@
 // stream-converter-scanner.ts
 // Detects userland stream conversion patterns and recommends native Bun replacements
 
-import {BUN_STREAM_MIGRATION_MATRIX, type StreamMigrationEntry} from './stream-converters-enhanced';
+import {BUN_STREAM_MIGRATION_MATRIX} from './stream-converters-enhanced';
 import {BUN_DOC_BASE} from './bun-api-matrix';
 
 // ═══════════════════════════════════════════════════════════════

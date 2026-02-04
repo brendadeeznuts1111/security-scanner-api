@@ -5,7 +5,7 @@ export const BUN_R2_COOKIE_COMPRESS_THRESHOLD = 1024;
 
 // --- Types ---
 
-export type R2CookieError = {
+export interface R2CookieError {
 	code:
 		| 'R2_CONFIG_MISSING'
 		| 'R2_NOT_FOUND'
@@ -16,7 +16,7 @@ export type R2CookieError = {
 		| 'EXPIRED';
 	message: string;
 	cause?: unknown;
-};
+}
 
 export type R2CookieResult<T> = {ok: true; data: T} | {ok: false; error: R2CookieError};
 
@@ -57,7 +57,7 @@ export function getR2CookieConfig(): R2CookieConfig | null {
 	return {accountId, accessKeyId, secretAccessKey, bucket};
 }
 
-function createS3Client(config: R2CookieConfig) {
+function createS3Client(config: R2CookieConfig): Bun.S3Client {
 	return new Bun.S3Client({
 		endpoint: `https://${config.accountId}.r2.cloudflarestorage.com`,
 		accessKeyId: config.accessKeyId,
@@ -91,8 +91,11 @@ export async function loadCookiesFromR2(
 	try {
 		buf = await client.file(r2Key).arrayBuffer();
 	} catch (err) {
-		const msg = err instanceof Error ? err.message : String(err);
-		if (msg.includes('NoSuchKey') || msg.includes('404') || msg.includes('not found')) {
+		const isNotFound =
+			(err instanceof Error && 'code' in err && (err as {code: string}).code === 'NoSuchKey') ||
+			(err instanceof Error && 'status' in err && (err as {status: number}).status === 404) ||
+			(err instanceof Error && (err.name === 'NoSuchKey' || err.message.includes('NoSuchKey')));
+		if (isNotFound) {
 			return {ok: false, error: {code: 'R2_NOT_FOUND', message: `Key not found: ${r2Key}`, cause: err}};
 		}
 		return {ok: false, error: {code: 'R2_FETCH_FAILED', message: `Failed to fetch ${r2Key}`, cause: err}};
@@ -234,7 +237,7 @@ export async function loadManyFromR2(
 		return new Map(r2Keys.map(key => [key, {ok: false, error}]));
 	}
 
-	const results = await Promise.all(r2Keys.map(key => loadCookiesFromR2(key, resolved, maxAgeMs)));
+	const results = await Promise.all(r2Keys.map(async key => loadCookiesFromR2(key, resolved, maxAgeMs)));
 	return new Map(r2Keys.map((key, i) => [key, results[i]!]));
 }
 
@@ -249,6 +252,6 @@ export async function saveManyToR2(
 		return new Map(entries.map(e => [e.r2Key, {ok: false, error}]));
 	}
 
-	const results = await Promise.all(entries.map(e => saveCookiesToR2(e.cookies, e.r2Key, resolved, compress)));
+	const results = await Promise.all(entries.map(async e => saveCookiesToR2(e.cookies, e.r2Key, resolved, compress)));
 	return new Map(entries.map((e, i) => [e.r2Key, results[i]!]));
 }

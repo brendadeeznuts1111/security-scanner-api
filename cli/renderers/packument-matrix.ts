@@ -38,7 +38,7 @@ function formatMaintainers(maintainers: NpmPerson[] | undefined): string {
 	return `${maintainers.length} maintainers`;
 }
 
-type FieldPair = {label: string; value: string};
+interface FieldPair {label: string; value: string}
 
 export class PackumentMatrixRenderer {
 	render(packument: NpmPackument): void {

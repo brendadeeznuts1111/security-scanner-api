@@ -23,7 +23,7 @@ interface SpawnOptions {
 	onExit?: (proc: Subprocess, exitCode: number, signal: number, error?: Error) => void;
 
 	// ── IPC ──
-	ipc?: (message: any, proc: Subprocess) => void; // IPC message handler
+	ipc?: (message: unknown, proc: Subprocess) => void; // IPC message handler
 	serialization?: IPCSerialization; // Default: "json"
 
 	// ── Windows ──
@@ -71,7 +71,7 @@ const BUN_STREAM_CONFIG = {
 // SUBPROCESS INTERFACE
 // ═══════════════════════════════════════════════════════════════
 
-type FileSink = {write(data: string | BufferSource): number; flush(): void; end(): void};
+interface FileSink {write(data: string | BufferSource): number; flush(): void; end(): void}
 
 interface Subprocess {
 	// ── Streams ──
@@ -310,9 +310,9 @@ function parseArgs(
 	opts?: ParseArgsOptions,
 ): {
 	_: string[];
-	[key: string]: any;
+	[key: string]: string | boolean | string[];
 } {
-	const result: any = {_: []};
+	const result: Record<string, string | boolean | string[]> & {_: string[]} = {_: []};
 	const seen = new Set<string>();
 
 	for (let i = 0; i < args.length; i++) {

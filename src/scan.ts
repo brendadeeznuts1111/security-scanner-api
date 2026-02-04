@@ -8,33 +8,22 @@ import {z} from 'zod';
 import {BUN_SCANNER_COLUMNS} from './scan-columns';
 import {formatStatusCell, type StatusKey} from '../cli/renderers/status-glyphs';
 import {
-	createCookieSession,
 	getSession,
-	updateSessionCookies,
-	addCookieToSession,
 	removeCookieFromSession,
 	deleteSession,
-	listSessions,
 	cleanupExpiredSessions,
-	getProjectSession,
 	createProjectSession,
 	parseCookieString,
-	serializeCookie,
-	serializeSessionCookies,
-	listSessionsForTerminal,
 	formatSessionForTerminal,
-	type CookieSession,
+	addCookieToSession,
+	listSessionsForTerminal,
 	type CookieInfo,
 	type SessionConfig,
 } from './cookie-sessions';
 import {
 	createCookieTerminalManager,
-	promptForCookieData,
-	selectSessionInteractively,
-	type CookieTerminalManager,
 } from './cookie-terminal';
 import {
-	resolveProjectId,
 	validateProjectId,
 	createProjectContext,
 	logProjectContext,
@@ -661,7 +650,7 @@ function statusFromToken(status: string): StatusKey {
 }
 
 // ── R2 (S3-compatible) helpers for profile baseline ──────────────────
-type R2Config = {accountId: string; accessKeyId: string; secretAccessKey: string; bucketName: string};
+interface R2Config {accountId: string; accessKeyId: string; secretAccessKey: string; bucketName: string}
 
 function getR2Config(): R2Config | null {
 	const accountId = Bun.env.R2_ACCOUNT_ID ?? '';
@@ -766,7 +755,7 @@ export function parseEnvVar(contents: string[], key: string): string {
 	let val = '-';
 	for (const text of contents) {
 		const m = text.match(new RegExp(`^${key}\\s*=\\s*["']?([^\\s"'#]+)`, 'm'));
-		if (m && m[1]) val = m[1];
+		if (m?.[1]) val = m[1];
 	}
 	return val;
 }
@@ -861,7 +850,7 @@ export function getGitCommitHashShort(cwd?: string): string {
 }
 
 // ── Shared outdated parsing ───────────────────────────────────────────
-type OutdatedPkg = {name: string; depType: string; current: string; update: string; latest: string; workspace?: string};
+interface OutdatedPkg {name: string; depType: string; current: string; update: string; latest: string; workspace?: string}
 
 function parseBunOutdated(output: string): OutdatedPkg[] {
 	const pkgs: OutdatedPkg[] = [];
@@ -1505,8 +1494,8 @@ function recordFailure(name: string, code: KeychainErr['code']): void {
 	m.lastFailCode = code;
 }
 
-type KeychainOk<T> = {ok: true; value: T};
-export type KeychainErr = {ok: false; code: 'NO_API' | 'ACCESS_DENIED' | 'NOT_FOUND' | 'OS_ERROR'; reason: string};
+interface KeychainOk<T> {ok: true; value: T}
+export interface KeychainErr {ok: false; code: 'NO_API' | 'ACCESS_DENIED' | 'NOT_FOUND' | 'OS_ERROR'; reason: string}
 type KeychainResult<T> = KeychainOk<T> | KeychainErr;
 
 function keychainUnavailableErr(): KeychainErr {
@@ -1952,7 +1941,7 @@ ${itemsXml}
 `;
 }
 
-type RssFeedItem = {title: string; link: string; description: string; pubDate: string};
+interface RssFeedItem {title: string; link: string; description: string; pubDate: string}
 
 export function parseRssFeed(
 	xmlText: string,
@@ -2284,7 +2273,7 @@ type AuditField = (typeof AUDIT_FIELDS)[number];
 
 // ── Scan a single project directory ────────────────────────────────────
 export async function scanProject(dir: string): Promise<ProjectInfo> {
-	const folder = dir.split('/').pop()!;
+	const folder = dir.split('/').pop() ?? '';
 	const profTag = `project:${folder}`;
 	let profStart = 0;
 	const profMark = (label: string) => {
@@ -2417,7 +2406,7 @@ export async function scanProject(dir: string): Promise<ProjectInfo> {
 
 				// bin field: string → single name, object → keys
 				if (typeof pkg.bin === 'string') {
-					base.bin = [base.name.split('/').pop()!];
+					base.bin = [base.name.split('/').pop() ?? base.name];
 				} else if (pkg.bin && typeof pkg.bin === 'object') {
 					base.bin = Object.keys(pkg.bin);
 				}
@@ -2494,7 +2483,7 @@ export async function scanProject(dir: string): Promise<ProjectInfo> {
 	// (Bun load order: .env.local → .env.[NODE_ENV] → .env)
 	const envCandidates = ['.env', '.env.local', '.env.development', '.env.production', '.env.test'];
 	const envResults = await Promise.all(
-		envCandidates.map(f =>
+		envCandidates.map(async f =>
 			Bun.file(`${dir}/${f}`)
 				.text()
 				.catch(() => null),
@@ -2751,7 +2740,7 @@ async function scanProjectsViaIPC(dirs: string[]): Promise<ProjectInfo[]> {
 			for (const w of workers) {
 				try {
 					w.kill();
-				} catch {}
+				} catch { /* expected: process may already be dead */ }
 			}
 		}
 
@@ -3344,7 +3333,7 @@ async function renderAudit(projects: ProjectInfo[]): Promise<void> {
 
 	// dns-prefetch.ts coverage
 	const prefetchChecks = await Promise.all(
-		withPkg.map(p => Bun.file(`${projectDir(p)}/dns-prefetch.ts`).exists()),
+		withPkg.map(async p => Bun.file(`${projectDir(p)}/dns-prefetch.ts`).exists()),
 	);
 	const prefetchCount = prefetchChecks.filter(Boolean).length;
 	const prefetchPct = ((prefetchCount / withPkg.length) * 100).toFixed(0);
@@ -3585,7 +3574,7 @@ async function renderAudit(projects: ProjectInfo[]): Promise<void> {
 				try {
 					const pkg = await Bun.file(path).json();
 					classifyPkg(name, pkg.scripts ?? {});
-				} catch {}
+				} catch (err) { _verboseWarn(`node_modules pkg scan: ${name}`, err); }
 			}),
 		);
 		xrefData.push(xref);
@@ -4331,15 +4320,15 @@ async function fixDns(projects: ProjectInfo[], dryRun: boolean): Promise<void> {
 				if (regMatch) {
 					try {
 						domains.add(new URL(regMatch[1]).hostname);
-					} catch {}
+					} catch { /* invalid registry URL, skip */ }
 				}
 				// [install.scopes] urls
 				for (const m of toml.matchAll(/url\s*=\s*"([^"]+)"/g)) {
 					try {
 						domains.add(new URL(m[1]).hostname);
-					} catch {}
+					} catch { /* invalid scope URL, skip */ }
 				}
-			} catch {}
+			} catch (err) { _verboseWarn('bunfig.toml parse', err); }
 		}
 
 		// Extract from .npmrc
@@ -4354,7 +4343,7 @@ async function fixDns(projects: ProjectInfo[], dryRun: boolean): Promise<void> {
 						if (urlStr) {
 							domains.add(new URL(urlStr).hostname);
 						}
-					} catch {}
+					} catch { /* invalid URL, skip */ }
 				}
 				// scoped registries
 				for (const m of npmrc.matchAll(/^@[^:\s]+:registry\s*=\s*(.+)$/gm)) {
@@ -4363,9 +4352,9 @@ async function fixDns(projects: ProjectInfo[], dryRun: boolean): Promise<void> {
 						if (urlStr) {
 							domains.add(new URL(urlStr).hostname);
 						}
-					} catch {}
+					} catch { /* invalid URL, skip */ }
 				}
-			} catch {}
+			} catch (err) { _verboseWarn('.npmrc parse', err); }
 		}
 
 		// Extract from package.json publishConfig
@@ -4377,9 +4366,9 @@ async function fixDns(projects: ProjectInfo[], dryRun: boolean): Promise<void> {
 				if (pubReg) {
 					try {
 						domains.add(new URL(pubReg).hostname);
-					} catch {}
+					} catch { /* invalid URL, skip */ }
 				}
-			} catch {}
+			} catch (err) { _verboseWarn('package.json publishConfig', err); }
 		}
 
 		// Always include npmjs as fallback
@@ -4779,7 +4768,7 @@ async function fixTrusted(projects: ProjectInfo[], dryRun: boolean): Promise<voi
 							detected.push(pkgName);
 						}
 					}
-				} catch {}
+				} catch (err) { _verboseWarn(`native dep scan: ${pkgName}`, err); }
 			}),
 		);
 
@@ -4835,7 +4824,7 @@ async function whyAcrossProjects(projects: ProjectInfo[], pkg: string, opts: {to
 	);
 	console.log();
 
-	type WhyHit = {folder: string; versions: string[]; depType: string; directBy: string};
+	interface WhyHit {folder: string; versions: string[]; depType: string; directBy: string}
 	const hits: WhyHit[] = [];
 
 	const whyResults = await Promise.all(
@@ -4937,14 +4926,14 @@ async function whyAcrossProjects(projects: ProjectInfo[], pkg: string, opts: {to
 }
 
 // ── Outdated: run `bun outdated` across all projects ───────────────────
-type OutdatedOpts = {
+interface OutdatedOpts {
 	filter?: string[];
 	production?: boolean;
 	omit?: string;
 	global?: boolean;
 	catalog?: boolean;
 	wf?: string[];
-};
+}
 
 async function outdatedAcrossProjects(projects: ProjectInfo[], opts: OutdatedOpts): Promise<void> {
 	// With -r (catalog) or --wf, only scan workspace roots; otherwise all projects with locks
@@ -4971,7 +4960,7 @@ async function outdatedAcrossProjects(projects: ProjectInfo[], opts: OutdatedOpt
 	);
 	console.log();
 
-	type ProjectHit = {folder: string; pkgs: OutdatedPkg[]};
+	interface ProjectHit {folder: string; pkgs: OutdatedPkg[]}
 	const hits: ProjectHit[] = [];
 	let projectsWithOutdated = 0;
 
@@ -5110,7 +5099,7 @@ async function outdatedAcrossProjects(projects: ProjectInfo[], opts: OutdatedOpt
 }
 
 // ── Update: run `bun update` across all projects ───────────────────────
-type UpdateOpts = {dryRun: boolean; patch?: boolean; minor?: boolean};
+interface UpdateOpts {dryRun: boolean; patch?: boolean; minor?: boolean}
 
 async function updateAcrossProjects(projects: ProjectInfo[], opts: UpdateOpts): Promise<void> {
 	const {dryRun, patch, minor} = opts;
@@ -5130,7 +5119,7 @@ async function updateAcrossProjects(projects: ProjectInfo[], opts: UpdateOpts): 
 	console.log();
 
 	// ── Phase 1: Discovery (silent — stdout piped) ─────────────────
-	type UpdatePlan = {project: ProjectInfo; pkgs: OutdatedPkg[]; names: string[]};
+	interface UpdatePlan {project: ProjectInfo; pkgs: OutdatedPkg[]; names: string[]}
 	const plans: UpdatePlan[] = [];
 	let skipped = 0;
 
@@ -5563,7 +5552,7 @@ async function infoPackage(pkg: string, projects: ProjectInfo[], jsonOut: boolea
 						const pkgJson = await Bun.file(`${projectDir(p)}/package.json`).json();
 						const allDeps = {...pkgJson.dependencies, ...pkgJson.devDependencies};
 						if (allDeps[bareName]) return `${p.folder} ${c.dim(allDeps[bareName])}`;
-					} catch {}
+					} catch (err) { _verboseWarn(`dep version check: ${p.folder}`, err); }
 					return null;
 				}),
 		)
@@ -5873,7 +5862,7 @@ ${c.bold('  Other:')}
 	// ── Cookie Session Commands ─────────────────────────────────────────────
 	if (flags['session-create']) {
 		const projectId = validateProjectId(flags['session-create']);
-		const domain = flags['session-domain'] || 'localhost';
+		const domain = String(flags['session-domain'] || 'localhost');
 		
 		if (flags['session-interactive']) {
 			const projectContext = createProjectContext(projectId);
@@ -6196,10 +6185,10 @@ ${c.bold('  Other:')}
 
 	// ── Snapshot-only mode (no full audit) ─────────────────────────
 	if (flags.snapshot && !flags.audit) {
-		const prevSnap = await time('xref:load-snapshot', () => loadXrefSnapshot());
-		const {entries: xrefResult, skipped} = await time('xref:scan', () => scanXrefData(projects, prevSnap));
+		const prevSnap = await time('xref:load-snapshot', async () => loadXrefSnapshot());
+		const {entries: xrefResult, skipped} = await time('xref:scan', async () => scanXrefData(projects, prevSnap));
 		const withPkg = projects.filter(p => p.hasPkg);
-		await time('xref:save-snapshot', () => saveXrefSnapshot(xrefResult, withPkg.length));
+		await time('xref:save-snapshot', async () => saveXrefSnapshot(xrefResult, withPkg.length));
 		console.log(
 			`  Snapshot saved to .audit/xref-snapshot.json (${xrefResult.length} projects${skipped > 0 ? `, ${skipped} unchanged` : ''})`,
 		);
@@ -6209,13 +6198,13 @@ ${c.bold('  Other:')}
 	// ── Compare-only mode (no full audit) ──────────────────────────
 	if (flags.compare && !flags.audit) {
 		const snapshotPath = flags['audit-compare'] ?? undefined;
-		const prevSnapshot = await time('xref:load-snapshot', () => loadXrefSnapshot(snapshotPath));
+		const prevSnapshot = await time('xref:load-snapshot', async () => loadXrefSnapshot(snapshotPath));
 		if (!prevSnapshot) {
 			const label = snapshotPath ?? '.audit/xref-snapshot.json';
 			console.log(`  No snapshot found at ${label} — run --audit or --snapshot first.`);
 			process.exit(1);
 		}
-		const {entries: cmpXrefData} = await time('xref:scan', () => scanXrefData(projects, prevSnapshot));
+		const {entries: cmpXrefData} = await time('xref:scan', async () => scanXrefData(projects, prevSnapshot));
 
 		const prevMap = new Map<string, XrefEntry>();
 		for (const p of prevSnapshot.projects) prevMap.set(p.folder, p);
@@ -6263,32 +6252,32 @@ ${c.bold('  Other:')}
 
 	// ── Audit mode ──────────────────────────────────────────────────
 	if (flags.audit) {
-		await time('mode:audit', () => renderAudit(projects));
+		await time('mode:audit', async () => renderAudit(projects));
 		if (flags.rss) {
-			await time('rss:token-events', () => publishTokenEventsRss());
-			await time('rss:scan-results', () => publishScanResultsRss(projects));
+			await time('rss:token-events', async () => publishTokenEventsRss());
+			await time('rss:scan-results', async () => publishScanResultsRss(projects));
 		}
 		if (flags['advisory-feed']) {
-			await time('advisory:consume', () => consumeAdvisoryFeed(flags['advisory-feed'], projects));
+			await time('advisory:consume', async () => consumeAdvisoryFeed(flags['advisory-feed'], projects));
 		}
 		return;
 	}
 
 	// ── Fix mode ───────────────────────────────────────────────────
 	if (flags.fix) {
-		await time('mode:fix', () => fixProjects(projects, dryRun));
+		await time('mode:fix', async () => fixProjects(projects, dryRun));
 		return;
 	}
 
 	// ── Fix engine mode ────────────────────────────────────────────
 	if (flags['fix-engine']) {
-		await time('mode:fix-engine', () => fixEngine(projects, dryRun));
+		await time('mode:fix-engine', async () => fixEngine(projects, dryRun));
 		return;
 	}
 
 	// ── Fix trusted mode ──────────────────────────────────────────
 	if (flags['fix-trusted']) {
-		await time('mode:fix-trusted', () => fixTrusted(projects, dryRun));
+		await time('mode:fix-trusted', async () => fixTrusted(projects, dryRun));
 		return;
 	}
 

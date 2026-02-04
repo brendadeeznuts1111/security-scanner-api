@@ -27,7 +27,7 @@ export type BunApiKind =
 	| 'object'
 	| 'tagged template';
 
-export type BunApiEntry = {
+export interface BunApiEntry {
 	api: string;
 	category: BunApiCategory;
 	topic: string;
@@ -35,13 +35,16 @@ export type BunApiEntry = {
 	returnType: string;
 	type: string;
 	params: string;
-	protocol: string;
+	protocol: string; // Empty string means no protocol
 	status: BunApiStatus;
 	surface: BunApiSurface;
 	docUrl: string;
-};
+}
 
-export const BUN_DOC_BASE = 'https://bun.sh/docs';
+// Use canonical bun.com/docs (bun.com and bun.sh serve the same content, but bun.com is canonical)
+export const BUN_DOCS_BASE = 'https://bun.com/docs';
+// Legacy alias for backward compatibility
+export const BUN_DOC_BASE = BUN_DOCS_BASE;
 
 // ── Color helpers via Bun.color HSL → ANSI ──
 
@@ -1211,7 +1214,7 @@ export const BUN_API_CATALOG: readonly BunApiEntry[] = [
 		kind: 'function',
 		returnType: 'string',
 		type: 'function \u2192 string',
-		params: 'specifier, parent',
+		params: 'specifier: string, from?: string',
 		protocol: '',
 		status: 'stable',
 		surface: 1,
@@ -1224,22 +1227,22 @@ export const BUN_API_CATALOG: readonly BunApiEntry[] = [
 		kind: 'function',
 		returnType: 'Promise<string>',
 		type: 'function \u2192 Promise<string>',
-		params: 'specifier, parent',
+		params: 'specifier: string, from?: string',
 		protocol: '',
 		status: 'stable',
 		surface: 1,
 		docUrl: `${BUN_DOC_BASE}/api/utils`,
 	},
 	{
-		api: 'ResolveMessage (MODULE_NOT_FOUND)',
+		api: 'ResolveMessage',
 		category: 'Utilities',
 		topic: 'Module Resolution',
-		kind: 'const',
-		returnType: 'ResolveMessage',
-		type: 'const \u2192 ResolveMessage {code: "MODULE_NOT_FOUND"}',
-		params: 'name: ResolveMessage, code: MODULE_NOT_FOUND',
+		kind: 'class',
+		returnType: '',
+		type: 'class',
+		params: '',
 		protocol: '',
-		status: 'stable',
+		status: 'new',
 		surface: 2,
 		docUrl: `${BUN_DOC_BASE}/api/utils`,
 	},
@@ -1730,12 +1733,12 @@ export const BUN_API_CATALOG: readonly BunApiEntry[] = [
 	},
 	{
 		api: 'import.meta.resolve',
-		category: 'Advanced',
-		topic: 'import.meta',
+		category: 'Utilities',
+		topic: 'Module Resolution',
 		kind: 'method',
-		returnType: 'string',
-		type: 'method \u2192 string',
-		params: 'specifier',
+		returnType: 'Promise<string>',
+		type: 'method \u2192 Promise<string>',
+		params: 'specifier: string, parent?: string',
 		protocol: '',
 		status: 'stable',
 		surface: 2,
@@ -1887,8 +1890,8 @@ export class BunApiMatrixRenderer {
 			'API': entry.api,
 			'Topic': entry.topic,
 			'Type': entry.type,
-			'Params': entry.params || '-',
-			'Protocol': entry.protocol || '-',
+			'Params': entry.params || '-', // Use || to handle empty strings
+			'Protocol': entry.protocol || '-', // Use || to handle empty strings
 			'Status': renderStatus(entry.status),
 			'Surface': renderSurface(entry.surface),
 			'Scanner': renderScanner(BUN_SCANNER_APIS.has(entry.api)),

@@ -30,7 +30,7 @@ describe('BUN_STREAM_CONVERTER_RULES', () => {
 
 	test('all rules have documentation URLs', () => {
 		for (const rule of BUN_STREAM_CONVERTER_RULES) {
-			expect(rule.documentation).toStartWith('https://bun.sh/docs/api/streams');
+			expect(rule.documentation).toStartWith('https://bun.com/docs/api/streams');
 		}
 	});
 });

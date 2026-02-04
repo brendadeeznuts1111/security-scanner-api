@@ -36,14 +36,14 @@ export const BUN_STATUS_GLYPHS: Record<
 	done: {glyph: '✔', code: 'U+2714', ascii: 'done', hsl: [120, 80, 45]},
 };
 
-export type ProjectConfig = {
+export interface ProjectConfig {
 	namespace: string;
 	statusHueOffset: number;
 	saturationMod: number;
 	lightnessMod: number;
 	useUnicode: boolean;
 	glyphWidth: number;
-};
+}
 
 const DEFAULT_PROJECT = 'com.tier1380.scanner';
 
@@ -94,7 +94,7 @@ function hslToHex([h, s, l]: HslTuple): string {
 	s /= 100;
 	l /= 100;
 	const a = s * Math.min(l, 1 - l);
-	const f = (n: number) => {
+	const f = (n: number): string => {
 		const k = (n + h / 30) % 12;
 		const c = l - a * Math.max(Math.min(k - 3, 9 - k, 1), -1);
 		return Math.round(c * 255)

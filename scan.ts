@@ -115,7 +115,7 @@ const _useColor = (() => {
 	return process.stdout.isTTY ?? false;
 })();
 
-const _wrap = (code: string) => (_useColor ? (s: string) => `\x1b[${code}m${s}\x1b[0m` : (s: string) => s);
+const _wrap = (code: string): ((s: string) => string) => (_useColor ? (s: string) => `\x1b[${code}m${s}\x1b[0m` : (s: string) => s);
 
 const c = {
 	bold: _wrap('1'),
@@ -159,7 +159,7 @@ async function time<T>(label: string, fn: () => Promise<T>): Promise<T> {
 	return result;
 }
 
-async function timeProject<T>(label: string, fn: () => Promise<T>): Promise<T> {
+async function _timeProject<T>(label: string, fn: () => Promise<T>): Promise<T> {
 	if (!_profileEnabled) return fn();
 	const start = Bun.nanoseconds();
 	const result = await fn();
@@ -343,12 +343,12 @@ if (_profileEnabled) {
 }
 
 /** Pad a string (possibly containing ANSI codes) to a target display width. */
-const _padEnd = (s: string, w: number) => s + ' '.repeat(Math.max(0, w - Bun.stringWidth(s)));
-const _padStart = (s: string, w: number) => ' '.repeat(Math.max(0, w - Bun.stringWidth(s))) + s;
-const pad2 = (n: number) => String(n).padStart(2, '0');
-const fmtDate = (d: Date) =>
+const _padEnd = (s: string, w: number): string => s + ' '.repeat(Math.max(0, w - Bun.stringWidth(s)));
+const _padStart = (s: string, w: number): string => ' '.repeat(Math.max(0, w - Bun.stringWidth(s))) + s;
+const pad2 = (n: number): string => String(n).padStart(2, '0');
+const fmtDate = (d: Date): string =>
 	`${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())} ${pad2(d.getHours())}:${pad2(d.getMinutes())}:${pad2(d.getSeconds())}`;
-const fmtStamp = (d = new Date()) => `${fmtDate(d)} ${_tz}${_tzExplicit ? ` (TZ=${process.env.TZ})` : ''}`;
+const fmtStamp = (d = new Date()): string => `${fmtDate(d)} ${_tz}${_tzExplicit ? ` (TZ=${process.env.TZ})` : ''}`;
 
 /** Extract the first meaningful error line from bun stderr, skipping .env diagnostics and version banners. */
 function extractBunError(stderr: string, fallback: string): string {
@@ -495,7 +495,7 @@ export const BunInfoResponseSchema = z
 
 export type NpmPackument = z.infer<typeof BunInfoResponseSchema>;
 export type NpmPerson = z.infer<typeof NpmPersonSchema>;
-type NpmDist = z.infer<typeof NpmDistSchema>;
+type _NpmDist = z.infer<typeof NpmDistSchema>;
 
 // ── Feature flag helpers ──────────────────────────────────────────────
 
@@ -609,7 +609,7 @@ function statusFromToken(status: string): StatusKey {
 }
 
 // ── R2 (S3-compatible) helpers for profile baseline ──────────────────
-type R2Config = {accountId: string; accessKeyId: string; secretAccessKey: string; bucketName: string};
+interface R2Config {accountId: string; accessKeyId: string; secretAccessKey: string; bucketName: string}
 
 function getR2Config(): R2Config | null {
 	const accountId = Bun.env.R2_ACCOUNT_ID ?? '';
@@ -770,7 +770,7 @@ export function getGitCommitHashShort(cwd?: string): string {
 // ── Shared outdated parsing ───────────────────────────────────────────
 const stripAnsi = Bun.stripANSI;
 
-type OutdatedPkg = {name: string; depType: string; current: string; update: string; latest: string; workspace?: string};
+interface OutdatedPkg {name: string; depType: string; current: string; update: string; latest: string; workspace?: string}
 
 function parseBunOutdated(output: string): OutdatedPkg[] {
 	const pkgs: OutdatedPkg[] = [];
@@ -1326,7 +1326,7 @@ const BUN_DEFAULT_TRUSTED = new Set([
 ]);
 
 const PROJECTS_ROOT = Bun.env.BUN_PLATFORM_HOME ?? '/Users/nolarose/Projects';
-const projectDir = (p: {folder: string}) => `${PROJECTS_ROOT}/${p.folder}`;
+const projectDir = (p: {folder: string}): string => `${PROJECTS_ROOT}/${p.folder}`;
 
 // ── Keychain (Bun.secrets) ────────────────────────────────────────────
 export const BUN_KEYCHAIN_SERVICE = 'dev.bun.scanner';
@@ -1412,8 +1412,8 @@ function recordFailure(name: string, code: KeychainErr['code']): void {
 	m.lastFailCode = code;
 }
 
-type KeychainOk<T> = {ok: true; value: T};
-export type KeychainErr = {ok: false; code: 'NO_API' | 'ACCESS_DENIED' | 'NOT_FOUND' | 'OS_ERROR'; reason: string};
+interface KeychainOk<T> {ok: true; value: T}
+export interface KeychainErr {ok: false; code: 'NO_API' | 'ACCESS_DENIED' | 'NOT_FOUND' | 'OS_ERROR'; reason: string}
 type KeychainResult<T> = KeychainOk<T> | KeychainErr;
 
 function keychainUnavailableErr(): KeychainErr {
@@ -1862,7 +1862,7 @@ ${itemsXml}
 `;
 }
 
-type RssFeedItem = {title: string; link: string; description: string; pubDate: string};
+interface RssFeedItem {title: string; link: string; description: string; pubDate: string}
 
 export function parseRssFeed(
 	xmlText: string,
@@ -2131,7 +2131,7 @@ async function scanXrefData(
 		const trusted = new Set(p.trustedDeps);
 		const xref: XrefEntry = {folder: p.folder, bunDefault: [], explicit: [], blocked: [], lockHash: p.lockHash};
 		const seen = new Set<string>();
-		const classify = (pkgName: string, scripts: Record<string, string>) => {
+		const classify = (pkgName: string, scripts: Record<string, string>): void => {
 			let hasAnyHook = false;
 			for (const h of LIFECYCLE_HOOKS) {
 				if (scripts[h]) {
@@ -2194,10 +2194,10 @@ type AuditField = (typeof AUDIT_FIELDS)[number];
 
 // ── Scan a single project directory ────────────────────────────────────
 export async function scanProject(dir: string): Promise<ProjectInfo> {
-	const folder = dir.split('/').pop()!;
+	const folder = dir.split('/').pop() ?? '';
 	const profTag = `project:${folder}`;
 	let profStart = 0;
-	const profMark = (label: string) => {
+	const profMark = (label: string): void => {
 		if (!_profileEnabled) return;
 		const now = Bun.nanoseconds();
 		if (profStart > 0) {
@@ -2327,7 +2327,7 @@ export async function scanProject(dir: string): Promise<ProjectInfo> {
 
 				// bin field: string → single name, object → keys
 				if (typeof pkg.bin === 'string') {
-					base.bin = [base.name.split('/').pop()!];
+					base.bin = [base.name.split('/').pop() ?? base.name];
 				} else if (pkg.bin && typeof pkg.bin === 'object') {
 					base.bin = Object.keys(pkg.bin);
 				}
@@ -2404,7 +2404,7 @@ export async function scanProject(dir: string): Promise<ProjectInfo> {
 	// (Bun load order: .env.local → .env.[NODE_ENV] → .env)
 	const envCandidates = ['.env', '.env.local', '.env.development', '.env.production', '.env.test'];
 	const envResults = await Promise.all(
-		envCandidates.map(f =>
+		envCandidates.map(async f =>
 			Bun.file(`${dir}/${f}`)
 				.text()
 				.catch(() => null),
@@ -2618,7 +2618,7 @@ export async function scanProject(dir: string): Promise<ProjectInfo> {
 
 // ── IPC worker pool for parallel project scanning ─────────────────────
 
-const IPCToWorkerSchema = z.discriminatedUnion('type', [
+type IPCToWorkerSchema = z.discriminatedUnion('type', [
 	z.object({type: z.literal('scan'), id: z.number(), dir: z.string()}),
 	z.object({type: z.literal('shutdown')}),
 ]);
@@ -2629,7 +2629,7 @@ const IPCFromWorkerSchema = z.discriminatedUnion('type', [
 	z.object({type: z.literal('error'), id: z.number(), error: z.string()}),
 ]);
 
-type IPCToWorker = z.infer<typeof IPCToWorkerSchema>;
+type IPCToWorker = z.infer<IPCToWorkerSchema>;
 type IPCFromWorker = z.infer<typeof IPCFromWorkerSchema>;
 
 async function scanProjectsViaIPC(dirs: string[]): Promise<ProjectInfo[]> {
@@ -2651,7 +2651,7 @@ async function scanProjectsViaIPC(dirs: string[]): Promise<ProjectInfo[]> {
 			}
 		}, 30_000);
 
-		function cleanup() {
+		function cleanup(): void {
 			clearTimeout(timer);
 			process.removeListener('SIGINT', sigHandler);
 			for (const w of workers) {
@@ -2661,14 +2661,14 @@ async function scanProjectsViaIPC(dirs: string[]): Promise<ProjectInfo[]> {
 			}
 		}
 
-		function finish() {
+		function finish(): void {
 			if (settled) return;
 			settled = true;
 			cleanup();
 			resolve(dirs.map((_, i) => results.get(i)!));
 		}
 
-		function dispatch(worker: ReturnType<typeof Bun.spawn>) {
+		function dispatch(worker: ReturnType<typeof Bun.spawn>): void {
 			if (nextIdx < dirs.length) {
 				const id = nextIdx++;
 				worker.send({type: 'scan', id, dir: dirs[id]} satisfies IPCToWorker);
@@ -2677,7 +2677,7 @@ async function scanProjectsViaIPC(dirs: string[]): Promise<ProjectInfo[]> {
 			}
 		}
 
-		function handleMessage(worker: ReturnType<typeof Bun.spawn>, msg: IPCFromWorker) {
+		function handleMessage(worker: ReturnType<typeof Bun.spawn>, msg: IPCFromWorker): void {
 			if (settled) return;
 			if (msg.type === 'ready') {
 				dispatch(worker);
@@ -2723,7 +2723,7 @@ async function scanProjectsViaIPC(dirs: string[]): Promise<ProjectInfo[]> {
 			workers.push(worker);
 		}
 
-		const sigHandler = () => {
+		const sigHandler = (): void => {
 			if (!settled) {
 				settled = true;
 				cleanup();
@@ -2790,7 +2790,7 @@ function matchFilter(p: ProjectInfo, pattern: string): boolean {
 
 // ── Deep inspect view ──────────────────────────────────────────────────
 function inspectProject(p: ProjectInfo): void {
-	const line = (label: string, value: string | number | boolean) =>
+	const line = (label: string, value: string | number | boolean): void =>
 		console.log(`  ${c.cyan(label.padEnd(16))} ${value}`);
 
 	console.log();
@@ -2963,7 +2963,7 @@ function inspectProject(p: ProjectInfo): void {
 		console.log();
 		console.log(`  ${c.bold(c.cyan('Dependency Overrides'))}`);
 		console.log();
-		const printEntries = (label: string, entries: Record<string, string>) => {
+		const printEntries = (label: string, entries: Record<string, string>): void => {
 			const keys = Object.keys(entries);
 			line(label, `${c.yellow(String(keys.length))} mapping(s)`);
 			for (const [k, v] of Object.entries(entries)) {
@@ -2983,7 +2983,7 @@ function renderTable(
 	projects: ProjectInfo[],
 	detail: boolean,
 	tokenStatusByFolder: Map<string, string> | null,
-) {
+): void {
 	const columnDefs = BUN_SCANNER_COLUMNS.PROJECT_SCAN;
 
 	const columnValueMap: Record<string, (p: ProjectInfo, idx: number) => string | number> = {
@@ -3056,9 +3056,9 @@ function sortProjects(projects: ProjectInfo[], key: SortKey): ProjectInfo[] {
 			return sorted.sort((a, b) => a.name.localeCompare(b.name));
 		case 'totalDeps':
 		case 'deps':
-			return sorted.sort((a, b) => b.totalDeps - a.totalDeps);
+			return sorted.sort((a, b): number => b.totalDeps - a.totalDeps);
 		case 'version':
-			return sorted.sort((a, b) => {
+			return sorted.sort((a, b): number => {
 				if (a.version === '-') return 1;
 				if (b.version === '-') return -1;
 				return semverCompare(a.version, b.version);
@@ -3249,7 +3249,7 @@ async function renderAudit(projects: ProjectInfo[]): Promise<void> {
 
 	// dns-prefetch.ts coverage
 	const prefetchChecks = await Promise.all(
-		withPkg.map(p => Bun.file(`${projectDir(p)}/dns-prefetch.ts`).exists()),
+		withPkg.map(async p => Bun.file(`${projectDir(p)}/dns-prefetch.ts`).exists()),
 	);
 	const prefetchCount = prefetchChecks.filter(Boolean).length;
 	const prefetchPct = ((prefetchCount / withPkg.length) * 100).toFixed(0);
@@ -3447,7 +3447,7 @@ async function renderAudit(projects: ProjectInfo[]): Promise<void> {
 		const xref: XrefEntry = {folder: p.folder, bunDefault: [], explicit: [], blocked: [], lockHash: p.lockHash};
 		const xrefSeen = new Set<string>();
 
-		const classifyPkg = (pkgName: string, scripts: Record<string, string>) => {
+		const classifyPkg = (pkgName: string, scripts: Record<string, string>): void => {
 			const scriptValues = Object.values(scripts).join(' ');
 			const isNative = isNativeMatch(pkgName) || isNativeMatch(scriptValues);
 			let hasAnyHook = false;
@@ -3535,7 +3535,7 @@ async function renderAudit(projects: ProjectInfo[]): Promise<void> {
 		},
 		prepare: {
 			owner: t => (t.found === 0 ? 'System Default' : `Power ${withTrusted}`),
-			action: t =>
+			action: (t): string =>
 				t.found === 0
 					? 'No action'
 					: t.blocked > 0
@@ -3543,8 +3543,8 @@ async function renderAudit(projects: ProjectInfo[]): Promise<void> {
 						: 'Verified',
 		},
 		preprepare: {
-			owner: () => 'System Default',
-			action: t => (t.found === 0 ? 'No action' : 'Review pre-prepare hooks'),
+			owner: (): string => 'System Default',
+			action: (t): string => (t.found === 0 ? 'No action' : 'Review pre-prepare hooks'),
 		},
 		postprepare: {
 			owner: () => 'System Default',
@@ -4734,7 +4734,7 @@ async function whyAcrossProjects(projects: ProjectInfo[], pkg: string, opts: {to
 	);
 	console.log();
 
-	type WhyHit = {folder: string; versions: string[]; depType: string; directBy: string};
+	interface WhyHit {folder: string; versions: string[]; depType: string; directBy: string}
 	const hits: WhyHit[] = [];
 
 	const whyResults = await Promise.all(
@@ -4836,14 +4836,14 @@ async function whyAcrossProjects(projects: ProjectInfo[], pkg: string, opts: {to
 }
 
 // ── Outdated: run `bun outdated` across all projects ───────────────────
-type OutdatedOpts = {
+interface OutdatedOpts {
 	filter?: string[];
 	production?: boolean;
 	omit?: string;
 	global?: boolean;
 	catalog?: boolean;
 	wf?: string[];
-};
+}
 
 async function outdatedAcrossProjects(projects: ProjectInfo[], opts: OutdatedOpts): Promise<void> {
 	// With -r (catalog) or --wf, only scan workspace roots; otherwise all projects with locks
@@ -4870,7 +4870,7 @@ async function outdatedAcrossProjects(projects: ProjectInfo[], opts: OutdatedOpt
 	);
 	console.log();
 
-	type ProjectHit = {folder: string; pkgs: OutdatedPkg[]};
+	interface ProjectHit {folder: string; pkgs: OutdatedPkg[]}
 	const hits: ProjectHit[] = [];
 	let projectsWithOutdated = 0;
 
@@ -5009,7 +5009,7 @@ async function outdatedAcrossProjects(projects: ProjectInfo[], opts: OutdatedOpt
 }
 
 // ── Update: run `bun update` across all projects ───────────────────────
-type UpdateOpts = {dryRun: boolean; patch?: boolean; minor?: boolean};
+interface UpdateOpts {dryRun: boolean; patch?: boolean; minor?: boolean}
 
 async function updateAcrossProjects(projects: ProjectInfo[], opts: UpdateOpts): Promise<void> {
 	const {dryRun, patch, minor} = opts;
@@ -5029,7 +5029,7 @@ async function updateAcrossProjects(projects: ProjectInfo[], opts: UpdateOpts): 
 	console.log();
 
 	// ── Phase 1: Discovery (silent — stdout piped) ─────────────────
-	type UpdatePlan = {project: ProjectInfo; pkgs: OutdatedPkg[]; names: string[]};
+	interface UpdatePlan {project: ProjectInfo; pkgs: OutdatedPkg[]; names: string[]}
 	const plans: UpdatePlan[] = [];
 	let skipped = 0;
 
@@ -5137,7 +5137,7 @@ async function updateAcrossProjects(projects: ProjectInfo[], opts: UpdateOpts): 
 	let summaryPrinted = false;
 	const completedFolders: string[] = [];
 
-	const onSignal = () => {
+	const onSignal = (): void => {
 		if (interrupted) {
 			console.log(c.red('\n  Force quit.'));
 			process.exit(1);
@@ -5148,7 +5148,7 @@ async function updateAcrossProjects(projects: ProjectInfo[], opts: UpdateOpts): 
 	process.on('SIGINT', onSignal);
 	process.on('SIGTERM', onSignal);
 
-	const onExit = (code: number) => {
+	const onExit = (code: number): void => {
 		if (summaryPrinted) return;
 		console.log();
 		console.log(
@@ -5379,8 +5379,9 @@ async function infoPackage(pkg: string, projects: ProjectInfo[], jsonOut: boolea
 	}
 
 	// Pretty print
-	const line = (label: string, value: string | number | boolean | undefined) =>
-		value !== undefined && value !== '' && console.log(`  ${c.cyan(label.padEnd(18))} ${value}`);
+	const line = (label: string, value: string | number | boolean | undefined): void => {
+		if (value !== undefined && value !== '') console.log(`  ${c.cyan(label.padEnd(18))} ${value}`);
+	};
 
 	console.log();
 	console.log(c.bold(c.magenta(`  ╭─ ${meta.name ?? pkg} ─╮`)));
@@ -5854,10 +5855,10 @@ ${c.bold('  Other:')}
 
 	// ── Snapshot-only mode (no full audit) ─────────────────────────
 	if (flags.snapshot && !flags.audit) {
-		const prevSnap = await time('xref:load-snapshot', () => loadXrefSnapshot());
-		const {entries: xrefResult, skipped} = await time('xref:scan', () => scanXrefData(projects, prevSnap));
+		const prevSnap = await time('xref:load-snapshot', async () => loadXrefSnapshot());
+		const {entries: xrefResult, skipped} = await time('xref:scan', async () => scanXrefData(projects, prevSnap));
 		const withPkg = projects.filter(p => p.hasPkg);
-		await time('xref:save-snapshot', () => saveXrefSnapshot(xrefResult, withPkg.length));
+		await time('xref:save-snapshot', async () => saveXrefSnapshot(xrefResult, withPkg.length));
 		console.log(
 			`  Snapshot saved to .audit/xref-snapshot.json (${xrefResult.length} projects${skipped > 0 ? `, ${skipped} unchanged` : ''})`,
 		);
@@ -5867,13 +5868,13 @@ ${c.bold('  Other:')}
 	// ── Compare-only mode (no full audit) ──────────────────────────
 	if (flags.compare && !flags.audit) {
 		const snapshotPath = flags['audit-compare'] ?? undefined;
-		const prevSnapshot = await time('xref:load-snapshot', () => loadXrefSnapshot(snapshotPath));
+		const prevSnapshot = await time('xref:load-snapshot', async () => loadXrefSnapshot(snapshotPath));
 		if (!prevSnapshot) {
 			const label = snapshotPath ?? '.audit/xref-snapshot.json';
 			console.log(`  No snapshot found at ${label} — run --audit or --snapshot first.`);
 			process.exit(1);
 		}
-		const {entries: cmpXrefData} = await time('xref:scan', () => scanXrefData(projects, prevSnapshot));
+		const {entries: cmpXrefData} = await time('xref:scan', async () => scanXrefData(projects, prevSnapshot));
 
 		const prevMap = new Map<string, XrefEntry>();
 		for (const p of prevSnapshot.projects) prevMap.set(p.folder, p);
@@ -5921,32 +5922,32 @@ ${c.bold('  Other:')}
 
 	// ── Audit mode ──────────────────────────────────────────────────
 	if (flags.audit) {
-		await time('mode:audit', () => renderAudit(projects));
+		await time('mode:audit', async () => renderAudit(projects));
 		if (flags.rss) {
-			await time('rss:token-events', () => publishTokenEventsRss());
-			await time('rss:scan-results', () => publishScanResultsRss(projects));
+			await time('rss:token-events', async () => publishTokenEventsRss());
+			await time('rss:scan-results', async () => publishScanResultsRss(projects));
 		}
 		if (flags['advisory-feed']) {
-			await time('advisory:consume', () => consumeAdvisoryFeed(flags['advisory-feed'], projects));
+			await time('advisory:consume', async () => consumeAdvisoryFeed(flags['advisory-feed'], projects));
 		}
 		return;
 	}
 
 	// ── Fix mode ───────────────────────────────────────────────────
 	if (flags.fix) {
-		await time('mode:fix', () => fixProjects(projects, dryRun));
+		await time('mode:fix', async () => fixProjects(projects, dryRun));
 		return;
 	}
 
 	// ── Fix engine mode ────────────────────────────────────────────
 	if (flags['fix-engine']) {
-		await time('mode:fix-engine', () => fixEngine(projects, dryRun));
+		await time('mode:fix-engine', async () => fixEngine(projects, dryRun));
 		return;
 	}
 
 	// ── Fix trusted mode ──────────────────────────────────────────
 	if (flags['fix-trusted']) {
-		await time('mode:fix-trusted', () => fixTrusted(projects, dryRun));
+		await time('mode:fix-trusted', async () => fixTrusted(projects, dryRun));
 		return;
 	}
 

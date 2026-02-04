@@ -1,5 +1,5 @@
 // lib/bun-validator.ts — Runtime verification with nanorisk
-export function validateBunRuntime() {
+export function validateBunRuntime(): {valid: boolean; riskScore: number; latencyNs: number} {
 	const start = Bun.nanoseconds();
 	const valid =
 		!!Bun?.version &&

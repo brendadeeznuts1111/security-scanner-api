@@ -7,7 +7,7 @@
 import { readdir } from 'node:fs/promises';
 
 // ── 1. Lazy stat: Bun.file() + exists() + size (no eager stat()) ─────────────────
-export function lazyFile(path: string) {
+export function lazyFile(path: string): Bun.File {
 	return Bun.file(path);
 }
 
@@ -19,7 +19,7 @@ export const BUN_MAX_SAFE_SIZE = Number.MAX_SAFE_INTEGER;
 
 // ── 2. Batched existence checks ───────────────────────────────────────────────
 export async function batchedExists(paths: string[]): Promise<boolean[]> {
-	const checks = paths.map((p) => Bun.file(p).exists());
+	const checks = paths.map(async (p) => Bun.file(p).exists());
 	return Promise.all(checks);
 }
 

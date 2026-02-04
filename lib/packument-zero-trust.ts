@@ -1,10 +1,10 @@
 import {BunInfoResponseSchema, type NpmPackument} from '../scan';
 
-export type PackumentError = {
+export interface PackumentError {
 	code: 'SPAWN_FAILED' | 'NON_ZERO_EXIT' | 'INVALID_JSON' | 'VALIDATION_FAILED';
 	message: string;
 	cause?: unknown;
-};
+}
 
 export type PackumentResult = {ok: true; data: NpmPackument} | {ok: false; error: PackumentError};
 
@@ -25,7 +25,7 @@ export class ZeroTrustPackumentResolver {
 
 	async safeResolve(name: string): Promise<PackumentResult> {
 		// 1. Validate input
-		if (!name || !name.trim()) {
+		if (!name?.trim()) {
 			return {
 				ok: false,
 				error: {code: 'SPAWN_FAILED', message: `Invalid package name: "${name}"`},

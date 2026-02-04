@@ -92,7 +92,7 @@ export const BUN_API_PROVENANCE: Readonly<Record<string, string>> = {
 	'Bun.stringWidth': '<1.2',
 	'Bun.resolveSync': '<1.2',
 	'Bun.resolve': '<1.2',
-	'ResolveMessage (MODULE_NOT_FOUND)': '<1.2',
+	'ResolveMessage': '1.2.0',
 	'Bun.fileURLToPath': '<1.2',
 	'Bun.pathToFileURL': '<1.2',
 	'Bun.Glob': '<1.2',
@@ -243,7 +243,7 @@ export const BUN_RELATED_APIS: Readonly<Record<string, readonly string[]>> = {
 	'Bun.build': ['Bun.Transpiler', 'Bun.plugin', 'bun:bundle'],
 	'Bun.Transpiler': ['Bun.build', 'Bun.plugin'],
 	'Bun.FileSystemRouter': ['URLPattern', 'Bun.serve'],
-	'Bun.plugin': ['Bun.build', 'Bun.Transpiler', 'Bun.resolve', 'ResolveMessage (MODULE_NOT_FOUND)'],
+	'Bun.plugin': ['Bun.build', 'Bun.Transpiler', 'Bun.resolve', 'ResolveMessage'],
 	'bun:bundle': ['Bun.build', 'Bun.Transpiler'],
 
 	// Hashing & Security
@@ -306,10 +306,10 @@ export const BUN_RELATED_APIS: Readonly<Record<string, readonly string[]>> = {
 	'Bun.wrapAnsi': ['Bun.stringWidth', 'Bun.stripANSI'],
 
 	// Utilities — module resolution
-	'Bun.resolveSync': ['Bun.resolve', 'Bun.fileURLToPath', 'ResolveMessage (MODULE_NOT_FOUND)', 'import.meta.resolve'],
-	'Bun.resolve': ['Bun.resolveSync', 'Bun.fileURLToPath', 'ResolveMessage (MODULE_NOT_FOUND)', 'import.meta.resolve'],
-	'ResolveMessage (MODULE_NOT_FOUND)': ['Bun.resolve', 'Bun.resolveSync', 'Bun.plugin', 'import.meta.resolve'],
-	'import.meta.resolve': ['Bun.resolve', 'Bun.resolveSync', 'import.meta', 'ResolveMessage (MODULE_NOT_FOUND)'],
+	'Bun.resolveSync': ['Bun.resolve', 'Bun.fileURLToPath', 'ResolveMessage', 'import.meta.resolve'],
+	'Bun.resolve': ['Bun.resolveSync', 'Bun.fileURLToPath', 'ResolveMessage', 'import.meta.resolve'],
+	'ResolveMessage': ['Bun.resolve', 'Bun.resolveSync', 'Bun.plugin', 'import.meta.resolve'],
+	'import.meta.resolve': ['Bun.resolve', 'Bun.resolveSync', 'import.meta', 'ResolveMessage'],
 	'import.meta': ['import.meta.resolve', 'Bun.fileURLToPath', 'Bun.pathToFileURL', 'Bun.main'],
 	'Bun.fileURLToPath': ['Bun.pathToFileURL', 'Bun.resolveSync', 'import.meta'],
 	'Bun.pathToFileURL': ['Bun.fileURLToPath', 'Bun.resolve', 'import.meta'],
@@ -438,7 +438,7 @@ export const BUN_SEARCH_KEYWORDS: Readonly<Record<string, readonly string[]>> = 
 	// Utilities — module resolution
 	'Bun.resolveSync': ['resolve', 'module', 'import', 'path', 'sync', 'require', 'specifier'],
 	'Bun.resolve': ['resolve', 'module', 'import', 'path', 'async', 'specifier', 'dynamic import'],
-	'ResolveMessage (MODULE_NOT_FOUND)': ['module', 'not found', 'resolve', 'import', 'require', 'error', 'resolvemessage', 'circular', 'missing'],
+	'ResolveMessage': ['module', 'not found', 'resolve', 'import', 'require', 'error', 'resolvemessage', 'circular', 'missing'],
 	'import.meta.resolve': ['resolve', 'module', 'import', 'esm', 'specifier', 'dynamic import', 'lazy loading'],
 	'import.meta': ['import', 'meta', 'url', 'dirname', 'filename', 'resolve', 'esm'],
 	'Bun.fileURLToPath': ['file', 'url', 'path', 'convert', 'file://'],
