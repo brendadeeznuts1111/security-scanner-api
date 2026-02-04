@@ -112,10 +112,14 @@ export interface RScoreParams {
 }
 
 export function calculateRScore(params: RScoreParams): number {
-	const {P_ratio, M_impact, E_elimination, S_hardening, D_ergonomics} = params;
-	return (
-		Math.min(P_ratio, 1.0) * 0.35 + M_impact * 0.3 + E_elimination * 0.2 + S_hardening * 0.1 + D_ergonomics * 0.05
-	);
+	const {
+		P_ratio: pRatio,
+		M_impact: mImpact,
+		E_elimination: eElimination,
+		S_hardening: sHardening,
+		D_ergonomics: dErgonomics,
+	} = params;
+	return Math.min(pRatio, 1.0) * 0.35 + mImpact * 0.3 + eElimination * 0.2 + sHardening * 0.1 + dErgonomics * 0.05;
 }
 
 /**
@@ -182,7 +186,7 @@ export function calculateSpeedup(sizeKB: number): number {
 	return 5.2 + 2.5 * Math.log10(Math.max(0.1, sizeKB));
 }
 
-// ── 7. Lazy tree materialization (monomorphic shape) ───────────────────────────
+// ── 8. Lazy tree materialization (monomorphic shape) ───────────────────────────
 export async function* scanGenerator(rootPath: string): AsyncGenerator<OptimizedDirectoryNode> {
 	const stack: string[] = [rootPath];
 
@@ -223,7 +227,7 @@ export async function* scanGenerator(rootPath: string): AsyncGenerator<Optimized
 	}
 }
 
-// ── 8. Flatten tree (no recursion) ────────────────────────────────────────────
+// ── 9. Flatten tree (no recursion) ────────────────────────────────────────────
 export function flattenTree(root: OptimizedDirectoryNode): OptimizedDirectoryNode[] {
 	const queue: OptimizedDirectoryNode[] = [root];
 	const result: OptimizedDirectoryNode[] = [];
@@ -233,4 +237,107 @@ export function flattenTree(root: OptimizedDirectoryNode): OptimizedDirectoryNod
 		if (node.children) queue.push(...node.children);
 	}
 	return result;
+}
+
+// ── 7. R-Score formatting utilities ─────────────────────────────────────────────
+/**
+ * Format R-Score with status indicator
+ *
+ * @param rScore - R-Score value (0-1)
+ * @param precision - Number of decimal places (default: 3)
+ * @returns Formatted string with status indicator
+ *
+ * @example
+ * ```ts
+ * formatRScore(0.95); // => "✅ 0.950 (Excellent)"
+ * formatRScore(0.85); // => "✅ 0.850 (Good)"
+ * formatRScore(0.75); // => "⚠️  0.750 (Acceptable)"
+ * ```
+ */
+export function formatRScore(rScore: number, precision: number = 3): string {
+	const formatted = rScore.toFixed(precision);
+	if (rScore >= 0.95) return `✅ ${formatted} (Excellent)`;
+	if (rScore > 0.9) return `✅ ${formatted} (Good)`;
+	if (rScore > 0.8) return `⚠️  ${formatted} (Acceptable)`;
+	return `❌ ${formatted} (Poor)`;
+}
+
+/**
+ * Format R-Score breakdown table
+ *
+ * @param params - R-Score parameters
+ * @param options - Formatting options
+ * @returns Formatted table string
+ *
+ * @example
+ * ```ts
+ * const table = formatRScoreTable({
+ *   P_ratio: 0.35,
+ *   M_impact: 0.93,
+ *   E_elimination: 1.00,
+ *   S_hardening: 1.00,
+ *   D_ergonomics: 0.95
+ * });
+ * ```
+ */
+export interface RScoreTableOptions {
+	showWeights?: boolean;
+	showContributions?: boolean;
+	precision?: number;
+}
+
+export function formatRScoreTable(params: RScoreParams, options: RScoreTableOptions = {}): string {
+	const {showWeights = true, showContributions = true, precision = 3} = options;
+	const rScore = calculateRScore(params);
+	const weights = {P_ratio: 0.35, M_impact: 0.3, E_elimination: 0.2, S_hardening: 0.1, D_ergonomics: 0.05};
+
+	const rows: string[] = [];
+	rows.push('┌─────────────────────┬───────────┬─────────────┬──────────────┐');
+	rows.push('│ Component           │   Value   │   Weight    │ Contribution │');
+	rows.push('├─────────────────────┼───────────┼─────────────┼──────────────┤');
+
+	const components = [
+		{name: 'P_ratio', value: params.P_ratio, label: 'Performance Ratio'},
+		{name: 'M_impact', value: params.M_impact, label: 'Memory Impact'},
+		{name: 'E_elimination', value: params.E_elimination, label: 'Elimination'},
+		{name: 'S_hardening', value: params.S_hardening, label: 'Hardening'},
+		{name: 'D_ergonomics', value: params.D_ergonomics, label: 'Ergonomics'},
+	];
+
+	for (const comp of components) {
+		const weight = weights[comp.name as keyof typeof weights];
+		const contribution = comp.value * weight;
+		const valueStr = comp.value.toFixed(precision).padStart(9);
+		const weightStr = showWeights ? weight.toFixed(2).padStart(11) : '     N/A    ';
+		const contribStr = showContributions ? contribution.toFixed(precision).padStart(12) : '      N/A     ';
+		const label = comp.label.padEnd(19);
+		rows.push(`│ ${label} │ ${valueStr} │ ${weightStr} │ ${contribStr} │`);
+	}
+
+	rows.push('├─────────────────────┼───────────┼─────────────┼──────────────┤');
+	const totalStr = rScore.toFixed(precision).padStart(9);
+	const totalLabel = 'R-Score (Total)'.padEnd(19);
+	rows.push(`│ ${totalLabel} │ ${totalStr} │    1.00     │ ${totalStr.padStart(12)} │`);
+	rows.push('└─────────────────────┴───────────┴─────────────┴──────────────┘');
+
+	return rows.join('\n');
+}
+
+/**
+ * Format speedup with size context
+ *
+ * @param sizeKB - Payload size in kilobytes
+ * @param precision - Number of decimal places (default: 2)
+ * @returns Formatted speedup string
+ *
+ * @example
+ * ```ts
+ * formatSpeedup(100); // => "10.20x (100 KB)"
+ * formatSpeedup(1024); // => "12.70x (1.0 MB)"
+ * ```
+ */
+export function formatSpeedup(sizeKB: number, precision: number = 2): string {
+	const speedup = calculateSpeedup(sizeKB);
+	const sizeLabel = sizeKB < 1024 ? `${sizeKB} KB` : `${(sizeKB / 1024).toFixed(1)} MB`;
+	return `${speedup.toFixed(precision)}x (${sizeLabel})`;
 }
