@@ -12,7 +12,8 @@ export type R2CookieError = {
 		| 'R2_FETCH_FAILED'
 		| 'DECOMPRESS_FAILED'
 		| 'INVALID_PAYLOAD'
-		| 'CHECKSUM_MISMATCH';
+		| 'CHECKSUM_MISMATCH'
+		| 'EXPIRED';
 	message: string;
 	cause?: unknown;
 };
@@ -30,6 +31,7 @@ export interface R2CookieMeta {
 	decompressed: boolean;
 	size: number;
 	latencyNs: number;
+	ageMs: number;
 }
 
 export interface R2CookieConfig {
@@ -75,6 +77,7 @@ function computeChecksum(payload: Omit<R2CookiePayload, 'checksum'>): string {
 export async function loadCookiesFromR2(
 	r2Key: string,
 	config?: R2CookieConfig,
+	maxAgeMs?: number,
 ): Promise<R2CookieResult<{cookies: Bun.CookieMap; meta: R2CookieMeta}>> {
 	const resolved = config ?? getR2CookieConfig();
 	if (!resolved) {
@@ -148,6 +151,11 @@ export async function loadCookiesFromR2(
 		};
 	}
 
+	const ageMs = Date.now() - payload.timestamp;
+	if (maxAgeMs !== undefined && ageMs > maxAgeMs) {
+		return {ok: false, error: {code: 'EXPIRED', message: `Payload age ${ageMs}ms exceeds max ${maxAgeMs}ms`}};
+	}
+
 	const cookies = new Bun.CookieMap(payload.cookies);
 	const latencyNs = Bun.nanoseconds() - start;
 
@@ -155,7 +163,7 @@ export async function loadCookiesFromR2(
 		ok: true,
 		data: {
 			cookies,
-			meta: {decompressed, size: buf.byteLength, latencyNs},
+			meta: {decompressed, size: buf.byteLength, latencyNs, ageMs},
 		},
 	};
 }
@@ -211,4 +219,36 @@ export async function saveCookiesToR2(
 	}
 
 	return {ok: true, data: {bytesWritten: body.byteLength, compressed: shouldCompress}};
+}
+
+// --- Batch Operations ---
+
+export async function loadManyFromR2(
+	r2Keys: string[],
+	config?: R2CookieConfig,
+	maxAgeMs?: number,
+): Promise<Map<string, R2CookieResult<{cookies: Bun.CookieMap; meta: R2CookieMeta}>>> {
+	const resolved = config ?? getR2CookieConfig();
+	if (!resolved) {
+		const error: R2CookieError = {code: 'R2_CONFIG_MISSING', message: 'R2 credentials not configured'};
+		return new Map(r2Keys.map(key => [key, {ok: false, error}]));
+	}
+
+	const results = await Promise.all(r2Keys.map(key => loadCookiesFromR2(key, resolved, maxAgeMs)));
+	return new Map(r2Keys.map((key, i) => [key, results[i]!]));
+}
+
+export async function saveManyToR2(
+	entries: Array<{cookies: Bun.CookieMap; r2Key: string}>,
+	config?: R2CookieConfig,
+	compress?: boolean,
+): Promise<Map<string, R2CookieResult<{bytesWritten: number; compressed: boolean}>>> {
+	const resolved = config ?? getR2CookieConfig();
+	if (!resolved) {
+		const error: R2CookieError = {code: 'R2_CONFIG_MISSING', message: 'R2 credentials not configured'};
+		return new Map(entries.map(e => [e.r2Key, {ok: false, error}]));
+	}
+
+	const results = await Promise.all(entries.map(e => saveCookiesToR2(e.cookies, e.r2Key, resolved, compress)));
+	return new Map(entries.map((e, i) => [e.r2Key, results[i]!]));
 }
