@@ -246,13 +246,13 @@ function generateDashboardHTML(registry: VersionRegistry): string {
         <div class="header">
             <h1>🏆 BUN Constants Dashboard</h1>
             <p>Tier-1380 Certified Version Management System</p>
-            <div class="badges">
-                <img src="badges/version.svg" alt="Version">
-                <img src="badges/tier-1380.svg" alt="Tier-1380">
-                <img src="badges/constants.svg" alt="Constants">
-                <img src="badges/schema.svg" alt="Schema">
-                <img src="badges/mcp.svg" alt="MCP">
-                <img src="badges/col-89.svg" alt="Col-89">
+            <div class="badges" id="badgesContainer">
+                <img src="badges/version.svg" alt="Version" data-badge="version.svg">
+                <img src="badges/tier_1380.svg" alt="Tier-1380" data-badge="tier_1380.svg">
+                <img src="badges/constants.svg" alt="Constants" data-badge="constants.svg">
+                <img src="badges/schema.svg" alt="Schema" data-badge="schema.svg">
+                <img src="badges/mcp.svg" alt="MCP" data-badge="mcp.svg">
+                <img src="badges/col_89.svg" alt="Col-89" data-badge="col_89.svg">
             </div>
         </div>
 
@@ -609,6 +609,43 @@ function generateDashboardHTML(registry: VersionRegistry): string {
             URL.revokeObjectURL(url);
         }
 
+        // Initialize badge paths with file:// protocol fallback
+        (function() {
+            const isFileProtocol = window.location.protocol === 'file:';
+            if (isFileProtocol) {
+                const badgeImages = document.querySelectorAll('#badgesContainer img[data-badge]');
+                const dashboardPath = window.location.pathname;
+                const dashboardDir = dashboardPath.substring(0, dashboardPath.lastIndexOf('/'));
+                
+                badgeImages.forEach(img => {
+                    const badgeName = img.getAttribute('data-badge');
+                    // For file:// protocol, use Bun.file() compatible paths
+                    // Try relative path first (works when dashboard.html is in same dir as badges/)
+                    const relativePath = \`\${dashboardDir}/badges/\${badgeName}\`;
+                    
+                    // Fallback: construct file:// URL using Bun.file() pattern
+                    // Bun.file() supports file:// URLs as per https://bun.com/docs/runtime/file-io
+                    try {
+                        // Use relative path - browsers handle file:// relative paths
+                        img.src = relativePath;
+                        
+                        // If image fails to load, try absolute file:// URL
+                        img.onerror = function() {
+                            try {
+                                // Construct absolute file:// URL
+                                const absolutePath = new URL(relativePath, 'file://').href;
+                                this.src = absolutePath;
+                            } catch (e) {
+                                console.warn(\`Failed to load badge: \${badgeName}\`);
+                            }
+                        };
+                    } catch (e) {
+                        console.warn(\`Failed to set badge path: \${badgeName}\`);
+                    }
+                });
+            }
+        })();
+
         // Initialize
         updatePagination(filteredData.length);
         document.querySelector('.filter-btn[data-filter="all"]').classList.add('active');
@@ -665,7 +702,7 @@ function main(): void {
 
 				const server = Bun.serve({
 					port: 3000,
-					fetch(req) {
+					async fetch(req) {
 						const url = new URL(req.url);
 						if (url.pathname === '/') {
 							return new Response(html, {
@@ -673,14 +710,41 @@ function main(): void {
 							});
 						} else if (url.pathname.startsWith('/badges/')) {
 							try {
-								const badgePath = join(BADGES_DIR, url.pathname.replace('/badges/', ''));
+								const badgeName = url.pathname.replace('/badges/', '');
+								// Try regular file path first
+								const badgePath = join(BADGES_DIR, badgeName);
+
+								if (existsSync(badgePath)) {
+									// Use Bun.file() with file:// protocol fallback
+									const badgeFile = Bun.file(badgePath);
+									if (await badgeFile.exists()) {
+										return new Response(badgeFile, {
+											headers: {'Content-Type': 'image/svg+xml'},
+										});
+									}
+								}
+
+								// Fallback to file:// URL if regular path doesn't work
+								try {
+									const fileUrl = new URL(`file://${badgePath}`);
+									const badgeFile = Bun.file(fileUrl);
+									if (await badgeFile.exists()) {
+										return new Response(badgeFile, {
+											headers: {'Content-Type': 'image/svg+xml'},
+										});
+									}
+								} catch {}
+
+								// Last resort: read file directly
 								if (existsSync(badgePath)) {
 									const badgeContent = readFileSync(badgePath, 'utf-8');
 									return new Response(badgeContent, {
 										headers: {'Content-Type': 'image/svg+xml'},
 									});
 								}
-							} catch {}
+							} catch (error) {
+								console.warn(`Failed to load badge: ${error.message}`);
+							}
 						}
 						return new Response('Not Found', {status: 404});
 					},
