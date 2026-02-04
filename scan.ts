@@ -7,6 +7,7 @@ import {createHmac, createHash} from 'node:crypto';
 import {dns} from 'bun';
 import {z} from 'zod';
 import {BUN_SCANNER_COLUMNS} from './scan-columns';
+import {formatStatusCell, type StatusKey} from './cli/renderers/status-glyphs';
 
 // ── Bun Secrets API type augmentation ─────────────────────────────────
 interface BunSecretsAPI {
@@ -590,18 +591,7 @@ function projectTokenService(p: ProjectInfo): string {
 	return `com.vercel.cli.${org}.${project}`;
 }
 
-// ── Status glyphs + HSL colors (Bun.color) ───────────────────────────
-const STATUS_GLYPHS = {
-	critical: {glyph: '🔴', hsl: [0, 100, 50], ascii: '!!'},
-	error: {glyph: '✗', hsl: [0, 80, 45], ascii: 'X'},
-	warning: {glyph: '⚠', hsl: [35, 100, 50], ascii: '!'},
-	success: {glyph: '✓', hsl: [120, 100, 40], ascii: 'Y'},
-	info: {glyph: 'ℹ', hsl: [200, 100, 50], ascii: 'i'},
-	unknown: {glyph: '?', hsl: [0, 0, 50], ascii: '?'},
-} as const;
-
-type StatusKey = keyof typeof STATUS_GLYPHS;
-
+// ── Token status mapping ──────────────────────────────────────────────
 function statusFromToken(status: string): StatusKey {
 	switch (status) {
 		case 'keychain':
@@ -616,24 +606,6 @@ function statusFromToken(status: string): StatusKey {
 		default:
 			return 'unknown';
 	}
-}
-
-function hueOffsetForService(service: string): number {
-	return Number(Bun.hash.wyhash(service)) % 360;
-}
-
-function statusColor(status: StatusKey, service: string): string {
-	const base = STATUS_GLYPHS[status].hsl;
-	const h = (base[0] + hueOffsetForService(service)) % 360;
-	const s = base[1];
-	const l = base[2];
-	return `hsl(${h}, ${s}%, ${l}%)`;
-}
-
-function formatStatusCell(status: StatusKey, service: string): string {
-	const color = statusColor(status, service);
-	const glyph = STATUS_GLYPHS[status].glyph;
-	return `${Bun.color(color, 'ansi')}${glyph}\x1b[0m`;
 }
 
 // ── R2 (S3-compatible) helpers for profile baseline ──────────────────
