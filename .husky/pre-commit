@@ -1,7 +1,22 @@
 #!/bin/sh
 
-# Fast pre-commit hook: Format and auto-fix staged TypeScript files
+# Fast pre-commit hook: Format, auto-fix, and duplicate commit detection
 # Silent mode - only shows errors if something fails
+
+# --- Duplicate commit detection ---
+last_msg=$(git log -1 --pretty=%B)
+staged_files=$(git diff --cached --name-only)
+
+if echo "$last_msg" | grep -q "LoopGuard\|R-Score\|Tier-1380" && \
+   echo "$staged_files" | grep -q "lib/loop-guard.ts\|lib/interactive-cli.ts\|lib/memory-pool.ts"; then
+  echo "⚠️  Similar commit detected"
+  echo "Last: $last_msg"
+  printf "Continue commit? [y/N] "
+  read -r ans
+  [ "$ans" = "y" ] || exit 1
+fi
+
+# --- Format and auto-fix ---
 
 STAGED_TS=$(git diff --cached --name-only --diff-filter=ACM -- '*.ts' | grep -v '\.test\.ts$' | grep -v '\.spec\.ts$')
 
