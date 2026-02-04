@@ -20,14 +20,8 @@ import {
 	type CookieInfo,
 	type SessionConfig,
 } from './cookie-sessions';
-import {
-	createCookieTerminalManager,
-} from './cookie-terminal';
-import {
-	validateProjectId,
-	createProjectContext,
-	logProjectContext,
-} from './project-utils';
+import {createCookieTerminalManager} from './cookie-terminal';
+import {validateProjectId, createProjectContext, logProjectContext} from './project-utils';
 
 // ── Bun Secrets API type augmentation ─────────────────────────────────
 interface BunSecretsAPI {
@@ -131,11 +125,11 @@ const {values: flags, positionals} = parseArgs({
 // ── Timezone ────────────────────────────────────────────────────────────
 // Set process TZ early so all Date ops are consistent for the entire run.
 // Priority: --tz flag > TZ env var > system default
-const _tzExplicit = !!(flags.tz || process.env.TZ);
+const _tzExplicit = !!(flags.tz ?? process.env.TZ);
 if (flags.tz) {
 	process.env.TZ = flags.tz;
-} else if (!process.env.TZ) {
-	process.env.TZ = Intl.DateTimeFormat().resolvedOptions().timeZone;
+} else {
+	process.env.TZ ??= Intl.DateTimeFormat().resolvedOptions().timeZone;
 }
 const _tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
 
@@ -162,8 +156,7 @@ const c = {
 const stripAnsi = Bun.stripANSI;
 
 // ── Lightweight profiling (opt-in) ────────────────────────────────────
-const _profileEnabled =
-	!!flags.profile || Bun.env.BUN_SCAN_PROFILE === '1' || Bun.env.BUN_SCAN_PROFILE === 'true';
+const _profileEnabled = !!flags.profile || Bun.env.BUN_SCAN_PROFILE === '1' || Bun.env.BUN_SCAN_PROFILE === 'true';
 const _profileTotals = new Map<string, number>();
 const _profileCounts = new Map<string, number>();
 const _profileProjectTotals = new Map<string, number>();
@@ -193,7 +186,7 @@ async function time<T>(label: string, fn: () => Promise<T>): Promise<T> {
 	return result;
 }
 
-async function timeProject<T>(label: string, fn: () => Promise<T>): Promise<T> {
+async function _timeProject<T>(label: string, fn: () => Promise<T>): Promise<T> {
 	if (!_profileEnabled) return fn();
 	const start = Bun.nanoseconds();
 	const result = await fn();
@@ -227,7 +220,7 @@ function printProfileSummary(): void {
 			};
 		})
 		.sort((a, b) => Number(b.Total) - Number(a.Total));
-	displayTable(rows, ['Label', 'Total', 'Count', 'Avg'], { title: 'Performance Summary' });
+	displayTable(rows, ['Label', 'Total', 'Count', 'Avg'], {title: 'Performance Summary'});
 }
 
 function printProjectProfileSummary(): void {
@@ -353,15 +346,30 @@ async function checkProfileRegression(): Promise<void> {
 	console.log(c.bold(`  Profile Regression (${hasRegression ? c.red('REGRESSION') : c.green('OK')})`));
 	console.log();
 	const rows = [
-		{Metric: 'projectsScanned', Baseline: baseline.projectsScanned, Current: _profileSummary.projectsScanned, Drift: `${driftProjects.toFixed(1)}%`},
-		{Metric: 'scanMs', Baseline: baseline.scanMs, Current: _profileSummary.scanMs.toFixed(1), Drift: `${driftMs.toFixed(1)}%`},
-		{Metric: 'memoryDeltaBytes', Baseline: baseline.memoryDeltaBytes, Current: _profileSummary.memoryDeltaBytes, Drift: `${driftMem.toFixed(1)}%`},
+		{
+			Metric: 'projectsScanned',
+			Baseline: baseline.projectsScanned,
+			Current: _profileSummary.projectsScanned,
+			Drift: `${driftProjects.toFixed(1)}%`,
+		},
+		{
+			Metric: 'scanMs',
+			Baseline: baseline.scanMs,
+			Current: _profileSummary.scanMs.toFixed(1),
+			Drift: `${driftMs.toFixed(1)}%`,
+		},
+		{
+			Metric: 'memoryDeltaBytes',
+			Baseline: baseline.memoryDeltaBytes,
+			Current: _profileSummary.memoryDeltaBytes,
+			Drift: `${driftMem.toFixed(1)}%`,
+		},
 	];
 	console.log(Bun.inspect.table(rows, ['Metric', 'Baseline', 'Current', 'Drift'], {colors: _useColor}));
 
-		if (hasRegression && process.stdout.isTTY && typeof Bun.openInEditor === 'function') {
-			Bun.openInEditor(import.meta.path, {line: 1});
-		}
+	if (hasRegression && process.stdout.isTTY && typeof Bun.openInEditor === 'function') {
+		Bun.openInEditor(import.meta.path, {line: 1});
+	}
 }
 
 if (_profileEnabled) {
@@ -536,7 +544,7 @@ export const BunInfoResponseSchema = z
 
 export type NpmPackument = z.infer<typeof BunInfoResponseSchema>;
 export type NpmPerson = z.infer<typeof NpmPersonSchema>;
-type NpmDist = z.infer<typeof NpmDistSchema>;
+type _NpmDist = z.infer<typeof NpmDistSchema>;
 
 // ── Feature flag helpers ──────────────────────────────────────────────
 
@@ -650,7 +658,12 @@ function statusFromToken(status: string): StatusKey {
 }
 
 // ── R2 (S3-compatible) helpers for profile baseline ──────────────────
-interface R2Config {accountId: string; accessKeyId: string; secretAccessKey: string; bucketName: string}
+interface R2Config {
+	accountId: string;
+	accessKeyId: string;
+	secretAccessKey: string;
+	bucketName: string;
+}
 
 function getR2Config(): R2Config | null {
 	const accountId = Bun.env.R2_ACCOUNT_ID ?? '';
@@ -801,16 +814,12 @@ export function deepEqual<T>(a: T, b: T, strict: boolean = false): boolean {
  * Provides consistent table formatting with color support
  */
 export function displayTable<T extends Record<string, any>>(
-	data: T[], 
-	columns?: (keyof T)[] | string[], 
-	options?: { colors?: boolean; title?: string }
+	data: T[],
+	columns?: (keyof T)[] | string[],
+	options?: {colors?: boolean; title?: string},
 ): void {
-	const table = Bun.inspect.table(
-		data, 
-		columns as string[], 
-		{ colors: options?.colors ?? _useColor }
-	);
-	
+	const table = Bun.inspect.table(data, columns as string[], {colors: options?.colors ?? _useColor});
+
 	if (options?.title) {
 		console.log(c.bold(options.title));
 		console.log(table);
@@ -827,11 +836,11 @@ export function displayTable<T extends Record<string, any>>(
 export function getGitCommitHash(cwd?: string): string {
 	try {
 		// Check if git is available using Bun.which()
-		const gitPath = Bun.which("git");
+		const gitPath = Bun.which('git');
 		if (!gitPath) {
 			return '';
 		}
-		
+
 		const {stdout, success} = Bun.spawnSync(['git', 'rev-parse', 'HEAD'], {
 			cwd: cwd ?? import.meta.dir,
 			stdout: 'pipe',
@@ -850,7 +859,14 @@ export function getGitCommitHashShort(cwd?: string): string {
 }
 
 // ── Shared outdated parsing ───────────────────────────────────────────
-interface OutdatedPkg {name: string; depType: string; current: string; update: string; latest: string; workspace?: string}
+interface OutdatedPkg {
+	name: string;
+	depType: string;
+	current: string;
+	update: string;
+	latest: string;
+	workspace?: string;
+}
 
 function parseBunOutdated(output: string): OutdatedPkg[] {
 	const pkgs: OutdatedPkg[] = [];
@@ -1409,7 +1425,7 @@ const BUN_DEFAULT_TRUSTED = new Set([
 const PROJECTS_ROOT = Bun.env.BUN_PLATFORM_HOME ?? '..';
 const projectDir = (p: {folder: string}) => `${PROJECTS_ROOT}/${p.folder}`;
 
-const secrets = Bun.secrets;
+const _secrets = Bun.secrets;
 // ── Keychain (Bun.secrets) ────────────────────────────────────────────
 export const BUN_KEYCHAIN_SERVICE = 'dev.bun.scanner';
 export const BUN_KEYCHAIN_SERVICE_LEGACY = 'bun-scanner';
@@ -1494,8 +1510,15 @@ function recordFailure(name: string, code: KeychainErr['code']): void {
 	m.lastFailCode = code;
 }
 
-interface KeychainOk<T> {ok: true; value: T}
-export interface KeychainErr {ok: false; code: 'NO_API' | 'ACCESS_DENIED' | 'NOT_FOUND' | 'OS_ERROR'; reason: string}
+interface KeychainOk<T> {
+	ok: true;
+	value: T;
+}
+export interface KeychainErr {
+	ok: false;
+	code: 'NO_API' | 'ACCESS_DENIED' | 'NOT_FOUND' | 'OS_ERROR';
+	reason: string;
+}
 type KeychainResult<T> = KeychainOk<T> | KeychainErr;
 
 function keychainUnavailableErr(): KeychainErr {
@@ -1523,7 +1546,7 @@ export function classifyKeychainError(err: unknown): KeychainErr {
 }
 
 // -- dispatch: security CLI first, Bun.secrets fallback --------------------
-const _hasBunSecrets = !!(globalThis.secrets?.get || (Bun as unknown as {secrets?: unknown}).secrets);
+const _hasBunSecrets = !!(globalThis.secrets?.get ?? (Bun as unknown as {secrets?: unknown}).secrets);
 const _isDarwin = process.platform === 'darwin';
 
 // macOS `security -w` hex-encodes passwords containing control chars (e.g. newlines).
@@ -1585,7 +1608,10 @@ async function _securityCliDelete(service: string, name: string): Promise<boolea
 	}
 }
 
-export async function keychainGet(name: string, service = BUN_KEYCHAIN_SERVICE): Promise<KeychainResult<string | null>> {
+export async function keychainGet(
+	name: string,
+	service = BUN_KEYCHAIN_SERVICE,
+): Promise<KeychainResult<string | null>> {
 	// macOS: try security CLI first to avoid Keychain popup
 	const cliValue = await _securityCliGet(service, name);
 	if (cliValue !== null) {
@@ -1598,8 +1624,8 @@ export async function keychainGet(name: string, service = BUN_KEYCHAIN_SERVICE):
 		try {
 			const bunSecrets = (Bun as unknown as {secrets?: BunSecretsAPI | undefined}).secrets;
 			const value = bunSecrets
-				? (await bunSecrets.get(service, name)) ?? null
-				: (await globalThis.secrets!.get(service, name)) ?? null;
+				? ((await bunSecrets.get(service, name)) ?? null)
+				: ((await globalThis.secrets!.get(service, name)) ?? null);
 			result = {ok: true, value};
 		} catch (err) {
 			result = classifyKeychainError(err);
@@ -1868,7 +1894,6 @@ async function logTokenEvent(evt: {
 	detail?: string;
 }): Promise<void> {
 	try {
-
 		await ensureSnapshotDir();
 		const entry = {
 			timestamp: new Date().toISOString(),
@@ -1941,11 +1966,14 @@ ${itemsXml}
 `;
 }
 
-interface RssFeedItem {title: string; link: string; description: string; pubDate: string}
+interface RssFeedItem {
+	title: string;
+	link: string;
+	description: string;
+	pubDate: string;
+}
 
-export function parseRssFeed(
-	xmlText: string,
-): RssFeedItem[] {
+export function parseRssFeed(xmlText: string): RssFeedItem[] {
 	const results: RssFeedItem[] = [];
 
 	// Try RSS 2.0 <item> elements
@@ -2027,7 +2055,10 @@ async function publishTokenEventsRss(): Promise<void> {
 		await Bun.write(BUN_TOKEN_AUDIT_RSS_PATH, xml);
 		console.log(`  RSS  ${BUN_TOKEN_AUDIT_RSS_PATH} (${items.length} events)`);
 	} catch (err) {
-		console.error('  Warning: failed to generate token events RSS:', err instanceof Error ? err.message : String(err));
+		console.error(
+			'  Warning: failed to generate token events RSS:',
+			err instanceof Error ? err.message : String(err),
+		);
 	}
 }
 
@@ -2086,13 +2117,13 @@ async function consumeAdvisoryFeed(feedUrl: string, projects: ProjectInfo[]): Pr
 		}));
 		renderMatrix(advisoryRows, BUN_SCANNER_COLUMNS.ADVISORY_MATCHES);
 
-
 		await ensureSnapshotDir();
 		const lines = matches.map(m => JSON.stringify({...m, fetchedAt: new Date().toISOString()})).join('\n') + '\n';
 		await appendFile(BUN_ADVISORY_MATCHES_PATH, lines);
 		console.log(`  Appended ${matches.length} match(es) to ${BUN_ADVISORY_MATCHES_PATH}`);
 	} catch (err) {
-		const msg = err instanceof Error ? (err.name === 'AbortError' ? 'request timed out' : err.message) : String(err);
+		const msg =
+			err instanceof Error ? (err.name === 'AbortError' ? 'request timed out' : err.message) : String(err);
 		console.error(`  Warning: advisory feed failed: ${msg}`);
 	}
 }
@@ -2143,7 +2174,10 @@ async function publishScanResultsRss(projects: ProjectInfo[]): Promise<void> {
 		await Bun.write(BUN_SCAN_RESULTS_RSS_PATH, xml);
 		console.log(`  RSS  ${BUN_SCAN_RESULTS_RSS_PATH} (${items.length} project(s))`);
 	} catch (err) {
-		console.error('  Warning: failed to generate scan results RSS:', err instanceof Error ? err.message : String(err));
+		console.error(
+			'  Warning: failed to generate scan results RSS:',
+			err instanceof Error ? err.message : String(err),
+		);
 	}
 }
 
@@ -2445,8 +2479,8 @@ export async function scanProject(dir: string): Promise<ProjectInfo> {
 					base.repo = normalizeGitUrl(rawRepo);
 					base.repoSource = 'pkg';
 					const meta = parseRepoMeta(base.repo);
-					base.repoHost = (meta ?? {}).host;
-					base.repoOwner = (meta ?? {}).owner;
+					base.repoHost = meta?.host;
+					base.repoOwner = meta?.owner;
 				}
 			}
 		} catch (err) {
@@ -2469,8 +2503,8 @@ export async function scanProject(dir: string): Promise<ProjectInfo> {
 					base.repo = normalizeGitUrl(remote);
 					base.repoSource = 'git';
 					const meta = parseRepoMeta(base.repo);
-					base.repoHost = (meta ?? {}).host;
-					base.repoOwner = (meta ?? {}).owner;
+					base.repoHost = meta?.host;
+					base.repoOwner = meta?.owner;
 				}
 			}
 		} catch (err) {
@@ -2701,7 +2735,7 @@ export async function scanProject(dir: string): Promise<ProjectInfo> {
 
 // ── IPC worker pool for parallel project scanning ─────────────────────
 
-const IPCToWorkerSchema = z.discriminatedUnion('type', [
+const _IPCToWorkerSchema = z.discriminatedUnion('type', [
 	z.object({type: z.literal('scan'), id: z.number(), dir: z.string()}),
 	z.object({type: z.literal('shutdown')}),
 ]);
@@ -2740,7 +2774,9 @@ async function scanProjectsViaIPC(dirs: string[]): Promise<ProjectInfo[]> {
 			for (const w of workers) {
 				try {
 					w.kill();
-				} catch { /* expected: process may already be dead */ }
+				} catch {
+					/* expected: process may already be dead */
+				}
 			}
 		}
 
@@ -3063,11 +3099,7 @@ function inspectProject(p: ProjectInfo): void {
 }
 
 // ── Table rendering ────────────────────────────────────────────────────
-function renderTable(
-	projects: ProjectInfo[],
-	detail: boolean,
-	tokenStatusByFolder: Map<string, string> | null,
-) {
+function renderTable(projects: ProjectInfo[], detail: boolean, tokenStatusByFolder: Map<string, string> | null) {
 	const columnDefs = BUN_SCANNER_COLUMNS.PROJECT_SCAN;
 
 	const columnValueMap: Record<string, (p: ProjectInfo, idx: number) => string | number> = {
@@ -3121,7 +3153,13 @@ function renderMatrix(
 	rows: Record<string, string | number>[],
 	columns: ReadonlyArray<{readonly key: string; readonly header: string}>,
 ): void {
-	console.log(Bun.inspect.table(rows, columns.map(c => c.header), {colors: _useColor}));
+	console.log(
+		Bun.inspect.table(
+			rows,
+			columns.map(c => c.header),
+			{colors: _useColor},
+		),
+	);
 }
 
 function sectionHeader(title: string): void {
@@ -3374,13 +3412,38 @@ async function renderAudit(projects: ProjectInfo[]): Promise<void> {
 
 	const infraRows = infra.map(({label, count, desc}) => {
 		const pct = ((count / withPkg.length) * 100).toFixed(0);
-		const status = count === withPkg.length ? 'OK' : count === 0 ? `${count}/${withPkg.length}` : `${count}/${withPkg.length}`;
-		return {Field: label, Count: `${count}/${withPkg.length}`, '%': `${pct}%`, Status: status, Description: desc};
+		const status =
+			count === withPkg.length ? 'OK' : count === 0 ? `${count}/${withPkg.length}` : `${count}/${withPkg.length}`;
+		return {
+			'Field': label,
+			'Count': `${count}/${withPkg.length}`,
+			'%': `${pct}%`,
+			'Status': status,
+			'Description': desc,
+		};
 	});
 	infraRows.push(
-		{Field: 'trustedDeps', Count: String(arrayStats.trustedDeps), '%': '', Status: '', Description: 'total across all projects'},
-		{Field: 'nativeDeps', Count: String(arrayStats.nativeDeps), '%': '', Status: '', Description: 'detected'},
-		{Field: 'scopes', Count: String(arrayStats.scopes), '%': '', Status: '', Description: 'total scope registrations'},
+		{
+			'Field': 'trustedDeps',
+			'Count': String(arrayStats.trustedDeps),
+			'%': '',
+			'Status': '',
+			'Description': 'total across all projects',
+		},
+		{
+			'Field': 'nativeDeps',
+			'Count': String(arrayStats.nativeDeps),
+			'%': '',
+			'Status': '',
+			'Description': 'detected',
+		},
+		{
+			'Field': 'scopes',
+			'Count': String(arrayStats.scopes),
+			'%': '',
+			'Status': '',
+			'Description': 'total scope registrations',
+		},
 	);
 	renderMatrix(infraRows, BUN_SCANNER_COLUMNS.INFRA_READINESS);
 
@@ -3574,7 +3637,9 @@ async function renderAudit(projects: ProjectInfo[]): Promise<void> {
 				try {
 					const pkg = await Bun.file(path).json();
 					classifyPkg(name, pkg.scripts ?? {});
-				} catch (err) { _verboseWarn(`node_modules pkg scan: ${name}`, err); }
+				} catch (err) {
+					_verboseWarn(`node_modules pkg scan: ${name}`, err);
+				}
 			}),
 		);
 		xrefData.push(xref);
@@ -3651,15 +3716,33 @@ async function renderAudit(projects: ProjectInfo[]): Promise<void> {
 	// Default posture row
 	if (envOverride) {
 		hookRows.push({
-			Hook: 'default', Total: '-', Trust: '-', Block: '-', Secure: '-', Saved: '-',
-			Risk: 'High', Status: 'OPEN', Native: '-', 'Cov%': '-', Owner: 'OVERRIDE',
-			Action: 'WARNING: DISABLE_IGNORE_SCRIPTS is set — all lifecycle scripts run globally',
+			'Hook': 'default',
+			'Total': '-',
+			'Trust': '-',
+			'Block': '-',
+			'Secure': '-',
+			'Saved': '-',
+			'Risk': 'High',
+			'Status': 'OPEN',
+			'Native': '-',
+			'Cov%': '-',
+			'Owner': 'OVERRIDE',
+			'Action': 'WARNING: DISABLE_IGNORE_SCRIPTS is set — all lifecycle scripts run globally',
 		});
 	} else {
 		hookRows.push({
-			Hook: 'default', Total: '-', Trust: '-', Block: '-', Secure: '100%', Saved: '-',
-			Risk: 'Min', Status: 'Blocked', Native: '-', 'Cov%': '-', Owner: 'Bun Runtime',
-			Action: 'Default-secure: all lifecycle scripts blocked unless in trustedDependencies',
+			'Hook': 'default',
+			'Total': '-',
+			'Trust': '-',
+			'Block': '-',
+			'Secure': '100%',
+			'Saved': '-',
+			'Risk': 'Min',
+			'Status': 'Blocked',
+			'Native': '-',
+			'Cov%': '-',
+			'Owner': 'Bun Runtime',
+			'Action': 'Default-secure: all lifecycle scripts blocked unless in trustedDependencies',
 		});
 	}
 
@@ -3704,10 +3787,18 @@ async function renderAudit(projects: ProjectInfo[]): Promise<void> {
 					: `${((nativeTrusted / nativeDetected) * 100).toFixed(0)}%`;
 		const meta = HOOK_META[h];
 		hookRows.push({
-			Hook: h, Total: found, Trust: trusted, Block: blocked, Secure: pctSecure,
-			Saved: savedStr, Risk: riskRaw, Status: statusRaw,
-			Native: nativeDetected === 0 ? '-' : nativeDetected, 'Cov%': nativeCovRaw,
-			Owner: (meta ?? {}).owner(hookTotals[h]), Action: (meta ?? {}).action(hookTotals[h]),
+			'Hook': h,
+			'Total': found,
+			'Trust': trusted,
+			'Block': blocked,
+			'Secure': pctSecure,
+			'Saved': savedStr,
+			'Risk': riskRaw,
+			'Status': statusRaw,
+			'Native': nativeDetected === 0 ? '-' : nativeDetected,
+			'Cov%': nativeCovRaw,
+			'Owner': meta?.owner(hookTotals[h]),
+			'Action': meta?.action(hookTotals[h]),
 		});
 	}
 
@@ -3722,9 +3813,18 @@ async function renderAudit(projects: ProjectInfo[]): Promise<void> {
 	const totalPct = allFound === 0 ? '100%' : `${((allTrusted / allFound) * 100).toFixed(0)}%`;
 	const totalNativeCov = allNative === 0 ? '-' : `${((allNativeTrusted / allNative) * 100).toFixed(0)}%`;
 	hookRows.push({
-		Hook: 'total', Total: allFound, Trust: allTrusted, Block: allBlocked, Secure: totalPct,
-		Saved: totalSavedStr, Risk: '', Status: '', Native: allNative, 'Cov%': totalNativeCov,
-		Owner: '100% managed', Action: '',
+		'Hook': 'total',
+		'Total': allFound,
+		'Trust': allTrusted,
+		'Block': allBlocked,
+		'Secure': totalPct,
+		'Saved': totalSavedStr,
+		'Risk': '',
+		'Status': '',
+		'Native': allNative,
+		'Cov%': totalNativeCov,
+		'Owner': '100% managed',
+		'Action': '',
 	});
 
 	renderMatrix(hookRows, BUN_SCANNER_COLUMNS.LIFECYCLE_HOOKS);
@@ -4239,7 +4339,7 @@ async function fixEngine(projects: ProjectInfo[], dryRun: boolean): Promise<void
 			const pkg = await Bun.file(pkgPath).json();
 			const old = pkg.engines?.bun ?? '(none)';
 
-			if (!pkg.engines) pkg.engines = {};
+			pkg.engines ??= {};
 			pkg.engines.bun = target;
 
 			const label =
@@ -4320,15 +4420,21 @@ async function fixDns(projects: ProjectInfo[], dryRun: boolean): Promise<void> {
 				if (regMatch) {
 					try {
 						domains.add(new URL(regMatch[1]).hostname);
-					} catch { /* invalid registry URL, skip */ }
+					} catch {
+						/* invalid registry URL, skip */
+					}
 				}
 				// [install.scopes] urls
 				for (const m of toml.matchAll(/url\s*=\s*"([^"]+)"/g)) {
 					try {
 						domains.add(new URL(m[1]).hostname);
-					} catch { /* invalid scope URL, skip */ }
+					} catch {
+						/* invalid scope URL, skip */
+					}
 				}
-			} catch (err) { _verboseWarn('bunfig.toml parse', err); }
+			} catch (err) {
+				_verboseWarn('bunfig.toml parse', err);
+			}
 		}
 
 		// Extract from .npmrc
@@ -4343,7 +4449,9 @@ async function fixDns(projects: ProjectInfo[], dryRun: boolean): Promise<void> {
 						if (urlStr) {
 							domains.add(new URL(urlStr).hostname);
 						}
-					} catch { /* invalid URL, skip */ }
+					} catch {
+						/* invalid URL, skip */
+					}
 				}
 				// scoped registries
 				for (const m of npmrc.matchAll(/^@[^:\s]+:registry\s*=\s*(.+)$/gm)) {
@@ -4352,9 +4460,13 @@ async function fixDns(projects: ProjectInfo[], dryRun: boolean): Promise<void> {
 						if (urlStr) {
 							domains.add(new URL(urlStr).hostname);
 						}
-					} catch { /* invalid URL, skip */ }
+					} catch {
+						/* invalid URL, skip */
+					}
 				}
-			} catch (err) { _verboseWarn('.npmrc parse', err); }
+			} catch (err) {
+				_verboseWarn('.npmrc parse', err);
+			}
 		}
 
 		// Extract from package.json publishConfig
@@ -4366,9 +4478,13 @@ async function fixDns(projects: ProjectInfo[], dryRun: boolean): Promise<void> {
 				if (pubReg) {
 					try {
 						domains.add(new URL(pubReg).hostname);
-					} catch { /* invalid URL, skip */ }
+					} catch {
+						/* invalid URL, skip */
+					}
 				}
-			} catch (err) { _verboseWarn('package.json publishConfig', err); }
+			} catch (err) {
+				_verboseWarn('package.json publishConfig', err);
+			}
 		}
 
 		// Always include npmjs as fallback
@@ -4420,7 +4536,12 @@ async function fixDns(projects: ProjectInfo[], dryRun: boolean): Promise<void> {
 
 // ── Fix Scopes: inject [install.scopes] into bunfig.toml ─────────────
 // Usage: --fix-scopes https://npm.factory-wager.com @factorywager @duoplus
-async function fixScopes(projects: ProjectInfo[], registryUrl: string, scopeNames: string[], dryRun: boolean): Promise<void> {
+async function fixScopes(
+	projects: ProjectInfo[],
+	registryUrl: string,
+	scopeNames: string[],
+	dryRun: boolean,
+): Promise<void> {
 	const url = (registryUrl.startsWith('http') ? registryUrl : `https://${registryUrl}`).replace(/\/+$/, '') + '/';
 	const withPkg = projects.filter(p => p.hasPkg);
 
@@ -4500,7 +4621,12 @@ async function fixScopes(projects: ProjectInfo[], registryUrl: string, scopeName
 
 // ── Fix Npmrc: rewrite .npmrc with scoped v1.3.5+ template ───────────
 // Usage: --fix-npmrc https://npm.factory-wager.com @factorywager @duoplus
-async function fixNpmrc(projects: ProjectInfo[], registryUrl: string, scopeNames: string[], dryRun: boolean): Promise<void> {
+async function fixNpmrc(
+	projects: ProjectInfo[],
+	registryUrl: string,
+	scopeNames: string[],
+	dryRun: boolean,
+): Promise<void> {
 	const url = (registryUrl.startsWith('http') ? registryUrl : `https://${registryUrl}`).replace(/\/+$/, '') + '/';
 	const display = url.replace(/^https?:\/\//, '');
 	const withPkg = projects.filter(p => p.hasPkg);
@@ -4594,7 +4720,7 @@ async function fixRegistry(projects: ProjectInfo[], registryUrl: string, dryRun:
 			const pkg = await Bun.file(pkgPath).json();
 			const oldReg = pkg.publishConfig?.registry;
 			if (oldReg !== url) {
-				if (!pkg.publishConfig) pkg.publishConfig = {};
+				pkg.publishConfig ??= {};
 				pkg.publishConfig.registry = url;
 				const label = oldReg
 					? `${c.dim(oldReg.replace(/^https?:\/\//, ''))} → ${c.green(display)}`
@@ -4768,7 +4894,9 @@ async function fixTrusted(projects: ProjectInfo[], dryRun: boolean): Promise<voi
 							detected.push(pkgName);
 						}
 					}
-				} catch (err) { _verboseWarn(`native dep scan: ${pkgName}`, err); }
+				} catch (err) {
+					_verboseWarn(`native dep scan: ${pkgName}`, err);
+				}
 			}),
 		);
 
@@ -4810,7 +4938,11 @@ async function fixTrusted(projects: ProjectInfo[], dryRun: boolean): Promise<voi
 }
 
 // ── Why: run `bun why <pkg>` across all projects ───────────────────────
-async function whyAcrossProjects(projects: ProjectInfo[], pkg: string, opts: {top?: boolean; depth?: string}): Promise<void> {
+async function whyAcrossProjects(
+	projects: ProjectInfo[],
+	pkg: string,
+	opts: {top?: boolean; depth?: string},
+): Promise<void> {
 	const withLock = projects.filter(p => p.lock !== 'none');
 
 	const flagParts: string[] = [];
@@ -4824,7 +4956,12 @@ async function whyAcrossProjects(projects: ProjectInfo[], pkg: string, opts: {to
 	);
 	console.log();
 
-	interface WhyHit {folder: string; versions: string[]; depType: string; directBy: string}
+	interface WhyHit {
+		folder: string;
+		versions: string[];
+		depType: string;
+		directBy: string;
+	}
 	const hits: WhyHit[] = [];
 
 	const whyResults = await Promise.all(
@@ -4960,7 +5097,10 @@ async function outdatedAcrossProjects(projects: ProjectInfo[], opts: OutdatedOpt
 	);
 	console.log();
 
-	interface ProjectHit {folder: string; pkgs: OutdatedPkg[]}
+	interface ProjectHit {
+		folder: string;
+		pkgs: OutdatedPkg[];
+	}
 	const hits: ProjectHit[] = [];
 	let projectsWithOutdated = 0;
 
@@ -5011,7 +5151,7 @@ async function outdatedAcrossProjects(projects: ProjectInfo[], opts: OutdatedOpt
 			);
 			const maxCur = Math.max(7, ...pkgs.map(pkg => pkg.current.length));
 			const maxUpd = Math.max(6, ...pkgs.map(pkg => pkg.update.length));
-			const maxLat = Math.max(6, ...pkgs.map(pkg => pkg.latest.length));
+			const _maxLat = Math.max(6, ...pkgs.map(pkg => pkg.latest.length));
 			for (const pkg of pkgs) {
 				const label = pkg.depType !== 'prod' ? `${pkg.name} ${c.dim(`(${pkg.depType})`)}` : pkg.name;
 				const padName = pkg.depType !== 'prod' ? pkg.name.length + pkg.depType.length + 3 : pkg.name.length;
@@ -5099,7 +5239,11 @@ async function outdatedAcrossProjects(projects: ProjectInfo[], opts: OutdatedOpt
 }
 
 // ── Update: run `bun update` across all projects ───────────────────────
-interface UpdateOpts {dryRun: boolean; patch?: boolean; minor?: boolean}
+interface UpdateOpts {
+	dryRun: boolean;
+	patch?: boolean;
+	minor?: boolean;
+}
 
 async function updateAcrossProjects(projects: ProjectInfo[], opts: UpdateOpts): Promise<void> {
 	const {dryRun, patch, minor} = opts;
@@ -5119,7 +5263,11 @@ async function updateAcrossProjects(projects: ProjectInfo[], opts: UpdateOpts): 
 	console.log();
 
 	// ── Phase 1: Discovery (silent — stdout piped) ─────────────────
-	interface UpdatePlan {project: ProjectInfo; pkgs: OutdatedPkg[]; names: string[]}
+	interface UpdatePlan {
+		project: ProjectInfo;
+		pkgs: OutdatedPkg[];
+		names: string[];
+	}
 	const plans: UpdatePlan[] = [];
 	let skipped = 0;
 
@@ -5473,33 +5621,34 @@ async function infoPackage(pkg: string, projects: ProjectInfo[], jsonOut: boolea
 		value !== undefined && value !== '' && console.log(`  ${c.cyan(label.padEnd(18))} ${value}`);
 
 	console.log();
-	console.log(c.bold(c.magenta(`  ╭─ ${(meta ?? {}).name ?? pkg} ─╮`)));
+	console.log(c.bold(c.magenta(`  ╭─ ${meta?.name ?? pkg} ─╮`)));
 	console.log();
-	line('Name', (meta ?? {}).name);
-	line('Version', (meta ?? {}).version ?? meta['dist-tags']?.latest);
-	line('Description', (meta ?? {}).description);
-	line('License', (meta ?? {}).license);
-	line('Homepage', (meta ?? {}).homepage);
+	line('Name', meta?.name);
+	line('Version', meta?.version ?? meta['dist-tags']?.latest);
+	line('Description', meta?.description);
+	line('License', meta?.license);
+	line('Homepage', meta?.homepage);
 
 	const author =
-		typeof (meta ?? {}).author === 'string'
-			? (meta ?? {}).author
-			: (meta ?? {}).author?.name
-				? `${(meta ?? {}).author.name}${typeof (meta ?? {}).author === 'object' && (meta ?? {}).author.email ? ` <${(meta ?? {}).author.email}>` : ''}`
+		typeof meta?.author === 'string'
+			? meta?.author
+			: meta?.author?.name
+				? `${meta?.author.name}${typeof meta?.author === 'object' && meta?.author.email ? ` <${meta?.author.email}>` : ''}`
 				: undefined;
 	line('Author', author ?? '');
 
-	const repository = (meta ?? {}).repository;
-	const repo = typeof repository === 'string' 
-		? repository 
-		: typeof repository === 'object' && repository?.url !== undefined
-			? repository.url
-			: '';
+	const repository = meta?.repository;
+	const repo =
+		typeof repository === 'string'
+			? repository
+			: typeof repository === 'object' && repository?.url !== undefined
+				? repository.url
+				: '';
 	line('Repository', repo);
 
 	// Dependencies
-	const deps = (meta ?? {}).dependencies ? Object.keys((meta ?? {}).dependencies ?? {}) : [];
-	const devDeps = (meta ?? {}).devDependencies ? Object.keys((meta ?? {}).devDependencies ?? {}) : [];
+	const deps = meta?.dependencies ? Object.keys(meta?.dependencies ?? {}) : [];
+	const devDeps = meta?.devDependencies ? Object.keys(meta?.devDependencies ?? {}) : [];
 	if (deps.length > 0 || devDeps.length > 0) {
 		console.log();
 		line('Dependencies', deps.length || 0);
@@ -5507,12 +5656,12 @@ async function infoPackage(pkg: string, projects: ProjectInfo[], jsonOut: boolea
 		if (deps.length > 0 && deps.length <= 15) {
 			console.log();
 			for (const d of deps) {
-				console.log(`    ${c.dim('•')} ${d} ${c.dim((meta ?? {}).dependencies?.[d] ?? '')}`);
+				console.log(`    ${c.dim('•')} ${d} ${c.dim(meta?.dependencies?.[d] ?? '')}`);
 			}
 		} else if (deps.length > 15) {
 			console.log();
 			for (const d of deps.slice(0, 12)) {
-				console.log(`    ${c.dim('•')} ${d} ${c.dim((meta ?? {}).dependencies?.[d] ?? '')}`);
+				console.log(`    ${c.dim('•')} ${d} ${c.dim(meta?.dependencies?.[d] ?? '')}`);
 			}
 			console.log(c.dim(`    ... and ${deps.length - 12} more`));
 		}
@@ -5529,7 +5678,7 @@ async function infoPackage(pkg: string, projects: ProjectInfo[], jsonOut: boolea
 	}
 
 	// Maintainers
-	const maintainers = (meta ?? {}).maintainers;
+	const maintainers = meta?.maintainers;
 	if (Array.isArray(maintainers) && maintainers.length > 0) {
 		console.log();
 		console.log(`  ${c.cyan('Maintainers'.padEnd(18))}`);
@@ -5552,7 +5701,9 @@ async function infoPackage(pkg: string, projects: ProjectInfo[], jsonOut: boolea
 						const pkgJson = await Bun.file(`${projectDir(p)}/package.json`).json();
 						const allDeps = {...pkgJson.dependencies, ...pkgJson.devDependencies};
 						if (allDeps[bareName]) return `${p.folder} ${c.dim(allDeps[bareName])}`;
-					} catch (err) { _verboseWarn(`dep version check: ${p.folder}`, err); }
+					} catch (err) {
+						_verboseWarn(`dep version check: ${p.folder}`, err);
+					}
 					return null;
 				}),
 		)
@@ -5766,8 +5917,8 @@ ${c.bold('  Other:')}
 
 		const totalMs = (Bun.nanoseconds() - t0) / 1e6;
 		const found = tokenData.filter(t => t.inEnv || t.inKeychain).length;
-		const totalAccess = tokenData.reduce((s, t) => s + t.m.accessed, 0);
-		const totalFailed = tokenData.reduce((s, t) => s + t.m.failed, 0);
+		const _totalAccess = tokenData.reduce((s, t) => s + t.m.accessed, 0);
+		const _totalFailed = tokenData.reduce((s, t) => s + t.m.failed, 0);
 
 		if (!detail) {
 			// Compact view (default)
@@ -5862,14 +6013,14 @@ ${c.bold('  Other:')}
 	// ── Cookie Session Commands ─────────────────────────────────────────────
 	if (flags['session-create']) {
 		const projectId = validateProjectId(flags['session-create']);
-		const domain = String(flags['session-domain'] || 'localhost');
-		
+		const domain = String(flags['session-domain'] ?? 'localhost');
+
 		if (flags['session-interactive']) {
 			const projectContext = createProjectContext(projectId);
-			const terminalManager = createCookieTerminalManager({ interactive: true, color: _useColor });
+			const terminalManager = createCookieTerminalManager({interactive: true, color: _useColor});
 			const service = projectTokenService(projectContext.projectInfo);
 			const project = projectTokenProject(projectContext.projectInfo);
-			
+
 			const session = await terminalManager.createSessionInteractive(service, project);
 			if (session) {
 				console.log(`${c.green('✓')} Created interactive session ${c.cyan(session.id)}`);
@@ -5880,7 +6031,7 @@ ${c.bold('  Other:')}
 			}
 			return;
 		}
-		
+
 		if (!domain) {
 			console.error(`${c.red('error:')} --session-domain is required when creating a session`);
 			process.exit(1);
@@ -5899,22 +6050,24 @@ ${c.bold('  Other:')}
 
 		const projectContext = createProjectContext(projectId);
 		const session = await createProjectSession(projectContext.projectInfo, domain, config);
-		
+
 		console.log(`${c.green('✓')} Created session ${c.cyan(session.id)}`);
 		console.log(`${c.dim('Service:')} ${session.service}`);
 		console.log(`${c.dim('Project:')} ${session.project}`);
 		console.log(`${c.dim('Domain:')} ${session.domain}`);
-		console.log(`${c.dim('Expires:')} ${session.expiresAt ? new Date(session.expiresAt).toLocaleString() : 'Never'}`);
+		console.log(
+			`${c.dim('Expires:')} ${session.expiresAt ? new Date(session.expiresAt).toLocaleString() : 'Never'}`,
+		);
 		logProjectContext(projectContext, flags.verbose);
 		return;
 	}
 
 	if (flags['session-list']) {
-		const projectId = positionals[0] || process.env.PROJECT_ID || process.env.FW_PROJECT_ID || 'default';
+		const projectId = positionals[0] ?? process.env.PROJECT_ID ?? process.env.FW_PROJECT_ID ?? 'default';
 		const projectContext = createProjectContext(projectId);
 		const service = projectTokenService(projectContext.projectInfo);
 		const project = projectTokenProject(projectContext.projectInfo);
-		
+
 		const output = await listSessionsForTerminal(service, project);
 		console.log(output);
 		return;
@@ -5922,28 +6075,28 @@ ${c.bold('  Other:')}
 
 	if (flags['session-show']) {
 		const sessionId = flags['session-show'];
-		const projectId = positionals[0] || process.env.PROJECT_ID || process.env.FW_PROJECT_ID || 'default';
+		const projectId = positionals[0] ?? process.env.PROJECT_ID ?? process.env.FW_PROJECT_ID ?? 'default';
 		const projectContext = createProjectContext(projectId);
 		const service = projectTokenService(projectContext.projectInfo);
 		const project = projectTokenProject(projectContext.projectInfo);
-		
+
 		const session = await getSession(service, project, sessionId);
 		if (!session) {
 			console.error(`${c.red('error:')} session ${c.cyan(sessionId)} not found`);
 			process.exit(1);
 		}
-		
+
 		console.log(formatSessionForTerminal(session));
 		return;
 	}
 
 	if (flags['session-delete']) {
 		const sessionId = flags['session-delete'];
-		const projectId = positionals[0] || process.env.PROJECT_ID || process.env.FW_PROJECT_ID || 'default';
+		const projectId = positionals[0] ?? process.env.PROJECT_ID ?? process.env.FW_PROJECT_ID ?? 'default';
 		const projectContext = createProjectContext(projectId);
 		const service = projectTokenService(projectContext.projectInfo);
 		const project = projectTokenProject(projectContext.projectInfo);
-		
+
 		const deleted = await deleteSession(service, project, sessionId);
 		if (deleted) {
 			console.log(`${c.green('✓')} Deleted session ${c.cyan(sessionId)}`);
@@ -5955,11 +6108,11 @@ ${c.bold('  Other:')}
 	}
 
 	if (flags['session-cleanup']) {
-		const projectId = positionals[0] || process.env.PROJECT_ID || process.env.FW_PROJECT_ID || 'default';
+		const projectId = positionals[0] ?? process.env.PROJECT_ID ?? process.env.FW_PROJECT_ID ?? 'default';
 		const projectContext = createProjectContext(projectId);
 		const service = projectTokenService(projectContext.projectInfo);
 		const project = projectTokenProject(projectContext.projectInfo);
-		
+
 		const cleaned = await cleanupExpiredSessions(service, project);
 		console.log(`${c.green('✓')} Cleaned up ${cleaned} expired sessions`);
 		return;
@@ -5967,40 +6120,40 @@ ${c.bold('  Other:')}
 
 	if (flags['session-monitor']) {
 		const sessionId = flags['session-monitor'];
-		const projectId = positionals[0] || process.env.PROJECT_ID || process.env.FW_PROJECT_ID || 'default';
+		const projectId = positionals[0] ?? process.env.PROJECT_ID ?? process.env.FW_PROJECT_ID ?? 'default';
 		const projectContext = createProjectContext(projectId);
 		const service = projectTokenService(projectContext.projectInfo);
 		const project = projectTokenProject(projectContext.projectInfo);
-		
-		const terminalManager = createCookieTerminalManager({ interactive: true, color: _useColor });
+
+		const terminalManager = createCookieTerminalManager({interactive: true, color: _useColor});
 		await terminalManager.monitorSession(service, project, sessionId);
 		return;
 	}
 
 	if (flags['cookie-add']) {
 		const sessionId = flags['cookie-add'];
-		
+
 		// Validate arguments
 		if (positionals.length === 0) {
 			console.error(`${c.red('error:')} insufficient arguments`);
 			console.error(`${c.dim('usage:')} bun run scan.ts --cookie-add <session-id> [project-id] <cookie-string>`);
 			process.exit(1);
 		}
-		
+
 		// Handle both patterns: <session-id> <cookie-string> and <session-id> <project> <cookie-string>
 		let projectId: string;
 		let cookieString: string;
-		
+
 		if (positionals.length === 1) {
 			// Pattern: --cookie-add <session-id> <cookie-string>
-			projectId = process.env.PROJECT_ID || process.env.FW_PROJECT_ID || 'default';
+			projectId = process.env.PROJECT_ID ?? process.env.FW_PROJECT_ID ?? 'default';
 			cookieString = positionals[0] ?? '';
 		} else {
 			// Pattern: --cookie-add <session-id> <project-id> <cookie-string>
 			projectId = positionals[0] ?? '';
 			cookieString = positionals[1] ?? '';
 		}
-		
+
 		if (!cookieString) {
 			console.error(`${c.red('error:')} cookie string required`);
 			console.error(`${c.dim('usage:')} bun run scan.ts --cookie-add <session-id> [project-id] <cookie-string>`);
@@ -6010,7 +6163,7 @@ ${c.bold('  Other:')}
 		const projectContext = createProjectContext(projectId);
 		const service = projectTokenService(projectContext.projectInfo);
 		const project = projectTokenProject(projectContext.projectInfo);
-		
+
 		const session = await getSession(service, project, sessionId);
 		if (!session) {
 			console.error(`${c.red('error:')} session ${c.cyan(sessionId)} not found`);
@@ -6019,7 +6172,7 @@ ${c.bold('  Other:')}
 
 		const cookies = parseCookieString(cookieString);
 		let added = 0;
-		
+
 		for (const [name, value] of Object.entries(cookies)) {
 			const cookie: CookieInfo = {
 				name,
@@ -6030,39 +6183,39 @@ ${c.bold('  Other:')}
 				httpOnly: false, // User-added cookies are typically not HttpOnly
 				sameSite: session.sameSite,
 			};
-			
+
 			const success = await addCookieToSession(service, project, sessionId, cookie);
 			if (success) added++;
 		}
-		
+
 		console.log(`${c.green('✓')} Added ${added} cookies to session ${c.cyan(sessionId)}`);
 		return;
 	}
 
 	if (flags['cookie-remove']) {
 		const sessionId = flags['cookie-remove'];
-		
+
 		// Validate arguments
 		if (positionals.length === 0) {
 			console.error(`${c.red('error:')} insufficient arguments`);
 			console.error(`${c.dim('usage:')} bun run scan.ts --cookie-remove <session-id> [project-id] <cookie-name>`);
 			process.exit(1);
 		}
-		
+
 		// Handle both patterns: <session-id> <cookie-name> and <session-id> <project> <cookie-name>
 		let projectId: string;
 		let cookieName: string;
-		
+
 		if (positionals.length === 1) {
 			// Pattern: --cookie-remove <session-id> <cookie-name>
-			projectId = process.env.PROJECT_ID || process.env.FW_PROJECT_ID || 'default';
+			projectId = process.env.PROJECT_ID ?? process.env.FW_PROJECT_ID ?? 'default';
 			cookieName = positionals[0] ?? '';
 		} else {
 			// Pattern: --cookie-remove <session-id> <project-id> <cookie-name>
 			projectId = positionals[0] ?? '';
 			cookieName = positionals[1] ?? '';
 		}
-		
+
 		if (!cookieName) {
 			console.error(`${c.red('error:')} cookie name required`);
 			console.error(`${c.dim('usage:')} bun run scan.ts --cookie-remove <session-id> [project-id] <cookie-name>`);
@@ -6072,12 +6225,14 @@ ${c.bold('  Other:')}
 		const projectContext = createProjectContext(projectId);
 		const service = projectTokenService(projectContext.projectInfo);
 		const project = projectTokenProject(projectContext.projectInfo);
-		
+
 		const success = await removeCookieFromSession(service, project, sessionId, cookieName);
 		if (success) {
 			console.log(`${c.green('✓')} Removed cookie ${c.cyan(cookieName)} from session ${c.cyan(sessionId)}`);
 		} else {
-			console.error(`${c.red('error:')} failed to remove cookie ${c.cyan(cookieName)} from session ${c.cyan(sessionId)}`);
+			console.error(
+				`${c.red('error:')} failed to remove cookie ${c.cyan(cookieName)} from session ${c.cyan(sessionId)}`,
+			);
 			process.exit(1);
 		}
 		return;
@@ -6160,7 +6315,9 @@ ${c.bold('  Other:')}
 		const uniqueRegistries = [...new Set(registries)];
 		const commonRegistry = uniqueRegistries.length === 1 ? uniqueRegistries[0] : null;
 		const fullUrl = commonRegistry
-			? (commonRegistry.startsWith('http') ? commonRegistry : `https://${commonRegistry}`)
+			? commonRegistry.startsWith('http')
+				? commonRegistry
+				: `https://${commonRegistry}`
 			: null;
 
 		// stdout: clean export statements, safe to eval
@@ -6494,12 +6651,7 @@ ${c.bold('  Other:')}
 				if (res.ok) {
 					status = res.value ? 'keychain' : 'missing';
 				} else {
-					status =
-						res.code === 'NO_API'
-							? 'unsupported'
-							: res.code === 'ACCESS_DENIED'
-								? 'denied'
-								: 'error';
+					status = res.code === 'NO_API' ? 'unsupported' : res.code === 'ACCESS_DENIED' ? 'denied' : 'error';
 				}
 				return [p.folder, status] as const;
 			}),
@@ -6615,4 +6767,4 @@ if (import.meta.main) {
 		process.exit(1);
 	});
 }
-const nn = (v: string | undefined): string => v ?? "";
+const _nn = (v: string | undefined): string => v ?? '';

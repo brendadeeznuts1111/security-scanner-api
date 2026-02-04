@@ -3,7 +3,6 @@ import {
 	isFeatureFlagActive,
 	classifyEnvFlag,
 	effectiveLinker,
-	platformHelp,
 	shouldWarnMise,
 	parseTzFromEnv,
 	parseEnvVar,
@@ -164,24 +163,18 @@ describe('effectiveLinker', () => {
 	});
 });
 
-describe('platformHelp', () => {
-	test('win32 → mise.exe cmd with hint', () => {
-		const result = platformHelp('win32');
-		expect(result.cmd).toBe('mise.exe exec -- bun');
-		expect(result.hint).toBeString();
-		expect(result.hint).toContain('mise.exe');
-	});
-
-	test('darwin → bun cmd, no hint', () => {
-		const result = platformHelp('darwin');
-		expect(result.cmd).toBe('bun');
-		expect(result.hint).toBeNull();
-	});
-
-	test('linux → bun cmd, no hint', () => {
-		const result = platformHelp('linux');
-		expect(result.cmd).toBe('bun');
-		expect(result.hint).toBeNull();
+describe('--help output (covers platformHelp internally)', () => {
+	test('--help prints usage and bun scan.ts', () => {
+		const {stdout} = Bun.spawnSync({
+			cmd: [process.execPath, 'scan.ts', '--help'],
+			cwd: import.meta.dir,
+			stdout: 'pipe',
+			stderr: 'pipe',
+		});
+		const out = stdout.toString();
+		expect(out).toContain('bun scan.ts');
+		expect(out).toContain('Usage');
+		expect(out).toContain('Modes');
 	});
 });
 

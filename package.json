@@ -19,6 +19,11 @@
 		"format:check": "prettier --check .",
 		"lint": "bunx eslint .",
 		"lint:fix": "bunx eslint . --fix",
+		"fix": "bun run format && bun run lint:fix",
+		"check": "bun run format:check && bun run lint",
+		"precommit": "bun run fix && bun run lint",
+		"quality": "bun scripts/check-code-quality.ts",
+		"quality:fix": "bun scripts/check-code-quality.ts --fix",
 		"bench:init": "bun run benchmarks/team-init.ts",
 		"profile:cpu": "bun run --smol --cpu-prof --cpu-prof-dir .audit --cpu-prof-name cpu-profile scan.ts --audit",
 		"profile:cpu:md": "bun run --smol --cpu-prof --cpu-prof-md --cpu-prof-dir .audit --cpu-prof-name cpu-profile scan.ts --audit",
@@ -26,6 +31,9 @@
 		"profile:heap:md": "bun run --smol --heap-prof-md --heap-prof-dir .audit --heap-prof-name heap-profile scan.ts --audit",
 		"extract:constants": "bun scripts/extract-bun-constants.ts",
 		"extract:docs-topics": "bun scripts/index-docs-topics.ts ../matrix-analysis/mcp-bun-docs/docs.json",
+		"visual:docs": "bun scripts/generate-visual-docs.ts",
+		"visual:dashboard": "bun scripts/generate-visual-docs.ts --serve",
+		"visual:badges": "bun scripts/generate-visual-docs.ts --badges-only",
 		"prepare": "husky"
 	},
 	"keywords": [

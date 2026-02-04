@@ -71,7 +71,11 @@ const BUN_STREAM_CONFIG = {
 // SUBPROCESS INTERFACE
 // ═══════════════════════════════════════════════════════════════
 
-interface FileSink {write(data: string | BufferSource): number; flush(): void; end(): void}
+interface FileSink {
+	write(data: string | ArrayBufferView | ArrayBuffer): number;
+	flush(): void;
+	end(): void;
+}
 
 interface Subprocess {
 	// ── Streams ──
@@ -209,7 +213,7 @@ interface PromptOptions {
 async function prompt(question: string, options?: PromptOptions): Promise<string> {
 	process.stdout.write(`${options?.prefix ?? ''}${question}: `);
 	const answer = await readStdinTrimmed();
-	return answer || options?.default || '';
+	return answer ?? options?.default ?? '';
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -229,7 +233,7 @@ interface Terminal extends AsyncDisposable {
 	readonly stdin: number;
 	readonly stdout: number;
 	readonly closed: boolean;
-	write(data: string | BufferSource): number;
+	write(data: string | ArrayBufferView | ArrayBuffer): number;
 	resize(cols: number, rows: number): void;
 	setRawMode(enabled: boolean): void;
 	ref(): void;

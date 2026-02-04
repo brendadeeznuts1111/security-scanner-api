@@ -1,6 +1,6 @@
 // bun-optimizations.ts — High-impact Bun-native optimizations for scanner
 
-import { readdir } from 'node:fs/promises';
+import {readdir} from 'node:fs/promises';
 
 // ── 1. Memory: no parent refs; monomorphic shape (all props pre-set) ───────────
 export interface OptimizedDirectoryNode {
@@ -33,13 +33,13 @@ export class ConcurrencyLimiter {
 					const result = await task();
 					resolve(result);
 				} catch (error) {
-					reject(error);
+					reject(error instanceof Error ? error : new Error(String(error)));
 				} finally {
 					this.running--;
 					this.processQueue();
 				}
 			};
-			if (this.running < this.maxConcurrency) run();
+			if (this.running < this.maxConcurrency) void run();
 			else this.queue.push(run);
 		});
 	}
@@ -66,7 +66,7 @@ export async function* globScan(pattern: string, rootPath: string): AsyncGenerat
 }
 
 // ── 5. Risk constants ─────────────────────────────────────────────────────────
-export const BUN_RISK_CONSTANTS = { NANO_RISK: 1e-9, MICRO_RISK: 1e-6, MILLI_RISK: 1e-3 } as const;
+export const BUN_RISK_CONSTANTS = {NANO_RISK: 1e-9, MICRO_RISK: 1e-6, MILLI_RISK: 1e-3} as const;
 export function calculateRisk(latencyNs: number): number {
 	return latencyNs * BUN_RISK_CONSTANTS.NANO_RISK;
 }

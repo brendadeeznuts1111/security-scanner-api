@@ -8,6 +8,22 @@ import {dns} from 'bun';
 import {z} from 'zod';
 import {BUN_SCANNER_COLUMNS} from './src/scan-columns';
 import {formatStatusCell, type StatusKey} from './cli/renderers/status-glyphs';
+import {
+	auditExports,
+	auditFunctions,
+	auditConstants,
+	showCodeStats,
+	BUN_EXPORT_MANIFEST,
+	listMarkedExports,
+	type ExportInfo,
+} from './src/code-discovery';
+
+// ── Code grouping and removal-preparation ─────────────────────────────
+// Sections: EXPORTS (Schema, Utility, Keychain, RSS, Core), CONSTANTS (Paths, Config, Sets),
+// INTERNAL (Profile, Formatting, URL/Registry, Table Rendering).
+// Markers: [KEEP] = used elsewhere; [VERIFY] = audit before removal; [REMOVAL-CANDIDATE] = prepare for removal.
+// Discovery: --audit-exports, --audit-functions, --audit-constants, --audit-all, --code-stats,
+// --list-exports, --list-functions, --list-marked. Feature toggles: --disable-rss, --disable-debug, --disable-keychain, --disable-profiling.
 
 // ── Bun Secrets API type augmentation ─────────────────────────────────
 interface BunSecretsAPI {
@@ -93,6 +109,20 @@ const {values: flags, positionals} = parseArgs({
 		'profile': {type: 'boolean', default: false},
 		'debug-tokens': {type: 'boolean', default: false},
 		'write-baseline': {type: 'boolean', default: false},
+		// Discovery and removal-preparation flags (mark, don't delete)
+		'audit-exports': {type: 'boolean', default: false},
+		'audit-functions': {type: 'boolean', default: false},
+		'audit-constants': {type: 'boolean', default: false},
+		'audit-all': {type: 'boolean', default: false},
+		'code-stats': {type: 'boolean', default: false},
+		'list-exports': {type: 'boolean', default: false},
+		'list-functions': {type: 'boolean', default: false},
+		'list-marked': {type: 'boolean', default: false},
+		// Feature toggles for marked code paths (prepare for removal)
+		'disable-rss': {type: 'boolean', default: false},
+		'disable-debug': {type: 'boolean', default: false},
+		'disable-keychain': {type: 'boolean', default: false},
+		'disable-profiling': {type: 'boolean', default: false},
 	},
 	strict: true,
 });
@@ -100,11 +130,11 @@ const {values: flags, positionals} = parseArgs({
 // ── Timezone ────────────────────────────────────────────────────────────
 // Set process TZ early so all Date ops are consistent for the entire run.
 // Priority: --tz flag > TZ env var > system default
-const _tzExplicit = !!(flags.tz || process.env.TZ);
+const _tzExplicit = !!(flags.tz ?? process.env.TZ);
 if (flags.tz) {
 	process.env.TZ = flags.tz;
-} else if (!process.env.TZ) {
-	process.env.TZ = Intl.DateTimeFormat().resolvedOptions().timeZone;
+} else {
+	process.env.TZ ??= Intl.DateTimeFormat().resolvedOptions().timeZone;
 }
 const _tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
 
@@ -115,7 +145,8 @@ const _useColor = (() => {
 	return process.stdout.isTTY ?? false;
 })();
 
-const _wrap = (code: string): ((s: string) => string) => (_useColor ? (s: string) => `\x1b[${code}m${s}\x1b[0m` : (s: string) => s);
+const _wrap = (code: string): ((s: string) => string) =>
+	_useColor ? (s: string) => `\x1b[${code}m${s}\x1b[0m` : (s: string) => s;
 
 const c = {
 	bold: _wrap('1'),
@@ -127,9 +158,12 @@ const c = {
 	red: _wrap('31'),
 };
 
-// ── Lightweight profiling (opt-in) ────────────────────────────────────
+// ── INTERNAL: Profile/Performance ───────────────────────────────────────
+// PATTERN: Performance measurement and profiling. Group: profiling.ts (future extraction).
+// When --disable-profiling: profiling is off (prepare for removal).
 const _profileEnabled =
-	!!flags.profile || Bun.env.BUN_SCAN_PROFILE === '1' || Bun.env.BUN_SCAN_PROFILE === 'true';
+	!flags['disable-profiling'] &&
+	(!!flags.profile || Bun.env.BUN_SCAN_PROFILE === '1' || Bun.env.BUN_SCAN_PROFILE === 'true');
 const _profileTotals = new Map<string, number>();
 const _profileCounts = new Map<string, number>();
 const _profileProjectTotals = new Map<string, number>();
@@ -319,9 +353,24 @@ async function checkProfileRegression(): Promise<void> {
 	console.log(c.bold(`  Profile Regression (${hasRegression ? c.red('REGRESSION') : c.green('OK')})`));
 	console.log();
 	const rows = [
-		{Metric: 'projectsScanned', Baseline: baseline.projectsScanned, Current: _profileSummary.projectsScanned, Drift: `${driftProjects.toFixed(1)}%`},
-		{Metric: 'scanMs', Baseline: baseline.scanMs, Current: _profileSummary.scanMs.toFixed(1), Drift: `${driftMs.toFixed(1)}%`},
-		{Metric: 'memoryDeltaBytes', Baseline: baseline.memoryDeltaBytes, Current: _profileSummary.memoryDeltaBytes, Drift: `${driftMem.toFixed(1)}%`},
+		{
+			Metric: 'projectsScanned',
+			Baseline: baseline.projectsScanned,
+			Current: _profileSummary.projectsScanned,
+			Drift: `${driftProjects.toFixed(1)}%`,
+		},
+		{
+			Metric: 'scanMs',
+			Baseline: baseline.scanMs,
+			Current: _profileSummary.scanMs.toFixed(1),
+			Drift: `${driftMs.toFixed(1)}%`,
+		},
+		{
+			Metric: 'memoryDeltaBytes',
+			Baseline: baseline.memoryDeltaBytes,
+			Current: _profileSummary.memoryDeltaBytes,
+			Drift: `${driftMem.toFixed(1)}%`,
+		},
 	];
 	console.log(Bun.inspect.table(rows, ['Metric', 'Baseline', 'Current', 'Drift'], {colors: _useColor}));
 
@@ -342,6 +391,8 @@ if (_profileEnabled) {
 	});
 }
 
+// ── INTERNAL: Formatting Helpers ────────────────────────────────────────
+// PATTERN: String formatting and ANSI-aware width. Group: formatting.ts (future extraction).
 /** Pad a string (possibly containing ANSI codes) to a target display width. */
 const _padEnd = (s: string, w: number): string => s + ' '.repeat(Math.max(0, w - Bun.stringWidth(s)));
 const _padStart = (s: string, w: number): string => ' '.repeat(Math.max(0, w - Bun.stringWidth(s))) + s;
@@ -364,10 +415,10 @@ function extractBunError(stderr: string, fallback: string): string {
 	return fallback;
 }
 
-// ── Threat feed validation (Bun Security Scanner API) ────────────────
-// Schema for validating threat intelligence feed responses.
+// ── EXPORTS: Schema Definitions ────────────────────────────────────────
+// [VERIFY] Pattern: Zod schemas for validation. Group: Schema.
+// Threat feed validation (Bun Security Scanner API)
 // See: https://bun.com/docs/install/security-scanner-api
-// See: https://github.com/oven-sh/security-scanner-template#validation
 
 export const ThreatFeedItemSchema = z.object({
 	package: z.string(),
@@ -386,7 +437,8 @@ export function validateThreatFeed(data: unknown): ThreatFeedItem[] {
 	return ThreatFeedSchema.parse(data);
 }
 
-// ── Package.json schema (minimal — covers fields read by scanProject) ─
+// [VERIFY] Category: Schema. Reason: Might be used internally by scanProject.
+// Package.json schema (minimal — covers fields read by scanProject)
 export const PackageJsonSchema = z
 	.object({
 		name: z.string().optional(),
@@ -493,12 +545,13 @@ export const BunInfoResponseSchema = z
 	})
 	.passthrough();
 
+// [KEEP] Category: Schema. Reason: Used by packument-zero-trust.ts.
 export type NpmPackument = z.infer<typeof BunInfoResponseSchema>;
 export type NpmPerson = z.infer<typeof NpmPersonSchema>;
 type _NpmDist = z.infer<typeof NpmDistSchema>;
 
-// ── Feature flag helpers ──────────────────────────────────────────────
-
+// ── EXPORTS: Utility Functions ────────────────────────────────────────
+// [VERIFY] Category: Utility. Reason: Might be used internally.
 /** Returns true only for "1" or "true" — matches Bun's feature flag semantics. */
 export function isFeatureFlagActive(val: string | undefined): boolean {
 	return val === '1' || val === 'true';
@@ -609,8 +662,15 @@ function statusFromToken(status: string): StatusKey {
 }
 
 // ── R2 (S3-compatible) helpers for profile baseline ──────────────────
-interface R2Config {accountId: string; accessKeyId: string; secretAccessKey: string; bucketName: string}
+interface R2Config {
+	accountId: string;
+	accessKeyId: string;
+	secretAccessKey: string;
+	bucketName: string;
+}
 
+// ── INTERNAL: URL/Registry Helpers ──────────────────────────────────────
+// PATTERN: URL discovery and R2/registry. Group: url-helpers.ts (future extraction).
 function getR2Config(): R2Config | null {
 	const accountId = Bun.env.R2_ACCOUNT_ID ?? '';
 	const accessKeyId = Bun.env.R2_ACCESS_KEY_ID ?? '';
@@ -689,8 +749,9 @@ async function r2Fetch(
 	});
 }
 
+// Internal: used only for help text in scan.ts (no longer exported).
 /** Platform-aware CLI invocation command and optional PowerShell hint. */
-export function platformHelp(platform: string): {cmd: string; hint: string | null} {
+function platformHelp(platform: string): {cmd: string; hint: string | null} {
 	if (platform === 'win32') {
 		return {
 			cmd: 'mise.exe exec -- bun',
@@ -770,7 +831,14 @@ export function getGitCommitHashShort(cwd?: string): string {
 // ── Shared outdated parsing ───────────────────────────────────────────
 const stripAnsi = Bun.stripANSI;
 
-interface OutdatedPkg {name: string; depType: string; current: string; update: string; latest: string; workspace?: string}
+interface OutdatedPkg {
+	name: string;
+	depType: string;
+	current: string;
+	update: string;
+	latest: string;
+	workspace?: string;
+}
 
 function parseBunOutdated(output: string): OutdatedPkg[] {
 	const pkgs: OutdatedPkg[] = [];
@@ -873,7 +941,8 @@ export const ProjectInfoSchema = z.object({
 
 export type ProjectInfo = z.infer<typeof ProjectInfoSchema>;
 
-// ── Accepted install.auto values ──────────────────────────────────────
+// ── CONSTANTS: Sets/Arrays ────────────────────────────────────────────
+// Accepted install.auto values
 const VALID_AUTO = new Set(['auto', 'force', 'disable', 'fallback']);
 
 // ── Accepted bun install --cpu / --os values ──────────────────────────
@@ -1325,10 +1394,12 @@ const BUN_DEFAULT_TRUSTED = new Set([
 	'zopflipng-bin',
 ]);
 
+// ── CONSTANTS: Configuration ────────────────────────────────────────────
 const PROJECTS_ROOT = Bun.env.BUN_PLATFORM_HOME ?? '/Users/nolarose/Projects';
 const projectDir = (p: {folder: string}): string => `${PROJECTS_ROOT}/${p.folder}`;
 
-// ── Keychain (Bun.secrets) ────────────────────────────────────────────
+// ── EXPORTS: Keychain/Secrets ──────────────────────────────────────────
+// [KEEP] Category: Keychain. Reason: Used by token commands and keychain APIs.
 export const BUN_KEYCHAIN_SERVICE = 'dev.bun.scanner';
 export const BUN_KEYCHAIN_SERVICE_LEGACY = 'bun-scanner';
 export const BUN_KEYCHAIN_TOKEN_NAMES = ['FW_REGISTRY_TOKEN', 'REGISTRY_TOKEN'] as const;
@@ -1412,8 +1483,15 @@ function recordFailure(name: string, code: KeychainErr['code']): void {
 	m.lastFailCode = code;
 }
 
-interface KeychainOk<T> {ok: true; value: T}
-export interface KeychainErr {ok: false; code: 'NO_API' | 'ACCESS_DENIED' | 'NOT_FOUND' | 'OS_ERROR'; reason: string}
+interface KeychainOk<T> {
+	ok: true;
+	value: T;
+}
+export interface KeychainErr {
+	ok: false;
+	code: 'NO_API' | 'ACCESS_DENIED' | 'NOT_FOUND' | 'OS_ERROR';
+	reason: string;
+}
 type KeychainResult<T> = KeychainOk<T> | KeychainErr;
 
 function keychainUnavailableErr(): KeychainErr {
@@ -1441,7 +1519,7 @@ export function classifyKeychainError(err: unknown): KeychainErr {
 }
 
 // -- dispatch: security CLI first, Bun.secrets fallback --------------------
-const _hasBunSecrets = !!(globalThis.secrets?.get || (Bun as unknown as {secrets?: unknown}).secrets);
+const _hasBunSecrets = !!(globalThis.secrets?.get ?? (Bun as unknown as {secrets?: unknown}).secrets);
 const _isDarwin = process.platform === 'darwin';
 
 // macOS `security -w` hex-encodes passwords containing control chars (e.g. newlines).
@@ -1503,7 +1581,10 @@ async function _securityCliDelete(service: string, name: string): Promise<boolea
 	}
 }
 
-export async function keychainGet(name: string, service = BUN_KEYCHAIN_SERVICE): Promise<KeychainResult<string | null>> {
+export async function keychainGet(
+	name: string,
+	service = BUN_KEYCHAIN_SERVICE,
+): Promise<KeychainResult<string | null>> {
 	// macOS: try security CLI first to avoid Keychain popup
 	const cliValue = await _securityCliGet(service, name);
 	if (cliValue !== null) {
@@ -1516,8 +1597,8 @@ export async function keychainGet(name: string, service = BUN_KEYCHAIN_SERVICE):
 		try {
 			const bunSecrets = (Bun as unknown as {secrets?: BunSecretsAPI | undefined}).secrets;
 			const value = bunSecrets
-				? (await bunSecrets.get({service, name})) ?? null
-				: (await globalThis.secrets!.get(service, name)) ?? null;
+				? ((await bunSecrets.get({service, name})) ?? null)
+				: ((await globalThis.secrets!.get(service, name)) ?? null);
 			result = {ok: true, value};
 		} catch (err) {
 			result = classifyKeychainError(err);
@@ -1744,7 +1825,8 @@ async function checkTokenHealth(): Promise<void> {
 	console.log();
 }
 
-// ── Xref types ────────────────────────────────────────────────────────
+// ── EXPORTS: Xref / Snapshot Schemas ───────────────────────────────────
+// [VERIFY] Category: Schema. Reason: Used internally for snapshot save/load.
 export const XrefEntrySchema = z.object({
 	folder: z.string(),
 	bunDefault: z.array(z.string()),
@@ -1767,9 +1849,11 @@ export const XrefSnapshotSchema = z.object({
 
 type XrefSnapshot = z.infer<typeof XrefSnapshotSchema>;
 
+// ── CONSTANTS: Paths ────────────────────────────────────────────────────
 const SNAPSHOT_DIR = `${import.meta.dir}/.audit`;
 const SNAPSHOT_PATH = `${SNAPSHOT_DIR}/xref-snapshot.json`;
 const TOKEN_AUDIT_PATH = `${SNAPSHOT_DIR}/token-events.jsonl`;
+// [VERIFY] Category: RSS. Reason: Path constants for RSS output.
 export const BUN_TOKEN_AUDIT_RSS_PATH = `${SNAPSHOT_DIR}/token-events.rss.xml`;
 export const BUN_SCAN_RESULTS_RSS_PATH = `${SNAPSHOT_DIR}/scan-results.rss.xml`;
 export const BUN_ADVISORY_MATCHES_PATH = `${SNAPSHOT_DIR}/advisory-matches.jsonl`;
@@ -1789,7 +1873,6 @@ async function logTokenEvent(evt: {
 	detail?: string;
 }): Promise<void> {
 	try {
-
 		await ensureSnapshotDir();
 		const entry = {
 			timestamp: new Date().toISOString(),
@@ -1805,8 +1888,8 @@ async function logTokenEvent(evt: {
 	}
 }
 
-// ── XML / RSS helpers ──────────────────────────────────────────────────
-
+// ── EXPORTS: RSS/XML ───────────────────────────────────────────────────
+// [KEEP] Category: RSS. Reason: Used by bench-rss.ts.
 export function escapeXml(text: string): string {
 	return Bun.escapeHTML(text);
 }
@@ -1862,11 +1945,14 @@ ${itemsXml}
 `;
 }
 
-interface RssFeedItem {title: string; link: string; description: string; pubDate: string}
+interface RssFeedItem {
+	title: string;
+	link: string;
+	description: string;
+	pubDate: string;
+}
 
-export function parseRssFeed(
-	xmlText: string,
-): RssFeedItem[] {
+export function parseRssFeed(xmlText: string): RssFeedItem[] {
 	const results: RssFeedItem[] = [];
 
 	// Try RSS 2.0 <item> elements
@@ -1948,7 +2034,10 @@ async function publishTokenEventsRss(): Promise<void> {
 		await Bun.write(BUN_TOKEN_AUDIT_RSS_PATH, xml);
 		console.log(`  RSS  ${BUN_TOKEN_AUDIT_RSS_PATH} (${items.length} events)`);
 	} catch (err) {
-		console.error('  Warning: failed to generate token events RSS:', err instanceof Error ? err.message : String(err));
+		console.error(
+			'  Warning: failed to generate token events RSS:',
+			err instanceof Error ? err.message : String(err),
+		);
 	}
 }
 
@@ -2007,13 +2096,13 @@ async function consumeAdvisoryFeed(feedUrl: string, projects: ProjectInfo[]): Pr
 		}));
 		renderMatrix(advisoryRows, BUN_SCANNER_COLUMNS.ADVISORY_MATCHES);
 
-
 		await ensureSnapshotDir();
 		const lines = matches.map(m => JSON.stringify({...m, fetchedAt: new Date().toISOString()})).join('\n') + '\n';
 		await appendFile(BUN_ADVISORY_MATCHES_PATH, lines);
 		console.log(`  Appended ${matches.length} match(es) to ${BUN_ADVISORY_MATCHES_PATH}`);
 	} catch (err) {
-		const msg = err instanceof Error ? (err.name === 'AbortError' ? 'request timed out' : err.message) : String(err);
+		const msg =
+			err instanceof Error ? (err.name === 'AbortError' ? 'request timed out' : err.message) : String(err);
 		console.error(`  Warning: advisory feed failed: ${msg}`);
 	}
 }
@@ -2064,7 +2153,10 @@ async function publishScanResultsRss(projects: ProjectInfo[]): Promise<void> {
 		await Bun.write(BUN_SCAN_RESULTS_RSS_PATH, xml);
 		console.log(`  RSS  ${BUN_SCAN_RESULTS_RSS_PATH} (${items.length} project(s))`);
 	} catch (err) {
-		console.error('  Warning: failed to generate scan results RSS:', err instanceof Error ? err.message : String(err));
+		console.error(
+			'  Warning: failed to generate scan results RSS:',
+			err instanceof Error ? err.message : String(err),
+		);
 	}
 }
 
@@ -2192,7 +2284,8 @@ const DEFAULTS = {
 const AUDIT_FIELDS = ['author', 'license', 'description', 'version', 'engine'] as const;
 type AuditField = (typeof AUDIT_FIELDS)[number];
 
-// ── Scan a single project directory ────────────────────────────────────
+// ── EXPORTS: Core ──────────────────────────────────────────────────────
+// [KEEP] Category: Core. Reason: Used by scan-worker.ts.
 export async function scanProject(dir: string): Promise<ProjectInfo> {
 	const folder = dir.split('/').pop() ?? '';
 	const profTag = `project:${folder}`;
@@ -2618,7 +2711,7 @@ export async function scanProject(dir: string): Promise<ProjectInfo> {
 
 // ── IPC worker pool for parallel project scanning ─────────────────────
 
-type IPCToWorkerSchema = z.discriminatedUnion('type', [
+const _IPCToWorkerSchema = z.discriminatedUnion('type', [
 	z.object({type: z.literal('scan'), id: z.number(), dir: z.string()}),
 	z.object({type: z.literal('shutdown')}),
 ]);
@@ -2629,7 +2722,7 @@ const IPCFromWorkerSchema = z.discriminatedUnion('type', [
 	z.object({type: z.literal('error'), id: z.number(), error: z.string()}),
 ]);
 
-type IPCToWorker = z.infer<IPCToWorkerSchema>;
+type IPCToWorker = z.infer<typeof _IPCToWorkerSchema>;
 type IPCFromWorker = z.infer<typeof IPCFromWorkerSchema>;
 
 async function scanProjectsViaIPC(dirs: string[]): Promise<ProjectInfo[]> {
@@ -2978,12 +3071,9 @@ function inspectProject(p: ProjectInfo): void {
 	console.log();
 }
 
-// ── Table rendering ────────────────────────────────────────────────────
-function renderTable(
-	projects: ProjectInfo[],
-	detail: boolean,
-	tokenStatusByFolder: Map<string, string> | null,
-): void {
+// ── INTERNAL: Table Rendering ──────────────────────────────────────────
+// PATTERN: Bun.inspect.table wrappers for project/matrix output. Group: table-renderer.ts (future extraction).
+function renderTable(projects: ProjectInfo[], detail: boolean, tokenStatusByFolder: Map<string, string> | null): void {
 	const columnDefs = BUN_SCANNER_COLUMNS.PROJECT_SCAN;
 
 	const columnValueMap: Record<string, (p: ProjectInfo, idx: number) => string | number> = {
@@ -3037,7 +3127,13 @@ function renderMatrix(
 	rows: Record<string, string | number>[],
 	columns: ReadonlyArray<{readonly key: string; readonly header: string}>,
 ): void {
-	console.log(Bun.inspect.table(rows, columns.map(c => c.header), {colors: _useColor}));
+	console.log(
+		Bun.inspect.table(
+			rows,
+			columns.map(c => c.header),
+			{colors: _useColor},
+		),
+	);
 }
 
 function sectionHeader(title: string): void {
@@ -3290,13 +3386,38 @@ async function renderAudit(projects: ProjectInfo[]): Promise<void> {
 
 	const infraRows = infra.map(({label, count, desc}) => {
 		const pct = ((count / withPkg.length) * 100).toFixed(0);
-		const status = count === withPkg.length ? 'OK' : count === 0 ? `${count}/${withPkg.length}` : `${count}/${withPkg.length}`;
-		return {Field: label, Count: `${count}/${withPkg.length}`, '%': `${pct}%`, Status: status, Description: desc};
+		const status =
+			count === withPkg.length ? 'OK' : count === 0 ? `${count}/${withPkg.length}` : `${count}/${withPkg.length}`;
+		return {
+			'Field': label,
+			'Count': `${count}/${withPkg.length}`,
+			'%': `${pct}%`,
+			'Status': status,
+			'Description': desc,
+		};
 	});
 	infraRows.push(
-		{Field: 'trustedDeps', Count: String(arrayStats.trustedDeps), '%': '', Status: '', Description: 'total across all projects'},
-		{Field: 'nativeDeps', Count: String(arrayStats.nativeDeps), '%': '', Status: '', Description: 'detected'},
-		{Field: 'scopes', Count: String(arrayStats.scopes), '%': '', Status: '', Description: 'total scope registrations'},
+		{
+			'Field': 'trustedDeps',
+			'Count': String(arrayStats.trustedDeps),
+			'%': '',
+			'Status': '',
+			'Description': 'total across all projects',
+		},
+		{
+			'Field': 'nativeDeps',
+			'Count': String(arrayStats.nativeDeps),
+			'%': '',
+			'Status': '',
+			'Description': 'detected',
+		},
+		{
+			'Field': 'scopes',
+			'Count': String(arrayStats.scopes),
+			'%': '',
+			'Status': '',
+			'Description': 'total scope registrations',
+		},
 	);
 	renderMatrix(infraRows, BUN_SCANNER_COLUMNS.INFRA_READINESS);
 
@@ -3567,15 +3688,33 @@ async function renderAudit(projects: ProjectInfo[]): Promise<void> {
 	// Default posture row
 	if (envOverride) {
 		hookRows.push({
-			Hook: 'default', Total: '-', Trust: '-', Block: '-', Secure: '-', Saved: '-',
-			Risk: 'High', Status: 'OPEN', Native: '-', 'Cov%': '-', Owner: 'OVERRIDE',
-			Action: 'WARNING: DISABLE_IGNORE_SCRIPTS is set — all lifecycle scripts run globally',
+			'Hook': 'default',
+			'Total': '-',
+			'Trust': '-',
+			'Block': '-',
+			'Secure': '-',
+			'Saved': '-',
+			'Risk': 'High',
+			'Status': 'OPEN',
+			'Native': '-',
+			'Cov%': '-',
+			'Owner': 'OVERRIDE',
+			'Action': 'WARNING: DISABLE_IGNORE_SCRIPTS is set — all lifecycle scripts run globally',
 		});
 	} else {
 		hookRows.push({
-			Hook: 'default', Total: '-', Trust: '-', Block: '-', Secure: '100%', Saved: '-',
-			Risk: 'Min', Status: 'Blocked', Native: '-', 'Cov%': '-', Owner: 'Bun Runtime',
-			Action: 'Default-secure: all lifecycle scripts blocked unless in trustedDependencies',
+			'Hook': 'default',
+			'Total': '-',
+			'Trust': '-',
+			'Block': '-',
+			'Secure': '100%',
+			'Saved': '-',
+			'Risk': 'Min',
+			'Status': 'Blocked',
+			'Native': '-',
+			'Cov%': '-',
+			'Owner': 'Bun Runtime',
+			'Action': 'Default-secure: all lifecycle scripts blocked unless in trustedDependencies',
 		});
 	}
 
@@ -3620,10 +3759,18 @@ async function renderAudit(projects: ProjectInfo[]): Promise<void> {
 					: `${((nativeTrusted / nativeDetected) * 100).toFixed(0)}%`;
 		const meta = HOOK_META[h];
 		hookRows.push({
-			Hook: h, Total: found, Trust: trusted, Block: blocked, Secure: pctSecure,
-			Saved: savedStr, Risk: riskRaw, Status: statusRaw,
-			Native: nativeDetected === 0 ? '-' : nativeDetected, 'Cov%': nativeCovRaw,
-			Owner: meta.owner(hookTotals[h]), Action: meta.action(hookTotals[h]),
+			'Hook': h,
+			'Total': found,
+			'Trust': trusted,
+			'Block': blocked,
+			'Secure': pctSecure,
+			'Saved': savedStr,
+			'Risk': riskRaw,
+			'Status': statusRaw,
+			'Native': nativeDetected === 0 ? '-' : nativeDetected,
+			'Cov%': nativeCovRaw,
+			'Owner': meta.owner(hookTotals[h]),
+			'Action': meta.action(hookTotals[h]),
 		});
 	}
 
@@ -3638,9 +3785,18 @@ async function renderAudit(projects: ProjectInfo[]): Promise<void> {
 	const totalPct = allFound === 0 ? '100%' : `${((allTrusted / allFound) * 100).toFixed(0)}%`;
 	const totalNativeCov = allNative === 0 ? '-' : `${((allNativeTrusted / allNative) * 100).toFixed(0)}%`;
 	hookRows.push({
-		Hook: 'total', Total: allFound, Trust: allTrusted, Block: allBlocked, Secure: totalPct,
-		Saved: totalSavedStr, Risk: '', Status: '', Native: allNative, 'Cov%': totalNativeCov,
-		Owner: '100% managed', Action: '',
+		'Hook': 'total',
+		'Total': allFound,
+		'Trust': allTrusted,
+		'Block': allBlocked,
+		'Secure': totalPct,
+		'Saved': totalSavedStr,
+		'Risk': '',
+		'Status': '',
+		'Native': allNative,
+		'Cov%': totalNativeCov,
+		'Owner': '100% managed',
+		'Action': '',
 	});
 
 	renderMatrix(hookRows, BUN_SCANNER_COLUMNS.LIFECYCLE_HOOKS);
@@ -4155,7 +4311,7 @@ async function fixEngine(projects: ProjectInfo[], dryRun: boolean): Promise<void
 			const pkg = await Bun.file(pkgPath).json();
 			const old = pkg.engines?.bun ?? '(none)';
 
-			if (!pkg.engines) pkg.engines = {};
+			pkg.engines ??= {};
 			pkg.engines.bun = target;
 
 			const label =
@@ -4330,7 +4486,12 @@ async function fixDns(projects: ProjectInfo[], dryRun: boolean): Promise<void> {
 
 // ── Fix Scopes: inject [install.scopes] into bunfig.toml ─────────────
 // Usage: --fix-scopes https://npm.factory-wager.com @factorywager @duoplus
-async function fixScopes(projects: ProjectInfo[], registryUrl: string, scopeNames: string[], dryRun: boolean): Promise<void> {
+async function fixScopes(
+	projects: ProjectInfo[],
+	registryUrl: string,
+	scopeNames: string[],
+	dryRun: boolean,
+): Promise<void> {
 	const url = (registryUrl.startsWith('http') ? registryUrl : `https://${registryUrl}`).replace(/\/+$/, '') + '/';
 	const withPkg = projects.filter(p => p.hasPkg);
 
@@ -4410,7 +4571,12 @@ async function fixScopes(projects: ProjectInfo[], registryUrl: string, scopeName
 
 // ── Fix Npmrc: rewrite .npmrc with scoped v1.3.5+ template ───────────
 // Usage: --fix-npmrc https://npm.factory-wager.com @factorywager @duoplus
-async function fixNpmrc(projects: ProjectInfo[], registryUrl: string, scopeNames: string[], dryRun: boolean): Promise<void> {
+async function fixNpmrc(
+	projects: ProjectInfo[],
+	registryUrl: string,
+	scopeNames: string[],
+	dryRun: boolean,
+): Promise<void> {
 	const url = (registryUrl.startsWith('http') ? registryUrl : `https://${registryUrl}`).replace(/\/+$/, '') + '/';
 	const display = url.replace(/^https?:\/\//, '');
 	const withPkg = projects.filter(p => p.hasPkg);
@@ -4504,7 +4670,7 @@ async function fixRegistry(projects: ProjectInfo[], registryUrl: string, dryRun:
 			const pkg = await Bun.file(pkgPath).json();
 			const oldReg = pkg.publishConfig?.registry;
 			if (oldReg !== url) {
-				if (!pkg.publishConfig) pkg.publishConfig = {};
+				pkg.publishConfig ??= {};
 				pkg.publishConfig.registry = url;
 				const label = oldReg
 					? `${c.dim(oldReg.replace(/^https?:\/\//, ''))} → ${c.green(display)}`
@@ -4720,7 +4886,11 @@ async function fixTrusted(projects: ProjectInfo[], dryRun: boolean): Promise<voi
 }
 
 // ── Why: run `bun why <pkg>` across all projects ───────────────────────
-async function whyAcrossProjects(projects: ProjectInfo[], pkg: string, opts: {top?: boolean; depth?: string}): Promise<void> {
+async function whyAcrossProjects(
+	projects: ProjectInfo[],
+	pkg: string,
+	opts: {top?: boolean; depth?: string},
+): Promise<void> {
 	const withLock = projects.filter(p => p.lock !== 'none');
 
 	const flagParts: string[] = [];
@@ -4734,7 +4904,12 @@ async function whyAcrossProjects(projects: ProjectInfo[], pkg: string, opts: {to
 	);
 	console.log();
 
-	interface WhyHit {folder: string; versions: string[]; depType: string; directBy: string}
+	interface WhyHit {
+		folder: string;
+		versions: string[];
+		depType: string;
+		directBy: string;
+	}
 	const hits: WhyHit[] = [];
 
 	const whyResults = await Promise.all(
@@ -4870,7 +5045,10 @@ async function outdatedAcrossProjects(projects: ProjectInfo[], opts: OutdatedOpt
 	);
 	console.log();
 
-	interface ProjectHit {folder: string; pkgs: OutdatedPkg[]}
+	interface ProjectHit {
+		folder: string;
+		pkgs: OutdatedPkg[];
+	}
 	const hits: ProjectHit[] = [];
 	let projectsWithOutdated = 0;
 
@@ -4921,7 +5099,7 @@ async function outdatedAcrossProjects(projects: ProjectInfo[], opts: OutdatedOpt
 			);
 			const maxCur = Math.max(7, ...pkgs.map(pkg => pkg.current.length));
 			const maxUpd = Math.max(6, ...pkgs.map(pkg => pkg.update.length));
-			const maxLat = Math.max(6, ...pkgs.map(pkg => pkg.latest.length));
+			const _maxLat = Math.max(6, ...pkgs.map(pkg => pkg.latest.length));
 			for (const pkg of pkgs) {
 				const label = pkg.depType !== 'prod' ? `${pkg.name} ${c.dim(`(${pkg.depType})`)}` : pkg.name;
 				const padName = pkg.depType !== 'prod' ? pkg.name.length + pkg.depType.length + 3 : pkg.name.length;
@@ -5009,7 +5187,11 @@ async function outdatedAcrossProjects(projects: ProjectInfo[], opts: OutdatedOpt
 }
 
 // ── Update: run `bun update` across all projects ───────────────────────
-interface UpdateOpts {dryRun: boolean; patch?: boolean; minor?: boolean}
+interface UpdateOpts {
+	dryRun: boolean;
+	patch?: boolean;
+	minor?: boolean;
+}
 
 async function updateAcrossProjects(projects: ProjectInfo[], opts: UpdateOpts): Promise<void> {
 	const {dryRun, patch, minor} = opts;
@@ -5029,7 +5211,11 @@ async function updateAcrossProjects(projects: ProjectInfo[], opts: UpdateOpts): 
 	console.log();
 
 	// ── Phase 1: Discovery (silent — stdout piped) ─────────────────
-	interface UpdatePlan {project: ProjectInfo; pkgs: OutdatedPkg[]; names: string[]}
+	interface UpdatePlan {
+		project: ProjectInfo;
+		pkgs: OutdatedPkg[];
+		names: string[];
+	}
 	const plans: UpdatePlan[] = [];
 	let skipped = 0;
 
@@ -5484,6 +5670,137 @@ async function main(): Promise<void> {
 		console.log();
 	}
 
+	// ── Discovery / removal-preparation (mark, don't delete) ─────────────
+	const projectRoot = import.meta.dir;
+	if (flags['audit-exports'] || flags['audit-all']) {
+		const exports = await auditExports(projectRoot);
+		console.log(c.bold('  Export Audit'));
+		console.log();
+		const rows = exports.map((e: ExportInfo) => ({
+			Export: e.name,
+			Type: e.type,
+			Category: e.category,
+			Marked: e.marked,
+			Used: e.used ? '✓' : '✗',
+			Locations: e.locations.length > 0 ? e.locations.slice(0, 3).join(', ') : 'none',
+		}));
+		console.log(
+			Bun.inspect.table(rows, ['Export', 'Type', 'Category', 'Marked', 'Used', 'Locations'], {colors: _useColor}),
+		);
+		return;
+	}
+	if (flags['audit-functions'] || flags['audit-all']) {
+		const fns = await auditFunctions(projectRoot);
+		const rows = fns.map(f => ({
+			Function: f.name,
+			Exported: f.exported ? '✓' : '',
+			Used: f.used ? '✓' : '✗',
+			Locations: f.locations.length > 0 ? f.locations.slice(0, 3).join(', ') : f.exported ? 'internal' : 'none',
+		}));
+		console.log(c.bold('  Function Audit'));
+		console.log();
+		console.log(Bun.inspect.table(rows, ['Function', 'Exported', 'Used', 'Locations'], {colors: _useColor}));
+		return;
+	}
+	if (flags['audit-constants'] || flags['audit-all']) {
+		const consts = await auditConstants(projectRoot);
+		const rows = consts.map(k => ({
+			Constant: k.name,
+			Exported: k.exported ? '✓' : '',
+			Used: k.used ? '✓' : '✗',
+			Locations: k.locations.length > 0 ? k.locations.slice(0, 3).join(', ') : 'none',
+		}));
+		console.log(c.bold('  Constant Audit'));
+		console.log();
+		console.log(Bun.inspect.table(rows, ['Constant', 'Exported', 'Used', 'Locations'], {colors: _useColor}));
+		return;
+	}
+	if (flags['code-stats']) {
+		const stats = await showCodeStats(projectRoot);
+		console.log(c.bold('  Code Stats (scan.ts)'));
+		console.log();
+		console.log(
+			Bun.inspect.table([{Metric: 'Total lines', Value: stats.totalLines}], ['Metric', 'Value'], {
+				colors: _useColor,
+			}),
+		);
+		console.log(
+			Bun.inspect.table(
+				[
+					{
+						Category: 'Exports',
+						Total: stats.exports.total,
+						ByCategory: JSON.stringify(stats.exports.byCategory),
+					},
+				],
+				['Category', 'Total', 'ByCategory'],
+				{colors: _useColor},
+			),
+		);
+		console.log(
+			Bun.inspect.table(
+				[
+					{
+						Category: 'Functions',
+						Total: stats.functions.total,
+						Internal: stats.functions.internal,
+						Exported: stats.functions.exported,
+						Unused: stats.functions.unused,
+					},
+				],
+				['Category', 'Total', 'Internal', 'Exported', 'Unused'],
+				{colors: _useColor},
+			),
+		);
+		console.log(
+			Bun.inspect.table(
+				[{Category: 'Constants', Total: stats.constants.total, Unused: stats.constants.unused}],
+				['Category', 'Total', 'Unused'],
+				{colors: _useColor},
+			),
+		);
+		console.log(
+			c.dim(
+				'  Marked for removal (candidates): exports=' +
+					stats.markedForRemoval.exports +
+					', functions=' +
+					stats.markedForRemoval.functions +
+					', constants=' +
+					stats.markedForRemoval.constants,
+			),
+		);
+		return;
+	}
+	if (flags['list-exports']) {
+		const rows = BUN_EXPORT_MANIFEST.map(e => ({
+			Name: e.name,
+			Type: e.type,
+			Category: e.category,
+			Marked: e.marked,
+		}));
+		console.log(c.bold('  Exports (scan.ts)'));
+		console.log();
+		console.log(Bun.inspect.table(rows, ['Name', 'Type', 'Category', 'Marked'], {colors: _useColor}));
+		return;
+	}
+	if (flags['list-functions']) {
+		const fns = await auditFunctions(projectRoot);
+		const rows = fns.map(f => ({Name: f.name, Exported: f.exported ? '✓' : '', Line: f.line ?? ''}));
+		console.log(c.bold('  Functions (scan.ts)'));
+		console.log();
+		console.log(Bun.inspect.table(rows, ['Name', 'Exported', 'Line'], {colors: _useColor}));
+		return;
+	}
+	if (flags['list-marked']) {
+		const marked = listMarkedExports();
+		const rows = marked.map(e => ({Name: e.name, Type: e.type, Category: e.category, Mark: e.marked}));
+		console.log(c.bold('  Marked for removal / verify'));
+		console.log(c.dim('  [REMOVAL-CANDIDATE] or [VERIFY] — prepare for removal after discovery'));
+		console.log();
+		console.log(Bun.inspect.table(rows, ['Name', 'Type', 'Category', 'Mark'], {colors: _useColor}));
+		return;
+	}
+
 	if (flags.help) {
 		const ph = platformHelp(process.platform);
 		console.log(`
@@ -5549,13 +5866,33 @@ ${c.bold('  Other:')}
     ${c.cyan('--profile')}                          Emit timing summary (or set BUN_SCAN_PROFILE=1)
     ${c.cyan('--debug-tokens')}                     Print per-project token service/name pairs
     ${c.cyan('--write-baseline')}                   Write profile baseline (R2 if configured)
+
+${c.bold("  Discovery (removal-preparation, mark don't delete):")}
+    ${c.cyan('--audit-exports')}                    Audit export usage across codebase
+    ${c.cyan('--audit-functions')}                  Audit internal function usage
+    ${c.cyan('--audit-constants')}                  Audit constant usage
+    ${c.cyan('--audit-all')}                        Run all audits
+    ${c.cyan('--code-stats')}                       Show code organization stats
+    ${c.cyan('--list-exports')}                     List all exports with category/mark
+    ${c.cyan('--list-functions')}                   List all functions
+    ${c.cyan('--list-marked')}                       List [REMOVAL-CANDIDATE] / [VERIFY] items
+    ${c.cyan('--disable-rss')}                      Toggle: disable RSS features (prep for removal)
+    ${c.cyan('--disable-debug')}                    Toggle: disable debug features
+    ${c.cyan('--disable-keychain')}                 Toggle: disable keychain features
+    ${c.cyan('--disable-profiling')}                Toggle: disable profiling
+
     ${c.cyan('-h, --help')}                         Show this help
 `);
 		return;
 	}
 
 	// ── Keychain token commands ───────────────────────────────────────────
+	// When --disable-keychain: skip keychain commands (prepare for removal).
 	if (flags['store-token']) {
+		if (flags['disable-keychain']) {
+			console.log(c.dim('  Keychain features disabled (--disable-keychain).'));
+			return;
+		}
 		const name = flags['store-token'];
 		if (!isValidTokenName(name)) {
 			console.error(`${c.red('error:')} unknown token name ${c.cyan(name)}`);
@@ -5601,6 +5938,10 @@ ${c.bold('  Other:')}
 	}
 
 	if (flags['delete-token']) {
+		if (flags['disable-keychain']) {
+			console.log(c.dim('  Keychain features disabled (--disable-keychain).'));
+			return;
+		}
 		const name = flags['delete-token'];
 		if (!isValidTokenName(name)) {
 			console.error(`${c.red('error:')} unknown token name ${c.cyan(name)}`);
@@ -5629,6 +5970,10 @@ ${c.bold('  Other:')}
 	}
 
 	if (flags['list-tokens']) {
+		if (flags['disable-keychain']) {
+			console.log(c.dim('  Keychain features disabled (--disable-keychain).'));
+			return;
+		}
 		const t0 = Bun.nanoseconds();
 		const detail = flags.detail;
 		const backend = _hasBunSecrets ? 'Bun.secrets' : process.platform === 'darwin' ? 'security CLI' : 'unavailable';
@@ -5662,8 +6007,8 @@ ${c.bold('  Other:')}
 
 		const totalMs = (Bun.nanoseconds() - t0) / 1e6;
 		const found = tokenData.filter(t => t.inEnv || t.inKeychain).length;
-		const totalAccess = tokenData.reduce((s, t) => s + t.m.accessed, 0);
-		const totalFailed = tokenData.reduce((s, t) => s + t.m.failed, 0);
+		const _totalAccess = tokenData.reduce((s, t) => s + t.m.accessed, 0);
+		const _totalFailed = tokenData.reduce((s, t) => s + t.m.failed, 0);
 
 		if (!detail) {
 			// Compact view (default)
@@ -5751,11 +6096,15 @@ ${c.bold('  Other:')}
 	}
 
 	if (flags['check-tokens']) {
+		if (flags['disable-keychain']) {
+			console.log(c.dim('  Keychain features disabled (--disable-keychain).'));
+			return;
+		}
 		await checkTokenHealth();
 		return;
 	}
 
-	await autoLoadKeychainTokens();
+	if (!flags['disable-keychain']) await autoLoadKeychainTokens();
 
 	if (_profileEnabled) {
 		_profileStartNs = Bun.nanoseconds();
@@ -6164,12 +6513,7 @@ ${c.bold('  Other:')}
 				if (res.ok) {
 					status = res.value ? 'keychain' : 'missing';
 				} else {
-					status =
-						res.code === 'NO_API'
-							? 'unsupported'
-							: res.code === 'ACCESS_DENIED'
-								? 'denied'
-								: 'error';
+					status = res.code === 'NO_API' ? 'unsupported' : res.code === 'ACCESS_DENIED' ? 'denied' : 'error';
 				}
 				return [p.folder, status] as const;
 			}),
@@ -6177,7 +6521,7 @@ ${c.bold('  Other:')}
 		return new Map(pairs);
 	});
 
-	if (flags['debug-tokens']) {
+	if (!flags['disable-debug'] && flags['debug-tokens']) {
 		console.log();
 		console.log(c.bold('  Token Debug (service/name)'));
 		console.log();
@@ -6277,12 +6621,13 @@ ${c.bold('  Other:')}
 	}
 
 	// ── RSS feed generation ──────────────────────────────────────────
-	if (flags.rss) {
+	// When --disable-rss: skip RSS (prepare for removal).
+	if (!flags['disable-rss'] && flags.rss) {
 		console.log();
 		await publishTokenEventsRss();
 		await publishScanResultsRss(projects);
 	}
-	if (flags['advisory-feed']) {
+	if (!flags['disable-rss'] && flags['advisory-feed']) {
 		await consumeAdvisoryFeed(flags['advisory-feed'], projects);
 	}
 }

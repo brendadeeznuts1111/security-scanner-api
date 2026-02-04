@@ -8,7 +8,6 @@ import {
 	getProjectConfig,
 	applyHsl,
 	type StatusKey,
-	type ProjectConfig,
 } from './cli/renderers/status-glyphs';
 import {
 	BUN_PROFILES_SECRET_NAMES,

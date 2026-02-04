@@ -95,7 +95,11 @@ declare global {
 export const BUN_KEYCHAIN_ERROR_CODES = ['NO_API', 'ACCESS_DENIED', 'NOT_FOUND', 'OS_ERROR'] as const;
 export type KeychainErrCode = (typeof BUN_KEYCHAIN_ERROR_CODES)[number];
 export type KeychainResult<T> = {ok: true; value: T} | KeychainErr;
-export interface KeychainErr {ok: false; code: KeychainErrCode; reason: string}
+export interface KeychainErr {
+	ok: false;
+	code: KeychainErrCode;
+	reason: string;
+}
 
 // ── Keychain service derivation ──────────────────────────────────────────
 export function deriveKeychainService(profile: string, namespace: string = BUN_PROFILES_DEFAULT_NAMESPACE): string {
@@ -103,7 +107,7 @@ export function deriveKeychainService(profile: string, namespace: string = BUN_P
 }
 
 // ── Keychain detection ───────────────────────────────────────────────────
-const _hasBunSecrets = !!(globalThis.secrets?.get || (Bun as unknown as {secrets?: unknown}).secrets);
+const _hasBunSecrets = !!(globalThis.secrets?.get ?? (Bun as unknown as {secrets?: unknown}).secrets);
 
 function keychainUnavailableErr(): KeychainErr {
 	return {ok: false, code: 'NO_API', reason: 'Bun.secrets API is not available in this runtime'};
@@ -161,7 +165,7 @@ async function profileKeychainSet(service: string, name: string, value: string):
 	}
 }
 
-async function profileKeychainDelete(service: string, name: string): Promise<KeychainResult<boolean>> {
+async function _profileKeychainDelete(service: string, name: string): Promise<KeychainResult<boolean>> {
 	if (!_hasBunSecrets) return keychainUnavailableErr();
 	try {
 		const bunSecrets = (Bun as unknown as {secrets?: BunSecretsAPI | undefined}).secrets;

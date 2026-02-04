@@ -1,7 +1,7 @@
 // ── cookie-terminal.ts — Terminal UI for cookie session management ─────────────
 
-import type { CookieSession, CookieInfo } from './cookie-sessions';
-import { createCookieSession, getSession, addCookieToSession } from './cookie-sessions';
+import type {CookieSession, CookieInfo} from './cookie-sessions';
+import {createCookieSession, getSession} from './cookie-sessions';
 
 export interface CookieTerminalManager {
 	interactive: boolean;
@@ -27,7 +27,7 @@ const c = {
 	red: _wrap('31'),
 };
 
-export function createCookieTerminalManager(config: { interactive: boolean; color: boolean }): CookieTerminalManager {
+export function createCookieTerminalManager(config: {interactive: boolean; color: boolean}): CookieTerminalManager {
 	return {
 		interactive: config.interactive,
 		color: config.color,
@@ -36,7 +36,7 @@ export function createCookieTerminalManager(config: { interactive: boolean; colo
 				console.error(`${c.red('error:')} interactive mode not enabled`);
 				return null;
 			}
-			
+
 			console.log(`${c.cyan('Creating interactive session for')} ${service}/${project}`);
 			const domain = 'localhost';
 			const session = await createCookieSession(service, project, domain, {
@@ -44,28 +44,28 @@ export function createCookieTerminalManager(config: { interactive: boolean; colo
 				secure: false,
 				sameSite: 'Lax',
 			});
-			
+
 			console.log(`${c.green('✓')} Created session ${c.cyan(session.id)}`);
 			return session;
 		},
-		
+
 		async monitorSession(service: string, project: string, sessionId: string): Promise<void> {
 			if (!config.interactive) {
 				console.error(`${c.red('error:')} interactive mode not enabled`);
 				return;
 			}
-			
+
 			console.log(`${c.cyan('Monitoring session')} ${sessionId} ${c.dim(`(${service}/${project})`)}`);
 			const session = await getSession(service, project, sessionId);
 			if (!session) {
 				console.error(`${c.red('error:')} session not found`);
 				return;
 			}
-			
+
 			const cookieCount = Object.keys(session.cookies).length;
 			console.log(`${c.green('✓')} Session active with ${cookieCount} cookie(s)`);
 			console.log(`${c.dim('Press Ctrl+C to stop monitoring')}`);
-			
+
 			// Simple monitoring loop (can be enhanced with actual terminal updates)
 			let lastCookieCount = cookieCount;
 			const interval = setInterval(async () => {
@@ -75,14 +75,14 @@ export function createCookieTerminalManager(config: { interactive: boolean; colo
 					clearInterval(interval);
 					return;
 				}
-				
+
 				const currentCookieCount = Object.keys(updated.cookies).length;
 				if (currentCookieCount !== lastCookieCount) {
 					console.log(`${c.cyan('→')} Cookie count changed: ${lastCookieCount} → ${currentCookieCount}`);
 					lastCookieCount = currentCookieCount;
 				}
 			}, 2000);
-			
+
 			// Cleanup on process exit
 			process.on('SIGINT', () => {
 				clearInterval(interval);
@@ -93,28 +93,28 @@ export function createCookieTerminalManager(config: { interactive: boolean; colo
 	};
 }
 
-export async function promptForCookieData(): Promise<CookieInfo[]> {
+export function promptForCookieData(): CookieInfo[] {
 	console.log(`${c.yellow('⚠')} Interactive cookie input not yet implemented`);
 	console.log(`${c.dim('Use --cookie-add with cookie string instead')}`);
 	return [];
 }
 
-export async function selectSessionInteractively(sessions: CookieSession[]): Promise<string> {
+export function selectSessionInteractively(sessions: CookieSession[]): string {
 	if (sessions.length === 0) {
 		console.error(`${c.red('error:')} no sessions available`);
 		return '';
 	}
-	
+
 	if (sessions.length === 1) {
 		return sessions[0]!.id;
 	}
-	
+
 	console.log(`${c.cyan('Available sessions:')}`);
 	sessions.forEach((s, i) => {
 		const cookieCount = Object.keys(s.cookies).length;
 		console.log(`  ${i + 1}. ${s.id} (${cookieCount} cookies, ${s.domain})`);
 	});
-	
+
 	console.log(`${c.dim('Selecting first session (interactive selection not yet implemented)')}`);
 	return sessions[0]!.id;
 }
