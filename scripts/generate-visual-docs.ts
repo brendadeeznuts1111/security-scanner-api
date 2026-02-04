@@ -11,7 +11,6 @@
 
 import {readFileSync, writeFileSync, mkdirSync, existsSync, readdirSync} from 'fs';
 import {join} from 'path';
-import {Bun} from 'bun';
 
 const REGISTRY_FILE = join(import.meta.dir, '..', '..', 'BUN_CONSTANTS_VERSION.json');
 const OUTPUT_DIR = join(import.meta.dir, '..', '..', 'docs', 'visual');
