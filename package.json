@@ -24,6 +24,8 @@
 		"profile:cpu:md": "bun run --smol --cpu-prof --cpu-prof-md --cpu-prof-dir .audit --cpu-prof-name cpu-profile scan.ts --audit",
 		"profile:heap": "bun run --smol --heap-prof --heap-prof-dir .audit --heap-prof-name heap-profile scan.ts --audit",
 		"profile:heap:md": "bun run --smol --heap-prof-md --heap-prof-dir .audit --heap-prof-name heap-profile scan.ts --audit",
+		"extract:constants": "bun scripts/extract-bun-constants.ts",
+		"extract:docs-topics": "bun scripts/index-docs-topics.ts ../matrix-analysis/mcp-bun-docs/docs.json",
 		"prepare": "husky"
 	},
 	"keywords": [

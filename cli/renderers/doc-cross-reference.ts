@@ -41,6 +41,23 @@ export interface DocCoverageReport {
 	coveragePercent: number;
 }
 
+/** API has full cross-reference coverage: provenance, related APIs, and search keywords */
+export function isWellDocumented(api: string): boolean {
+	return (
+		BUN_API_PROVENANCE[api] !== undefined &&
+		BUN_RELATED_APIS[api] !== undefined &&
+		BUN_SEARCH_KEYWORDS[api] !== undefined
+	);
+}
+
+/** Append #well-documented fragment when API has full coverage and URL has no fragment */
+export function withWellDocumentedFragment(docUrl: string, api: string): string {
+	if (!docUrl.includes('#') && isWellDocumented(api)) {
+		return `${docUrl}#well-documented`;
+	}
+	return docUrl;
+}
+
 // ═══════════════════════════════════════════════════════════════
 // API PROVENANCE — version that introduced each API
 // ═══════════════════════════════════════════════════════════════
@@ -480,7 +497,7 @@ export class DocLinkGenerator {
 		if (!entry) return null;
 		return {
 			api: entry.api,
-			docUrl: entry.docUrl,
+			docUrl: withWellDocumentedFragment(entry.docUrl, api),
 			related: BUN_RELATED_APIS[api] ?? [],
 			keywords: BUN_SEARCH_KEYWORDS[api] ?? [],
 			since: BUN_API_PROVENANCE[api] ?? 'unknown',
@@ -531,7 +548,7 @@ export class DocLinkGenerator {
 			}
 
 			if (score > 0) {
-				results.push({api: entry.api, score, matchedOn, docUrl: entry.docUrl});
+				results.push({api: entry.api, score, matchedOn, docUrl: withWellDocumentedFragment(entry.docUrl, entry.api)});
 			}
 		}
 
@@ -577,7 +594,7 @@ export class DocLinkGenerator {
 			'Since': BUN_API_PROVENANCE[e.api] ?? 'unknown',
 			'Related': (BUN_RELATED_APIS[e.api] ?? []).slice(0, 3).join(', ') || '-',
 			'Keywords': (BUN_SEARCH_KEYWORDS[e.api] ?? []).slice(0, 4).join(', ') || '-',
-			'Doc URL': e.docUrl,
+			'Doc URL': withWellDocumentedFragment(e.docUrl, e.api),
 		}));
 
 		// @ts-expect-error
