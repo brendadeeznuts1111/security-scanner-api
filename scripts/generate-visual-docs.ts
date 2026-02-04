@@ -175,45 +175,222 @@ function generateDashboardHTML(registry: VersionRegistry): string {
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="color-scheme" content="dark light">
     <title>BUN Constants - Tier-1380 Dashboard</title>
     <style>
+        :root {
+            /* Light theme (default) */
+            --bg-primary: #ffffff;
+            --bg-secondary: #f6f8fa;
+            --bg-tertiary: #eaeef2;
+            --text-primary: #24292f;
+            --text-secondary: #57606a;
+            --text-muted: #8b949e;
+            --border: #d0d7de;
+            --border-hover: #afb8c1;
+            --card-bg: #ffffff;
+            --card-border: #d0d7de;
+            --header-bg: linear-gradient(135deg, #f6f8fa 0%, #ffffff 100%);
+            --accent: #0969da;
+            --accent-hover: #0860ca;
+            --success: #1a7f37;
+            --warning: #9a6700;
+            --error: #cf222e;
+            --chart-fill: linear-gradient(90deg, #0969da 0%, #0550ae 100%);
+        }
+        
+        [data-theme="dark"] {
+            /* Dark theme */
+            --bg-primary: #0d1117;
+            --bg-secondary: #161b22;
+            --bg-tertiary: #21262d;
+            --text-primary: #c9d1d9;
+            --text-secondary: #8b949e;
+            --text-muted: #6e7681;
+            --border: #30363d;
+            --border-hover: #484f58;
+            --card-bg: #161b22;
+            --card-border: #30363d;
+            --header-bg: linear-gradient(135deg, #161b22 0%, #21262d 100%);
+            --accent: #58a6ff;
+            --accent-hover: #79c0ff;
+            --success: #3fb950;
+            --warning: #d29922;
+            --error: #f85149;
+            --chart-fill: linear-gradient(90deg, #58a6ff 0%, #79c0ff 100%);
+        }
+        
         * { margin: 0; padding: 0; box-sizing: border-box; }
-        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #0d1117; color: #c9d1d9; line-height: 1.6; }
+        body { 
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; 
+            background: var(--bg-primary); 
+            color: var(--text-primary); 
+            line-height: 1.6;
+            transition: background-color 0.3s ease, color 0.3s ease;
+        }
         .container { max-width: 1400px; margin: 0 auto; padding: 20px; }
-        .header { text-align: center; margin-bottom: 40px; padding: 40px 0; background: linear-gradient(135deg, #161b22 0%, #21262d 100%); border-radius: 12px; border: 1px solid #30363d; }
-        .header h1 { font-size: 2.5rem; margin-bottom: 10px; background: linear-gradient(135deg, #58a6ff 0%, #79c0ff 100%); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
-        .header p { font-size: 1.1rem; color: #8b949e; }
+        .header { 
+            text-align: center; 
+            margin-bottom: 40px; 
+            padding: 40px 0; 
+            background: var(--header-bg); 
+            border-radius: 12px; 
+            border: 1px solid var(--border);
+            position: relative;
+        }
+        .header h1 { 
+            font-size: 2.5rem; 
+            margin-bottom: 10px; 
+            background: var(--chart-fill); 
+            -webkit-background-clip: text; 
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+        .header p { font-size: 1.1rem; color: var(--text-secondary); }
+        .theme-toggle {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            padding: 8px 16px;
+            background: var(--card-bg);
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            color: var(--text-primary);
+            cursor: pointer;
+            font-size: 14px;
+            transition: all 0.2s;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .theme-toggle:hover {
+            background: var(--bg-tertiary);
+            border-color: var(--border-hover);
+        }
         .badges { display: flex; justify-content: center; gap: 10px; margin-top: 20px; flex-wrap: wrap; }
         .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 20px; margin-bottom: 40px; }
-        .card { background: #161b22; border: 1px solid #30363d; border-radius: 8px; padding: 24px; transition: transform 0.2s ease, box-shadow 0.2s ease; }
-        .card:hover { transform: translateY(-2px); box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4); }
-        .card h3 { color: #58a6ff; margin-bottom: 16px; font-size: 1.2rem; display: flex; align-items: center; gap: 8px; }
-        .metric { display: flex; justify-content: space-between; align-items: center; padding: 8px 0; border-bottom: 1px solid #21262d; }
+        .card { 
+            background: var(--card-bg); 
+            border: 1px solid var(--card-border); 
+            border-radius: 8px; 
+            padding: 24px; 
+            transition: transform 0.2s ease, box-shadow 0.2s ease, background 0.3s ease, border-color 0.3s ease;
+        }
+        .card:hover { 
+            transform: translateY(-2px); 
+            box-shadow: 0 8px 24px rgba(0, 0, 0, 0.15);
+            border-color: var(--border-hover);
+        }
+        .card h3 { color: var(--accent); margin-bottom: 16px; font-size: 1.2rem; display: flex; align-items: center; gap: 8px; }
+        .metric { 
+            display: flex; 
+            justify-content: space-between; 
+            align-items: center; 
+            padding: 8px 0; 
+            border-bottom: 1px solid var(--border);
+            transition: border-color 0.3s ease;
+        }
         .metric:last-child { border-bottom: none; }
-        .metric-value { font-weight: 600; color: #79c0ff; }
-        .status-compliant { color: #3fb950; }
-        .status-non-compliant { color: #f85149; }
-        .chart-bar { background: #21262d; height: 8px; border-radius: 4px; margin-top: 4px; overflow: hidden; }
-        .chart-fill { background: linear-gradient(90deg, #58a6ff 0%, #79c0ff 100%); height: 100%; border-radius: 4px; transition: width 0.3s ease; }
-        .controls { background: #161b22; border: 1px solid #30363d; border-radius: 8px; padding: 20px; margin-bottom: 20px; display: flex; gap: 15px; flex-wrap: wrap; align-items: center; }
-        .search-box { flex: 1; min-width: 200px; padding: 10px 15px; background: #0d1117; border: 1px solid #30363d; border-radius: 6px; color: #c9d1d9; font-size: 14px; }
-        .search-box:focus { outline: none; border-color: #58a6ff; }
+        .metric-value { font-weight: 600; color: var(--accent-hover); }
+        .status-compliant { color: var(--success); }
+        .status-non-compliant { color: var(--error); }
+        .chart-bar { 
+            background: var(--bg-tertiary); 
+            height: 8px; 
+            border-radius: 4px; 
+            margin-top: 4px; 
+            overflow: hidden;
+            transition: background 0.3s ease;
+        }
+        .chart-fill { 
+            background: var(--chart-fill); 
+            height: 100%; 
+            border-radius: 4px; 
+            transition: width 0.3s ease;
+        }
+        .controls { 
+            background: var(--card-bg); 
+            border: 1px solid var(--card-border); 
+            border-radius: 8px; 
+            padding: 20px; 
+            margin-bottom: 20px; 
+            display: flex; 
+            gap: 15px; 
+            flex-wrap: wrap; 
+            align-items: center;
+            transition: background 0.3s ease, border-color 0.3s ease;
+        }
+        .search-box { 
+            flex: 1; 
+            min-width: 200px; 
+            padding: 10px 15px; 
+            background: var(--bg-primary); 
+            border: 1px solid var(--border); 
+            border-radius: 6px; 
+            color: var(--text-primary); 
+            font-size: 14px;
+            transition: all 0.2s ease;
+        }
+        .search-box:focus { outline: none; border-color: var(--accent); }
         .filter-group { display: flex; gap: 10px; flex-wrap: wrap; }
-        .filter-btn { padding: 8px 16px; background: #21262d; border: 1px solid #30363d; border-radius: 6px; color: #c9d1d9; cursor: pointer; font-size: 13px; transition: all 0.2s; }
-        .filter-btn:hover { background: #30363d; border-color: #58a6ff; }
-        .filter-btn.active { background: #58a6ff; border-color: #58a6ff; color: white; }
-        .export-btn { padding: 8px 16px; background: #238636; border: 1px solid #2ea043; border-radius: 6px; color: white; cursor: pointer; font-size: 13px; transition: all 0.2s; }
-        .export-btn:hover { background: #2ea043; }
-        .constants-table-wrapper { width: 100%; background: #161b22; border-radius: 8px; overflow: hidden; border: 1px solid #30363d; }
+        .filter-btn { 
+            padding: 8px 16px; 
+            background: var(--bg-tertiary); 
+            border: 1px solid var(--border); 
+            border-radius: 6px; 
+            color: var(--text-primary); 
+            cursor: pointer; 
+            font-size: 13px; 
+            transition: all 0.2s;
+        }
+        .filter-btn:hover { background: var(--bg-secondary); border-color: var(--accent); }
+        .filter-btn.active { background: var(--accent); border-color: var(--accent); color: white; }
+        .export-btn { 
+            padding: 8px 16px; 
+            background: var(--success); 
+            border: 1px solid var(--success); 
+            border-radius: 6px; 
+            color: white; 
+            cursor: pointer; 
+            font-size: 13px; 
+            transition: all 0.2s;
+        }
+        .export-btn:hover { 
+            background: var(--success);
+            opacity: 0.9;
+            transform: translateY(-1px);
+        }
+        .constants-table-wrapper { 
+            width: 100%; 
+            background: var(--card-bg); 
+            border-radius: 8px; 
+            overflow: hidden; 
+            border: 1px solid var(--card-border);
+            transition: background 0.3s ease, border-color 0.3s ease;
+        }
         .constants-table { width: 100%; border-collapse: collapse; }
-        .constants-table th { background: #21262d; padding: 12px; text-align: left; font-weight: 600; color: #f0f6fc; cursor: pointer; user-select: none; position: relative; }
-        .constants-table th:hover { background: #30363d; }
+        .constants-table th { 
+            background: var(--bg-tertiary); 
+            padding: 12px; 
+            text-align: left; 
+            font-weight: 600; 
+            color: var(--text-primary); 
+            cursor: pointer; 
+            user-select: none; 
+            position: relative;
+            transition: background 0.2s ease;
+        }
+        .constants-table th:hover { background: var(--bg-secondary); }
         .constants-table th.sortable::after { content: ' ↕'; opacity: 0.5; font-size: 0.8em; }
         .constants-table th.sort-asc::after { content: ' ↑'; opacity: 1; }
         .constants-table th.sort-desc::after { content: ' ↓'; opacity: 1; }
-        .constants-table td { padding: 12px; border-bottom: 1px solid #21262d; }
+        .constants-table td { 
+            padding: 12px; 
+            border-bottom: 1px solid var(--border);
+            transition: border-color 0.3s ease;
+        }
         .constants-table tbody tr { transition: background 0.15s; }
-        .constants-table tbody tr:hover { background: #0d1117; }
+        .constants-table tbody tr:hover { background: var(--bg-secondary); }
         .constants-table tbody tr.hidden { display: none; }
         .type-badge { padding: 2px 8px; border-radius: 12px; font-size: 0.8rem; font-weight: 500; }
         .type-string { background: #0969da; color: white; }
@@ -224,13 +401,32 @@ function generateDashboardHTML(registry: VersionRegistry): string {
         .security-high { background: #d1242f; color: white; }
         .security-critical { background: #8250df; color: white; }
         .pagination { display: flex; justify-content: center; align-items: center; gap: 10px; margin-top: 20px; padding: 15px; }
-        .pagination-btn { padding: 8px 12px; background: #21262d; border: 1px solid #30363d; border-radius: 6px; color: #c9d1d9; cursor: pointer; font-size: 13px; transition: all 0.2s; }
-        .pagination-btn:hover:not(:disabled) { background: #30363d; border-color: #58a6ff; }
+        .pagination-btn { 
+            padding: 8px 12px; 
+            background: var(--bg-tertiary); 
+            border: 1px solid var(--border); 
+            border-radius: 6px; 
+            color: var(--text-primary); 
+            cursor: pointer; 
+            font-size: 13px; 
+            transition: all 0.2s;
+        }
+        .pagination-btn:hover:not(:disabled) { 
+            background: var(--bg-secondary); 
+            border-color: var(--accent);
+        }
         .pagination-btn:disabled { opacity: 0.5; cursor: not-allowed; }
-        .pagination-info { color: #8b949e; font-size: 14px; }
-        .footer { text-align: center; margin-top: 40px; padding: 20px; border-top: 1px solid #30363d; color: #8b949e; }
-        .code-link { color: #58a6ff; text-decoration: none; }
-        .code-link:hover { text-decoration: underline; }
+        .pagination-info { color: var(--text-secondary); font-size: 14px; }
+        .footer { 
+            text-align: center; 
+            margin-top: 40px; 
+            padding: 20px; 
+            border-top: 1px solid var(--border); 
+            color: var(--text-muted);
+            transition: border-color 0.3s ease, color 0.3s ease;
+        }
+        .code-link { color: var(--accent); text-decoration: none; transition: color 0.2s ease; }
+        .code-link:hover { text-decoration: underline; color: var(--accent-hover); }
         @media (max-width: 768px) {
             .container { padding: 10px; }
             .header h1 { font-size: 2rem; }
@@ -244,6 +440,10 @@ function generateDashboardHTML(registry: VersionRegistry): string {
 <body>
     <div class="container">
         <div class="header">
+            <button class="theme-toggle" id="themeToggle" onclick="toggleTheme()" title="Toggle theme">
+                <span id="themeIcon">🌙</span>
+                <span id="themeLabel">Dark</span>
+            </button>
             <h1>🏆 BUN Constants Dashboard</h1>
             <p>Tier-1380 Certified Version Management System</p>
             <div class="badges" id="badgesContainer">
@@ -609,6 +809,42 @@ function generateDashboardHTML(registry: VersionRegistry): string {
             URL.revokeObjectURL(url);
         }
 
+        // Theme management
+        (function() {
+            // Detect system preference
+            const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+            const savedTheme = localStorage.getItem('dashboard-theme');
+            const initialTheme = savedTheme || (prefersDark ? 'dark' : 'light');
+            
+            // Apply initial theme
+            document.documentElement.setAttribute('data-theme', initialTheme);
+            updateThemeUI(initialTheme);
+            
+            // Watch for system theme changes
+            window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', (e) => {
+                if (!localStorage.getItem('dashboard-theme')) {
+                    const theme = e.matches ? 'dark' : 'light';
+                    document.documentElement.setAttribute('data-theme', theme);
+                    updateThemeUI(theme);
+                }
+            });
+        })();
+        
+        function toggleTheme() {
+            const current = document.documentElement.getAttribute('data-theme');
+            const newTheme = current === 'dark' ? 'light' : 'dark';
+            document.documentElement.setAttribute('data-theme', newTheme);
+            localStorage.setItem('dashboard-theme', newTheme);
+            updateThemeUI(newTheme);
+        }
+        
+        function updateThemeUI(theme) {
+            const icon = document.getElementById('themeIcon');
+            const label = document.getElementById('themeLabel');
+            if (icon) icon.textContent = theme === 'dark' ? '🌙' : '☀️';
+            if (label) label.textContent = theme === 'dark' ? 'Dark' : 'Light';
+        }
+        
         // Initialize badge paths with file:// protocol fallback
         (function() {
             const isFileProtocol = window.location.protocol === 'file:';
