@@ -1,0 +1,11 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "Tier-1380: Full Validation",
+      "type": "shell",
+      "command": "bun scripts/validate-pointers.ts --bun-native --network-concurrency 8",
+      "group": "test"
+    }
+  ]
+}
