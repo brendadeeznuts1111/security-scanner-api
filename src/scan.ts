@@ -238,7 +238,7 @@ function printProfileSummary(): void {
 			};
 		})
 		.sort((a, b) => Number(b.Total) - Number(a.Total));
-	console.log(Bun.inspect.table(rows, ['Label', 'Total', 'Count', 'Avg'], {colors: _useColor}));
+	displayTable(rows, ['Label', 'Total', 'Count', 'Avg'], { title: 'Performance Summary' });
 }
 
 function printProjectProfileSummary(): void {
@@ -800,12 +800,49 @@ export function semverCompare(a: string, b: string): 0 | 1 | -1 {
 }
 
 /**
+ * Deep comparison utility using Bun.deepEquals()
+ * More reliable than JSON.stringify comparison for objects with undefined values
+ */
+export function deepEqual<T>(a: T, b: T, strict: boolean = false): boolean {
+	return Bun.deepEquals(a, b, strict);
+}
+
+/**
+ * Enhanced table display utility using Bun.inspect.table()
+ * Provides consistent table formatting with color support
+ */
+export function displayTable<T extends Record<string, any>>(
+	data: T[], 
+	columns?: (keyof T)[] | string[], 
+	options?: { colors?: boolean; title?: string }
+): void {
+	const table = Bun.inspect.table(
+		data, 
+		columns as string[], 
+		{ colors: options?.colors ?? _useColor }
+	);
+	
+	if (options?.title) {
+		console.log(c.bold(options.title));
+		console.log(table);
+	} else {
+		console.log(table);
+	}
+}
+
+/**
  * Get the current git commit hash via Bun.spawnSync.
  * Returns the full SHA, or "" if not in a git repo.
  * @see https://bun.sh/docs/bundler/macros#embed-latest-git-commit-hash
  */
 export function getGitCommitHash(cwd?: string): string {
 	try {
+		// Check if git is available using Bun.which()
+		const gitPath = Bun.which("git");
+		if (!gitPath) {
+			return '';
+		}
+		
 		const {stdout, success} = Bun.spawnSync(['git', 'rev-parse', 'HEAD'], {
 			cwd: cwd ?? import.meta.dir,
 			stdout: 'pipe',
@@ -2397,7 +2434,7 @@ export async function scanProject(dir: string): Promise<ProjectInfo> {
 				// overrides (npm/pnpm) / resolutions (yarn) — metadependency version pins
 				const rawOverrides = pkg.overrides ?? pkg.pnpm?.overrides;
 				if (rawOverrides && typeof rawOverrides === 'object') {
-					(base as any).overrides = flattenOverrides(rawOverrides as Record<string, unknown>);
+					base.overrides = flattenOverrides(rawOverrides as Record<string, unknown>);
 				}
 				if (pkg.resolutions && typeof pkg.resolutions === 'object') {
 					base.resolutions = flattenOverrides(pkg.resolutions as Record<string, unknown>);
@@ -5830,8 +5867,8 @@ ${c.bold('  Other:')}
 		if (flags['session-interactive']) {
 			const projectContext = createProjectContext(projectId);
 			const terminalManager = createCookieTerminalManager({ interactive: true, color: _useColor });
-			const service = projectTokenService(projectContext.projectInfo as any);
-			const project = projectTokenProject(projectContext.projectInfo as any);
+			const service = projectTokenService(projectContext.projectInfo);
+			const project = projectTokenProject(projectContext.projectInfo);
 			
 			const session = await terminalManager.createSessionInteractive(service, project);
 			if (session) {
@@ -5874,9 +5911,9 @@ ${c.bold('  Other:')}
 
 	if (flags['session-list']) {
 		const projectId = positionals[0] || process.env.PROJECT_ID || process.env.FW_PROJECT_ID || 'default';
-		const projectInfo = { name: projectId, folder: projectId };
-		const service = projectTokenService(projectInfo as any);
-		const project = projectTokenProject(projectInfo as any);
+		const projectContext = createProjectContext(projectId);
+		const service = projectTokenService(projectContext.projectInfo);
+		const project = projectTokenProject(projectContext.projectInfo);
 		
 		const output = await listSessionsForTerminal(service, project);
 		console.log(output);
@@ -5886,9 +5923,9 @@ ${c.bold('  Other:')}
 	if (flags['session-show']) {
 		const sessionId = flags['session-show'];
 		const projectId = positionals[0] || process.env.PROJECT_ID || process.env.FW_PROJECT_ID || 'default';
-		const projectInfo = { name: projectId, folder: projectId };
-		const service = projectTokenService(projectInfo as any);
-		const project = projectTokenProject(projectInfo as any);
+		const projectContext = createProjectContext(projectId);
+		const service = projectTokenService(projectContext.projectInfo);
+		const project = projectTokenProject(projectContext.projectInfo);
 		
 		const session = await getSession(service, project, sessionId);
 		if (!session) {
@@ -5903,9 +5940,9 @@ ${c.bold('  Other:')}
 	if (flags['session-delete']) {
 		const sessionId = flags['session-delete'];
 		const projectId = positionals[0] || process.env.PROJECT_ID || process.env.FW_PROJECT_ID || 'default';
-		const projectInfo = { name: projectId, folder: projectId };
-		const service = projectTokenService(projectInfo as any);
-		const project = projectTokenProject(projectInfo as any);
+		const projectContext = createProjectContext(projectId);
+		const service = projectTokenService(projectContext.projectInfo);
+		const project = projectTokenProject(projectContext.projectInfo);
 		
 		const deleted = await deleteSession(service, project, sessionId);
 		if (deleted) {
@@ -5919,9 +5956,9 @@ ${c.bold('  Other:')}
 
 	if (flags['session-cleanup']) {
 		const projectId = positionals[0] || process.env.PROJECT_ID || process.env.FW_PROJECT_ID || 'default';
-		const projectInfo = { name: projectId, folder: projectId };
-		const service = projectTokenService(projectInfo as any);
-		const project = projectTokenProject(projectInfo as any);
+		const projectContext = createProjectContext(projectId);
+		const service = projectTokenService(projectContext.projectInfo);
+		const project = projectTokenProject(projectContext.projectInfo);
 		
 		const cleaned = await cleanupExpiredSessions(service, project);
 		console.log(`${c.green('✓')} Cleaned up ${cleaned} expired sessions`);
@@ -5931,9 +5968,9 @@ ${c.bold('  Other:')}
 	if (flags['session-monitor']) {
 		const sessionId = flags['session-monitor'];
 		const projectId = positionals[0] || process.env.PROJECT_ID || process.env.FW_PROJECT_ID || 'default';
-		const projectInfo = { name: projectId, folder: projectId };
-		const service = projectTokenService(projectInfo as any);
-		const project = projectTokenProject(projectInfo as any);
+		const projectContext = createProjectContext(projectId);
+		const service = projectTokenService(projectContext.projectInfo);
+		const project = projectTokenProject(projectContext.projectInfo);
 		
 		const terminalManager = createCookieTerminalManager({ interactive: true, color: _useColor });
 		await terminalManager.monitorSession(service, project, sessionId);
@@ -5970,9 +6007,9 @@ ${c.bold('  Other:')}
 			process.exit(1);
 		}
 
-		const projectInfo = { name: projectId, folder: projectId };
-		const service = projectTokenService(projectInfo as any);
-		const project = projectTokenProject(projectInfo as any);
+		const projectContext = createProjectContext(projectId);
+		const service = projectTokenService(projectContext.projectInfo);
+		const project = projectTokenProject(projectContext.projectInfo);
 		
 		const session = await getSession(service, project, sessionId);
 		if (!session) {
@@ -6032,9 +6069,9 @@ ${c.bold('  Other:')}
 			process.exit(1);
 		}
 
-		const projectInfo = { name: projectId, folder: projectId };
-		const service = projectTokenService(projectInfo as any);
-		const project = projectTokenProject(projectInfo as any);
+		const projectContext = createProjectContext(projectId);
+		const service = projectTokenService(projectContext.projectInfo);
+		const project = projectTokenProject(projectContext.projectInfo);
 		
 		const success = await removeCookieFromSession(service, project, sessionId, cookieName);
 		if (success) {
