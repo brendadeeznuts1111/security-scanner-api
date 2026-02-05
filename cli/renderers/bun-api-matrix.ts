@@ -1867,7 +1867,9 @@ export function formatDocUrl(url: string, maxLen?: number): string {
 }
 
 export function filterBy<K extends keyof BunApiEntry>(
-	catalog: readonly BunApiEntry[], key: K, value: BunApiEntry[K],
+	catalog: readonly BunApiEntry[],
+	key: K,
+	value: BunApiEntry[K],
 ): BunApiEntry[] {
 	return catalog.filter(e => e[key] === value);
 }

@@ -9,3 +9,4 @@ CPU.*.md
 *.heapprofile
 *.heapsnapshot
 HEAP.*.md
+.validate-pointers-baseline.json

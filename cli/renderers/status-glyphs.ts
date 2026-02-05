@@ -16,10 +16,7 @@ export type StatusKey =
 
 export type HslTuple = [h: number, s: number, l: number];
 
-export const BUN_STATUS_GLYPHS: Record<
-	StatusKey,
-	{glyph: string; code: string; ascii: string; hsl: HslTuple}
-> = {
+export const BUN_STATUS_GLYPHS: Record<StatusKey, {glyph: string; code: string; ascii: string; hsl: HslTuple}> = {
 	critical: {glyph: '🔴', code: 'U+1F534', ascii: '!!', hsl: [0, 100, 50]},
 	failed: {glyph: '✗', code: 'U+2717', ascii: 'FAIL', hsl: [0, 80, 45]},
 	error: {glyph: '✖', code: 'U+2716', ascii: 'ERR', hsl: [0, 80, 45]},

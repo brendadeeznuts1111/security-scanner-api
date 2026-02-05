@@ -98,7 +98,12 @@ describe('BUN_RELATED_APIS', () => {
 	});
 
 	test('key relationships are bidirectional', () => {
-		for (const [a, b] of [['Bun.serve','Bun.fetch'],['Bun.spawn','Bun.spawnSync'],['Bun.gzipSync','Bun.gunzipSync'],['Bun.file','Bun.write']]) {
+		for (const [a, b] of [
+			['Bun.serve', 'Bun.fetch'],
+			['Bun.spawn', 'Bun.spawnSync'],
+			['Bun.gzipSync', 'Bun.gunzipSync'],
+			['Bun.file', 'Bun.write'],
+		]) {
 			expect(BUN_RELATED_APIS[a]).toContain(b);
 			expect(BUN_RELATED_APIS[b]).toContain(a);
 		}

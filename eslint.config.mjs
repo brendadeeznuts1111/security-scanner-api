@@ -24,7 +24,7 @@ export default tseslint.config(
 		},
 		plugins: {
 			'@typescript-eslint': tseslint.plugin,
-			bun: bunPlugin,
+			'bun': bunPlugin,
 		},
 		rules: {
 			// ────────────────────────────────────────────────────────────────
@@ -127,7 +127,7 @@ export default tseslint.config(
 					caughtErrorsIgnorePattern: '^_',
 				},
 			],
-			'@typescript-eslint/no-floating-promises': ['error', { ignoreVoid: true }],
+			'@typescript-eslint/no-floating-promises': ['error', {ignoreVoid: true}],
 			'@typescript-eslint/await-thenable': 'error',
 			'@typescript-eslint/no-misused-promises': [
 				'error',
@@ -136,7 +136,7 @@ export default tseslint.config(
 				},
 			],
 			'@typescript-eslint/require-await': 'error',
-			'@typescript-eslint/no-empty-function': ['error', { allow: ['arrowFunctions'] }],
+			'@typescript-eslint/no-empty-function': ['error', {allow: ['arrowFunctions']}],
 			'@typescript-eslint/no-non-null-assertion': 'warn',
 			'@typescript-eslint/prefer-as-const': 'error',
 			'@typescript-eslint/prefer-reduce-type-parameter': 'error',

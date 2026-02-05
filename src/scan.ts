@@ -415,8 +415,8 @@ function extractBunError(stderr: string, fallback: string): string {
 
 // ── Threat feed validation (Bun Security Scanner API) ────────────────
 // Schema for validating threat intelligence feed responses.
-// See: https://bun.com/docs/install/security-scanner-api
-// See: https://github.com/oven-sh/security-scanner-template#validation
+// See: https://bun.com/docs
+// See: https://bun.com/docs/template#validation
 
 export const ThreatFeedItemSchema = z.object({
 	package: z.string(),
@@ -461,7 +461,7 @@ export const PackageJsonSchema = z
 
 // ── npm packument schema (bun info <pkg> --json response) ─────────────
 // Covers the standard npm registry packument fields returned by `bun info`.
-// See: https://bun.com/docs/pm/cli/install#npm-registry-metadata
+// See: https://bun.com/docs/install
 
 export const NpmPersonSchema = z.union([
 	z.string(),

@@ -22,16 +22,16 @@
  */
 
 import * as os from 'os';
-import { runRiskDiagnostic } from './diagnostic-risk.ts';
+import {runRiskDiagnostic} from './diagnostic-risk.ts';
 
 const BENCHRC_PATH = `${import.meta.dir}/../.benchrc.json`;
 
 // ── ANSI helpers (Bun.color for colors, manual for text attributes) ─
 
 const useColor = Bun.enableANSIColors && !!process.stdout.isTTY;
-const B = useColor ? '\x1b[1m' : '';      // bold
-const D = useColor ? '\x1b[2m' : '';      // dim
-const R = useColor ? '\x1b[0m' : '';      // reset
+const B = useColor ? '\x1b[1m' : ''; // bold
+const D = useColor ? '\x1b[2m' : ''; // dim
+const R = useColor ? '\x1b[0m' : ''; // reset
 const cRed = useColor ? Bun.color('red', 'ansi') : '';
 const cGreen = useColor ? Bun.color('green', 'ansi') : '';
 const cYellow = useColor ? Bun.color('yellow', 'ansi') : '';
@@ -92,9 +92,8 @@ async function readBunfigDepth(): Promise<number | undefined> {
 }
 
 const bunfigDepth = await readBunfigDepth();
-const consoleDepth: number | undefined = cliArgs['console-depth'] != null
-	? Number(cliArgs['console-depth'])
-	: bunfigDepth;
+const consoleDepth: number | undefined =
+	cliArgs['console-depth'] != null ? Number(cliArgs['console-depth']) : bunfigDepth;
 
 /** Options object for Bun.inspect.table — includes depth when set */
 const inspectOpts: {colors: boolean; depth?: number} = {colors: useColor};
@@ -142,10 +141,18 @@ async function confirmFix(memberKey: string): Promise<FixAction> {
 	while (true) {
 		const answer = await prompt(`  Apply fixes for ${B}${memberKey}${R}? ${hint}: `);
 		switch (answer) {
-			case 'y': case 'yes': return 'yes';
-			case 'n': case 'no': return 'no';
-			case 'a': case 'all': return 'all';
-			case 'q': case 'quit': return 'quit';
+			case 'y':
+			case 'yes':
+				return 'yes';
+			case 'n':
+			case 'no':
+				return 'no';
+			case 'a':
+			case 'all':
+				return 'all';
+			case 'q':
+			case 'quit':
+				return 'quit';
 			default:
 				console.write(`  ${cYellow}Invalid choice "${answer}"${R} — enter y, n, a, or q.\n`);
 		}
@@ -1107,9 +1114,16 @@ function validateColumns(
 	const issues: Issue[] = [];
 	const globalKeys = new Map<string, string>(); // key → tableName (for cross-table dupe detection)
 	const metrics: ColumnMetrics = {
-		tables: 0, columns: 0, invalidTables: 0, invalidEntries: 0,
-		guardErrors: 0, propErrors: 0, widthIssues: 0, defaultIssues: 0,
-		coherenceWarnings: 0, crossTableDupes: 0,
+		tables: 0,
+		columns: 0,
+		invalidTables: 0,
+		invalidEntries: 0,
+		guardErrors: 0,
+		propErrors: 0,
+		widthIssues: 0,
+		defaultIssues: 0,
+		coherenceWarnings: 0,
+		crossTableDupes: 0,
 	};
 
 	for (const [tableName, columns] of Object.entries(schema)) {
@@ -1134,7 +1148,7 @@ function validateColumns(
 
 		const seenKeys = new Set<string>();
 		const seenHeaders = new Set<string>();
-		const defaultTypes = new Map<string, { type: string; key: string; index: number }[]>(); // type → [{key, index}]
+		const defaultTypes = new Map<string, {type: string; key: string; index: number}[]>(); // type → [{key, index}]
 
 		for (let i = 0; i < columns.length; i++) {
 			const raw = columns[i];
@@ -1385,9 +1399,18 @@ function validateColumns(
 				if (typeof col.key === 'string') {
 					const keyLower = col.key.toLowerCase();
 					const looksBoolean = BOOL_KEY_PREFIXES.some(
-						p => keyLower.startsWith(p) && keyLower.length > p.length && col.key[p.length] === col.key[p.length].toUpperCase(),
+						p =>
+							keyLower.startsWith(p) &&
+							keyLower.length > p.length &&
+							col.key[p.length] === col.key[p.length].toUpperCase(),
 					);
-					if (looksBoolean && typeof col.default !== 'boolean' && col.default !== 'true' && col.default !== 'false' && col.default !== '-') {
+					if (
+						looksBoolean &&
+						typeof col.default !== 'boolean' &&
+						col.default !== 'true' &&
+						col.default !== 'false' &&
+						col.default !== '-'
+					) {
 						metrics.defaultIssues++;
 						issues.push({
 							field: `${prefix}.default`,
@@ -1587,7 +1610,9 @@ if (cliArgs.check) {
 			totalWarnings += warnings;
 			console.log();
 		} else {
-			console.log(`  ${cGreen}✓${R} ${B}scan-columns.ts${R} — all column checks passed ${D}(${cm.tables} tables, ${cm.columns} columns)${R}\n`);
+			console.log(
+				`  ${cGreen}✓${R} ${B}scan-columns.ts${R} — all column checks passed ${D}(${cm.tables} tables, ${cm.columns} columns)${R}\n`,
+			);
 		}
 	} catch (err) {
 		const msg = err instanceof Error ? err.message : String(err);
@@ -1599,16 +1624,28 @@ if (cliArgs.check) {
 		{Field: 'Members', Value: String(teamKeys.length)},
 		{Field: 'Errors', Value: totalErrors > 0 ? `${totalErrors}` : '0'},
 		{Field: 'Warnings', Value: totalWarnings > 0 ? `${totalWarnings}` : '0'},
-		...(colMetrics ? [
-			{Field: 'Tables', Value: String(colMetrics.tables)},
-			{Field: 'Columns', Value: String(colMetrics.columns)},
-			...(colMetrics.guardErrors > 0 ? [{Field: 'Guard errors', Value: `${colMetrics.guardErrors}`}] : []),
-			...(colMetrics.propErrors > 0 ? [{Field: 'Prop errors', Value: `${colMetrics.propErrors}`}] : []),
-			...(colMetrics.widthIssues > 0 ? [{Field: 'Width issues', Value: `${colMetrics.widthIssues}`}] : []),
-			...(colMetrics.defaultIssues > 0 ? [{Field: 'Default issues', Value: `${colMetrics.defaultIssues}`}] : []),
-			...(colMetrics.coherenceWarnings > 0 ? [{Field: 'Coherence', Value: `${colMetrics.coherenceWarnings}`}] : []),
-			...(colMetrics.crossTableDupes > 0 ? [{Field: 'Cross-table dupes', Value: `${colMetrics.crossTableDupes}`}] : []),
-		] : []),
+		...(colMetrics
+			? [
+					{Field: 'Tables', Value: String(colMetrics.tables)},
+					{Field: 'Columns', Value: String(colMetrics.columns)},
+					...(colMetrics.guardErrors > 0
+						? [{Field: 'Guard errors', Value: `${colMetrics.guardErrors}`}]
+						: []),
+					...(colMetrics.propErrors > 0 ? [{Field: 'Prop errors', Value: `${colMetrics.propErrors}`}] : []),
+					...(colMetrics.widthIssues > 0
+						? [{Field: 'Width issues', Value: `${colMetrics.widthIssues}`}]
+						: []),
+					...(colMetrics.defaultIssues > 0
+						? [{Field: 'Default issues', Value: `${colMetrics.defaultIssues}`}]
+						: []),
+					...(colMetrics.coherenceWarnings > 0
+						? [{Field: 'Coherence', Value: `${colMetrics.coherenceWarnings}`}]
+						: []),
+					...(colMetrics.crossTableDupes > 0
+						? [{Field: 'Cross-table dupes', Value: `${colMetrics.crossTableDupes}`}]
+						: []),
+				]
+			: []),
 		{Field: 'Status', Value: totalErrors > 0 ? 'FAIL' : totalWarnings > 0 ? 'PASS (with warnings)' : 'PASS'},
 	];
 	// @ts-expect-error Bun.inspect.table accepts options as third arg
@@ -1715,8 +1752,13 @@ if (cliArgs.fix) {
 			} else if (!apply) {
 				const action = await confirmFix(key);
 				switch (action) {
-					case 'yes': apply = true; break;
-					case 'all': apply = true; applyAll = true; break;
+					case 'yes':
+						apply = true;
+						break;
+					case 'all':
+						apply = true;
+						applyAll = true;
+						break;
 					case 'quit':
 						console.log(`\n  ${D}Quit — no changes written.${R}\n`);
 						process.exit(0);
@@ -1761,11 +1803,15 @@ if (cliArgs.fix) {
 		colWarnings = colIssues.length;
 		if (colIssues.length > 0) {
 			const colIcon = colIssues.some(i => i.severity === 'error') ? `${cRed}✗${R}` : `${cYellow}~${R}`;
-			console.log(`  ${colIcon} ${B}scan-columns.ts${R} ${D}(report only — ${cm.tables} tables, ${cm.columns} columns)${R}`);
+			console.log(
+				`  ${colIcon} ${B}scan-columns.ts${R} ${D}(report only — ${cm.tables} tables, ${cm.columns} columns)${R}`,
+			);
 			printIssues('columns', colIssues, true);
 			console.log();
 		} else {
-			console.log(`  ${cGreen}✓${R} ${B}scan-columns.ts${R} — all column checks passed ${D}(${cm.tables} tables, ${cm.columns} columns)${R}\n`);
+			console.log(
+				`  ${cGreen}✓${R} ${B}scan-columns.ts${R} — all column checks passed ${D}(${cm.tables} tables, ${cm.columns} columns)${R}\n`,
+			);
 		}
 	} catch (err) {
 		const msg = err instanceof Error ? err.message : String(err);
@@ -1779,16 +1825,32 @@ if (cliArgs.fix) {
 		...(totalSkipped > 0 ? [{Field: 'Skipped', Value: `${cYellow}${totalSkipped}${R}`}] : []),
 		{Field: 'Unfixable', Value: totalUnfixable > 0 ? `${cYellow}${totalUnfixable}${R}` : '0'},
 		{Field: 'Remaining', Value: remainingIssues > 0 ? `${cYellow}${remainingIssues}${R}` : `${cGreen}0${R}`},
-		...(colMetrics ? [
-			{Field: 'Tables', Value: String(colMetrics.tables)},
-			{Field: 'Columns', Value: String(colMetrics.columns)},
-			...(colMetrics.guardErrors > 0 ? [{Field: 'Guard errors', Value: `${cYellow}${colMetrics.guardErrors}${R}`}] : []),
-			...(colMetrics.propErrors > 0 ? [{Field: 'Prop errors', Value: `${cYellow}${colMetrics.propErrors}${R}`}] : []),
-			...(colMetrics.widthIssues > 0 ? [{Field: 'Width issues', Value: `${cYellow}${colMetrics.widthIssues}${R}`}] : []),
-			...(colMetrics.defaultIssues > 0 ? [{Field: 'Default issues', Value: `${cYellow}${colMetrics.defaultIssues}${R}`}] : []),
-			...(colMetrics.coherenceWarnings > 0 ? [{Field: 'Coherence', Value: `${cYellow}${colMetrics.coherenceWarnings}${R}`}] : []),
-			...(colMetrics.crossTableDupes > 0 ? [{Field: 'Cross-table dupes', Value: `${cYellow}${colMetrics.crossTableDupes}${R}`}] : []),
-		] : colWarnings > 0 ? [{Field: 'Column issues', Value: `${cYellow}${colWarnings}${R}`}] : []),
+		...(colMetrics
+			? [
+					{Field: 'Tables', Value: String(colMetrics.tables)},
+					{Field: 'Columns', Value: String(colMetrics.columns)},
+					...(colMetrics.guardErrors > 0
+						? [{Field: 'Guard errors', Value: `${cYellow}${colMetrics.guardErrors}${R}`}]
+						: []),
+					...(colMetrics.propErrors > 0
+						? [{Field: 'Prop errors', Value: `${cYellow}${colMetrics.propErrors}${R}`}]
+						: []),
+					...(colMetrics.widthIssues > 0
+						? [{Field: 'Width issues', Value: `${cYellow}${colMetrics.widthIssues}${R}`}]
+						: []),
+					...(colMetrics.defaultIssues > 0
+						? [{Field: 'Default issues', Value: `${cYellow}${colMetrics.defaultIssues}${R}`}]
+						: []),
+					...(colMetrics.coherenceWarnings > 0
+						? [{Field: 'Coherence', Value: `${cYellow}${colMetrics.coherenceWarnings}${R}`}]
+						: []),
+					...(colMetrics.crossTableDupes > 0
+						? [{Field: 'Cross-table dupes', Value: `${cYellow}${colMetrics.crossTableDupes}${R}`}]
+						: []),
+				]
+			: colWarnings > 0
+				? [{Field: 'Column issues', Value: `${cYellow}${colWarnings}${R}`}]
+				: []),
 		{Field: 'Written', Value: totalFixed > 0 ? `${cGreen}yes${R}` : `${D}no changes${R}`},
 	];
 	// @ts-expect-error Bun.inspect.table accepts options as third arg

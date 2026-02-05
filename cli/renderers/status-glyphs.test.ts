@@ -193,7 +193,7 @@ describe('applyHsl', () => {
 
 	test('clamps lightness at 100', () => {
 		const cfg = {...baseCfg, lightnessMod: 3.0};
-		const [,, l] = applyHsl([0, 50, 50], cfg);
+		const [, , l] = applyHsl([0, 50, 50], cfg);
 		expect(l).toBe(100);
 	});
 

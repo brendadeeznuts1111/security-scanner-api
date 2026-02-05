@@ -95,27 +95,248 @@ export function collectMetrics(): MetricRow[] {
 
 	const raw: RawMetric[] = [
 		// sys
-		{metric: 'PID', value: process.pid, risk: calculateR(1, 0, 1, 0), complexity: 1, edgeCases: 0, scope: 1, variants: 0, latencyNs: 5, memoryB: 0, cat: 'sys', shellSafe: true, tsStrict: true, es5Compat: true, status: 'stable', source: 'kernel', command: 'process.pid'},
-		{metric: 'PPID', value: process.ppid, risk: calculateR(1, 1, 1, 0), complexity: 1, edgeCases: 1, scope: 1, variants: 0, latencyNs: 3, memoryB: 0, cat: 'sys', shellSafe: true, tsStrict: true, es5Compat: true, status: 'stable', source: 'kernel', command: 'process.ppid'},
-		{metric: 'Arch', value: process.arch, risk: 1.0, complexity: 1, edgeCases: 0, scope: 1, variants: 0, latencyNs: 1, memoryB: 0, cat: 'sys', shellSafe: true, tsStrict: true, es5Compat: true, status: 'stable', source: 'kernel', command: 'process.arch'},
-		{metric: 'Platform', value: `${process.platform}-${process.version.slice(1, 3)}`, risk: 1.0, complexity: 1, edgeCases: 0, scope: 1, variants: 0, latencyNs: 2, memoryB: 32, cat: 'sys', shellSafe: true, tsStrict: true, es5Compat: true, status: 'stable', source: 'kernel', command: 'process.platform'},
+		{
+			metric: 'PID',
+			value: process.pid,
+			risk: calculateR(1, 0, 1, 0),
+			complexity: 1,
+			edgeCases: 0,
+			scope: 1,
+			variants: 0,
+			latencyNs: 5,
+			memoryB: 0,
+			cat: 'sys',
+			shellSafe: true,
+			tsStrict: true,
+			es5Compat: true,
+			status: 'stable',
+			source: 'kernel',
+			command: 'process.pid',
+		},
+		{
+			metric: 'PPID',
+			value: process.ppid,
+			risk: calculateR(1, 1, 1, 0),
+			complexity: 1,
+			edgeCases: 1,
+			scope: 1,
+			variants: 0,
+			latencyNs: 3,
+			memoryB: 0,
+			cat: 'sys',
+			shellSafe: true,
+			tsStrict: true,
+			es5Compat: true,
+			status: 'stable',
+			source: 'kernel',
+			command: 'process.ppid',
+		},
+		{
+			metric: 'Arch',
+			value: process.arch,
+			risk: 1.0,
+			complexity: 1,
+			edgeCases: 0,
+			scope: 1,
+			variants: 0,
+			latencyNs: 1,
+			memoryB: 0,
+			cat: 'sys',
+			shellSafe: true,
+			tsStrict: true,
+			es5Compat: true,
+			status: 'stable',
+			source: 'kernel',
+			command: 'process.arch',
+		},
+		{
+			metric: 'Platform',
+			value: `${process.platform}-${process.version.slice(1, 3)}`,
+			risk: 1.0,
+			complexity: 1,
+			edgeCases: 0,
+			scope: 1,
+			variants: 0,
+			latencyNs: 2,
+			memoryB: 32,
+			cat: 'sys',
+			shellSafe: true,
+			tsStrict: true,
+			es5Compat: true,
+			status: 'stable',
+			source: 'kernel',
+			command: 'process.platform',
+		},
 
 		// proc
-		{metric: 'Uptime', value: `${Math.floor(u / 3600)}h${Math.floor((u % 3600) / 60)}m`, risk: 1.001, complexity: 1, edgeCases: 1, scope: 1, variants: 0, latencyNs: 12, memoryB: 16, cat: 'proc', shellSafe: true, tsStrict: true, es5Compat: true, status: 'stable', source: 'v8', command: 'process.uptime()'},
+		{
+			metric: 'Uptime',
+			value: `${Math.floor(u / 3600)}h${Math.floor((u % 3600) / 60)}m`,
+			risk: 1.001,
+			complexity: 1,
+			edgeCases: 1,
+			scope: 1,
+			variants: 0,
+			latencyNs: 12,
+			memoryB: 16,
+			cat: 'proc',
+			shellSafe: true,
+			tsStrict: true,
+			es5Compat: true,
+			status: 'stable',
+			source: 'v8',
+			command: 'process.uptime()',
+		},
 
 		// mem — higher edge cases due to GC non-determinism
-		{metric: 'RSS', value: `${(mem.rss / 1048576).toFixed(1)}MB`, risk: calculateR(1, 50, 100, 0), complexity: 1, edgeCases: 50, scope: 100, variants: 0, latencyNs: 45, memoryB: 64, cat: 'mem', shellSafe: true, tsStrict: true, es5Compat: true, status: 'stable', source: 'v8', command: 'process.memoryUsage().rss'},
-		{metric: 'HeapT', value: `${(mem.heapTotal / 1048576).toFixed(1)}MB`, risk: calculateR(1, 50, 100, 0), complexity: 1, edgeCases: 50, scope: 100, variants: 0, latencyNs: 23, memoryB: 0, cat: 'mem', shellSafe: true, tsStrict: true, es5Compat: true, status: 'stable', source: 'v8', command: 'process.memoryUsage().heapTotal'},
-		{metric: 'HeapU', value: `${(mem.heapUsed / 1048576).toFixed(1)}MB`, risk: calculateR(1, 50, 100, 0), complexity: 1, edgeCases: 50, scope: 100, variants: 0, latencyNs: 18, memoryB: 0, cat: 'mem', shellSafe: true, tsStrict: true, es5Compat: true, status: 'stable', source: 'v8', command: 'process.memoryUsage().heapUsed'},
-		{metric: 'Ext', value: `${(mem.external / 1048576).toFixed(1)}MB`, risk: calculateR(1, 20, 50, 0), complexity: 1, edgeCases: 20, scope: 50, variants: 0, latencyNs: 15, memoryB: 0, cat: 'mem', shellSafe: true, tsStrict: true, es5Compat: true, status: 'stable', source: 'v8', command: 'process.memoryUsage().external'},
-		{metric: 'ArrBuf', value: `${(mem.arrayBuffers / 1048576).toFixed(1)}MB`, risk: calculateR(1, 10, 20, 0), complexity: 1, edgeCases: 10, scope: 20, variants: 0, latencyNs: 14, memoryB: 0, cat: 'mem', shellSafe: true, tsStrict: true, es5Compat: true, status: 'stable', source: 'v8', command: 'process.memoryUsage().arrayBuffers'},
+		{
+			metric: 'RSS',
+			value: `${(mem.rss / 1048576).toFixed(1)}MB`,
+			risk: calculateR(1, 50, 100, 0),
+			complexity: 1,
+			edgeCases: 50,
+			scope: 100,
+			variants: 0,
+			latencyNs: 45,
+			memoryB: 64,
+			cat: 'mem',
+			shellSafe: true,
+			tsStrict: true,
+			es5Compat: true,
+			status: 'stable',
+			source: 'v8',
+			command: 'process.memoryUsage().rss',
+		},
+		{
+			metric: 'HeapT',
+			value: `${(mem.heapTotal / 1048576).toFixed(1)}MB`,
+			risk: calculateR(1, 50, 100, 0),
+			complexity: 1,
+			edgeCases: 50,
+			scope: 100,
+			variants: 0,
+			latencyNs: 23,
+			memoryB: 0,
+			cat: 'mem',
+			shellSafe: true,
+			tsStrict: true,
+			es5Compat: true,
+			status: 'stable',
+			source: 'v8',
+			command: 'process.memoryUsage().heapTotal',
+		},
+		{
+			metric: 'HeapU',
+			value: `${(mem.heapUsed / 1048576).toFixed(1)}MB`,
+			risk: calculateR(1, 50, 100, 0),
+			complexity: 1,
+			edgeCases: 50,
+			scope: 100,
+			variants: 0,
+			latencyNs: 18,
+			memoryB: 0,
+			cat: 'mem',
+			shellSafe: true,
+			tsStrict: true,
+			es5Compat: true,
+			status: 'stable',
+			source: 'v8',
+			command: 'process.memoryUsage().heapUsed',
+		},
+		{
+			metric: 'Ext',
+			value: `${(mem.external / 1048576).toFixed(1)}MB`,
+			risk: calculateR(1, 20, 50, 0),
+			complexity: 1,
+			edgeCases: 20,
+			scope: 50,
+			variants: 0,
+			latencyNs: 15,
+			memoryB: 0,
+			cat: 'mem',
+			shellSafe: true,
+			tsStrict: true,
+			es5Compat: true,
+			status: 'stable',
+			source: 'v8',
+			command: 'process.memoryUsage().external',
+		},
+		{
+			metric: 'ArrBuf',
+			value: `${(mem.arrayBuffers / 1048576).toFixed(1)}MB`,
+			risk: calculateR(1, 10, 20, 0),
+			complexity: 1,
+			edgeCases: 10,
+			scope: 20,
+			variants: 0,
+			latencyNs: 14,
+			memoryB: 0,
+			cat: 'mem',
+			shellSafe: true,
+			tsStrict: true,
+			es5Compat: true,
+			status: 'stable',
+			source: 'v8',
+			command: 'process.memoryUsage().arrayBuffers',
+		},
 
 		// cpu
-		{metric: 'CPUusr', value: `${(cpu.user / 1000).toFixed(0)}ms`, risk: calculateR(2, 100, 1000, 0), complexity: 2, edgeCases: 100, scope: 1000, variants: 0, latencyNs: 34, memoryB: 0, cat: 'cpu', shellSafe: true, tsStrict: true, es5Compat: true, status: 'stable', source: 'kernel', command: 'process.cpuUsage().user'},
-		{metric: 'CPUsys', value: `${(cpu.system / 1000).toFixed(0)}ms`, risk: calculateR(2, 100, 1000, 0), complexity: 2, edgeCases: 100, scope: 1000, variants: 0, latencyNs: 28, memoryB: 0, cat: 'cpu', shellSafe: true, tsStrict: true, es5Compat: true, status: 'stable', source: 'kernel', command: 'process.cpuUsage().system'},
+		{
+			metric: 'CPUusr',
+			value: `${(cpu.user / 1000).toFixed(0)}ms`,
+			risk: calculateR(2, 100, 1000, 0),
+			complexity: 2,
+			edgeCases: 100,
+			scope: 1000,
+			variants: 0,
+			latencyNs: 34,
+			memoryB: 0,
+			cat: 'cpu',
+			shellSafe: true,
+			tsStrict: true,
+			es5Compat: true,
+			status: 'stable',
+			source: 'kernel',
+			command: 'process.cpuUsage().user',
+		},
+		{
+			metric: 'CPUsys',
+			value: `${(cpu.system / 1000).toFixed(0)}ms`,
+			risk: calculateR(2, 100, 1000, 0),
+			complexity: 2,
+			edgeCases: 100,
+			scope: 1000,
+			variants: 0,
+			latencyNs: 28,
+			memoryB: 0,
+			cat: 'cpu',
+			shellSafe: true,
+			tsStrict: true,
+			es5Compat: true,
+			status: 'stable',
+			source: 'kernel',
+			command: 'process.cpuUsage().system',
+		},
 
 		// ver
-		{metric: 'BunVer', value: `${Bun.version}+${Bun.revision.slice(0, 7)}`, risk: 1.0, complexity: 1, edgeCases: 0, scope: 1, variants: 0, latencyNs: 2, memoryB: 32, cat: 'ver', shellSafe: true, tsStrict: true, es5Compat: true, status: 'stable', source: 'bun', command: 'Bun.version'},
+		{
+			metric: 'BunVer',
+			value: `${Bun.version}+${Bun.revision.slice(0, 7)}`,
+			risk: 1.0,
+			complexity: 1,
+			edgeCases: 0,
+			scope: 1,
+			variants: 0,
+			latencyNs: 2,
+			memoryB: 32,
+			cat: 'ver',
+			shellSafe: true,
+			tsStrict: true,
+			es5Compat: true,
+			status: 'stable',
+			source: 'bun',
+			command: 'Bun.version',
+		},
 	];
 
 	return raw.map((m, idx) => ({
@@ -129,11 +350,13 @@ export function collectMetrics(): MetricRow[] {
 
 // ── Diagnostic runner ───────────────────────────────────────────────
 
-export function runRiskDiagnostic(opts: {
-	mode?: OutputMode;
-	colors?: boolean;
-	filter?: MetricCategory[];
-} = {}): DiagnosticResult {
+export function runRiskDiagnostic(
+	opts: {
+		mode?: OutputMode;
+		colors?: boolean;
+		filter?: MetricCategory[];
+	} = {},
+): DiagnosticResult {
 	const start = Bun.nanoseconds();
 	const memBefore = process.memoryUsage().heapUsed;
 	const all = collectMetrics();
@@ -148,15 +371,21 @@ export function runRiskDiagnostic(opts: {
 
 	switch (mode) {
 		case 'json':
-			console.log(JSON.stringify({
-				metrics: filtered,
-				timestamp: new Date().toISOString(),
-				telemetry: {
-					totalLatencyNs: collectionLatencyNs,
-					rowCount: filtered.length,
-					avgRisk: Number((filtered.reduce((a, b) => a + b.risk, 0) / filtered.length).toFixed(3)),
-				},
-			}, null, 2));
+			console.log(
+				JSON.stringify(
+					{
+						metrics: filtered,
+						timestamp: new Date().toISOString(),
+						telemetry: {
+							totalLatencyNs: collectionLatencyNs,
+							rowCount: filtered.length,
+							avgRisk: Number((filtered.reduce((a, b) => a + b.risk, 0) / filtered.length).toFixed(3)),
+						},
+					},
+					null,
+					2,
+				),
+			);
 			break;
 
 		case 'prometheus':
@@ -172,25 +401,36 @@ export function runRiskDiagnostic(opts: {
 
 		case 'verbose':
 			// @ts-expect-error Bun.inspect.table accepts options as third arg
-			console.log(Bun.inspect.table(
-				filtered.map(m => ({
-					metric: m.metric, value: m.value, cat: m.cat,
-					risk: m.risk.toFixed(3), latency: `${m.latencyNs}ns`, carbon: `${m.carbonUg}µg`,
-				})),
-				['metric', 'value', 'cat', 'risk', 'latency', 'carbon'],
-				{colors: useColor},
-			));
+			console.log(
+				Bun.inspect.table(
+					filtered.map(m => ({
+						metric: m.metric,
+						value: m.value,
+						cat: m.cat,
+						risk: m.risk.toFixed(3),
+						latency: `${m.latencyNs}ns`,
+						carbon: `${m.carbonUg}µg`,
+					})),
+					['metric', 'value', 'cat', 'risk', 'latency', 'carbon'],
+					{colors: useColor},
+				),
+			);
 			break;
 
 		default:
 			// @ts-expect-error Bun.inspect.table accepts options as third arg
-			console.log(Bun.inspect.table(
-				filtered.map(m => ({
-					metric: m.metric, value: m.value, cat: m.cat, risk: m.risk.toFixed(3),
-				})),
-				['metric', 'value', 'cat', 'risk'],
-				{colors: useColor},
-			));
+			console.log(
+				Bun.inspect.table(
+					filtered.map(m => ({
+						metric: m.metric,
+						value: m.value,
+						cat: m.cat,
+						risk: m.risk.toFixed(3),
+					})),
+					['metric', 'value', 'cat', 'risk'],
+					{colors: useColor},
+				),
+			);
 	}
 
 	const renderLatencyNs = Bun.nanoseconds() - renderStart;
@@ -204,17 +444,24 @@ export function runRiskDiagnostic(opts: {
 	// Telemetry footer (stderr — doesn't pollute stdout pipe)
 	const D = useColor ? '\x1b[2m' : '';
 	const R = useColor ? '\x1b[0m' : '';
-	console.error(`${D}[${totalLatencyNs}ns|${filtered.length}rows|${Math.floor(totalLatencyNs * 0.00042)}µgCO₂|avgR:${avgRisk.toFixed(3)}|${cpuDeltaUs}µsΔ|${(memoryDeltaMB * 1024).toFixed(1)}KB]${R}`);
+	console.error(
+		`${D}[${totalLatencyNs}ns|${filtered.length}rows|${Math.floor(totalLatencyNs * 0.00042)}µgCO₂|avgR:${avgRisk.toFixed(3)}|${cpuDeltaUs}µsΔ|${(memoryDeltaMB * 1024).toFixed(1)}KB]${R}`,
+	);
 
 	const result: DiagnosticResult = {
 		metrics: filtered,
 		telemetry: {
-			totalLatencyNs, collectionLatencyNs, renderLatencyNs,
-			rowCount: filtered.length, avgRisk: Number(avgRisk.toFixed(3)),
+			totalLatencyNs,
+			collectionLatencyNs,
+			renderLatencyNs,
+			rowCount: filtered.length,
+			avgRisk: Number(avgRisk.toFixed(3)),
 			totalCarbonUg: Math.floor(totalLatencyNs * 0.00042),
-			cpuDeltaUs, memoryDeltaMB,
+			cpuDeltaUs,
+			memoryDeltaMB,
 			timestamp: new Date().toISOString(),
-			bunVersion: Bun.version, platform: process.platform,
+			bunVersion: Bun.version,
+			platform: process.platform,
 		},
 		validation: {
 			compliant20: true,
@@ -231,15 +478,16 @@ export function runRiskDiagnostic(opts: {
 
 if (import.meta.main) {
 	const argv = Bun.argv.slice(2);
-	const mode: OutputMode = argv.includes('--verbose') ? 'verbose'
-		: argv.includes('--json') ? 'json'
-		: argv.includes('--prometheus') ? 'prometheus'
-		: 'default';
+	const mode: OutputMode = argv.includes('--verbose')
+		? 'verbose'
+		: argv.includes('--json')
+			? 'json'
+			: argv.includes('--prometheus')
+				? 'prometheus'
+				: 'default';
 
 	const filterArg = argv.find(a => a.startsWith('--filter='));
-	const filter = filterArg
-		? filterArg.split('=')[1].split(',') as MetricCategory[]
-		: undefined;
+	const filter = filterArg ? (filterArg.split('=')[1].split(',') as MetricCategory[]) : undefined;
 
 	runRiskDiagnostic({mode, colors: !argv.includes('--no-color'), filter});
 }

@@ -1,6 +1,6 @@
 // runtime-optimizations.test.ts — tests for JSC/Bun runtime optimization helpers
 
-import { describe, test, expect } from 'bun:test';
+import {describe, test, expect} from 'bun:test';
 import {
 	batchedExists,
 	createRuntimeNode,

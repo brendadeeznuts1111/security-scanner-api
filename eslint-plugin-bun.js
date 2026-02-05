@@ -18,7 +18,25 @@ const requireBunPrefix = {
 	},
 	create(context) {
 		// Keywords that indicate Bun-related constants
-		const bunKeywords = ['API', 'CATALOG', 'DOC', 'KEYWORD', 'ANNOTATION', 'CONFIG', 'FORMAT', 'VERSION', 'COOKIE', 'R2', 'S3', 'CLIENT', 'ENDPOINT', 'BUCKET', 'ACCOUNT', 'ACCESS', 'SECRET'];
+		const bunKeywords = [
+			'API',
+			'CATALOG',
+			'DOC',
+			'KEYWORD',
+			'ANNOTATION',
+			'CONFIG',
+			'FORMAT',
+			'VERSION',
+			'COOKIE',
+			'R2',
+			'S3',
+			'CLIENT',
+			'ENDPOINT',
+			'BUCKET',
+			'ACCOUNT',
+			'ACCESS',
+			'SECRET',
+		];
 
 		/**
 		 * Check if a constant name should have BUN_ prefix
@@ -42,9 +60,10 @@ const requireBunPrefix = {
 							const name = declaration.id.name;
 
 							// Only check exported constants or SCREAMING_SNAKE_CASE constants
-							const isExported = node.parent?.type === 'ExportNamedDeclaration' || 
-											   node.parent?.type === 'ExportDefaultDeclaration' ||
-											   (node.parent?.type === 'Program' && declaration.id.name.match(/^[A-Z][A-Z0-9_]*$/));
+							const isExported =
+								node.parent?.type === 'ExportNamedDeclaration' ||
+								node.parent?.type === 'ExportDefaultDeclaration' ||
+								(node.parent?.type === 'Program' && declaration.id.name.match(/^[A-Z][A-Z0-9_]*$/));
 
 							if (isExported && shouldHaveBunPrefix(name)) {
 								context.report({
@@ -81,12 +100,12 @@ const noHardcodedSimilarityThreshold = {
 				properties: {
 					allowedThresholds: {
 						type: 'array',
-						items: { type: 'number' },
+						items: {type: 'number'},
 						description: 'List of threshold values that are allowed to be hardcoded',
 					},
 					functionNames: {
 						type: 'array',
-						items: { type: 'string' },
+						items: {type: 'string'},
 						description: 'Function names to check (default: levenshtein, distance, similarity)',
 					},
 				},
@@ -94,13 +113,16 @@ const noHardcodedSimilarityThreshold = {
 			},
 		],
 		messages: {
-			hardcodedThreshold: 'Hardcoded similarity threshold {{threshold}} detected. Consider using a named constant like SIMILARITY_THRESHOLD or MAX_DISTANCE instead.',
+			hardcodedThreshold:
+				'Hardcoded similarity threshold {{threshold}} detected. Consider using a named constant like SIMILARITY_THRESHOLD or MAX_DISTANCE instead.',
 		},
 	},
 	create(context) {
 		const options = context.options[0] || {};
 		const allowedThresholds = new Set(options.allowedThresholds || []);
-		const functionNames = new Set(options.functionNames || ['levenshtein', 'distance', 'similarity', 'editDistance']);
+		const functionNames = new Set(
+			options.functionNames || ['levenshtein', 'distance', 'similarity', 'editDistance'],
+		);
 
 		/**
 		 * Check if a node is a call to a similarity/distance function
@@ -162,7 +184,7 @@ const noHardcodedSimilarityThreshold = {
 
 		return {
 			BinaryExpression(node) {
-				const { operator, left, right } = node;
+				const {operator, left, right} = node;
 
 				// Check comparison operators that might use thresholds
 				if (['<=', '>=', '<', '>', '===', '==', '!==', '!='].includes(operator)) {

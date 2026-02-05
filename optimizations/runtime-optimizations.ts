@@ -4,7 +4,7 @@
 // Note: Parallel subtree forking uses Bun.spawn + ipc (see scan.ts). SharedArrayBuffer
 // + Atomics is for in-process Workers; spawn uses processes, so IPC is used.
 
-import { readdir } from 'node:fs/promises';
+import {readdir} from 'node:fs/promises';
 
 // ── 1. Lazy stat: Bun.file() + exists() + size (no eager stat()) ─────────────────
 export function lazyFile(path: string): Bun.File {
@@ -19,7 +19,7 @@ export const BUN_MAX_SAFE_SIZE = Number.MAX_SAFE_INTEGER;
 
 // ── 2. Batched existence checks ───────────────────────────────────────────────
 export async function batchedExists(paths: string[]): Promise<boolean[]> {
-	const checks = paths.map(async (p) => Bun.file(p).exists());
+	const checks = paths.map(async p => Bun.file(p).exists());
 	return Promise.all(checks);
 }
 
@@ -101,7 +101,7 @@ export async function* scanRuntimeGenerator(
 ): AsyncGenerator<RuntimeNode> {
 	const name = path.split('/').pop() ?? path;
 	try {
-		const entries = await readdir(path, { withFileTypes: true });
+		const entries = await readdir(path, {withFileTypes: true});
 		const node = createRuntimeNode(path, name, 'dir', 0, 0, depth, 1.0);
 		yield node;
 		if (opts.yieldEveryLevels && depth > 0 && depth % opts.yieldEveryLevels === 0) await Bun.sleep(0);
@@ -140,7 +140,7 @@ export function gcHint(): void {
 // ── 9. JIT warmup ─────────────────────────────────────────────────────────────
 export async function warmupScanner(warmupPath: string = '/tmp'): Promise<void> {
 	let count = 0;
-	for await (const _ of scanRuntimeGenerator(warmupPath, 0, { yieldEveryLevels: 2 })) {
+	for await (const _ of scanRuntimeGenerator(warmupPath, 0, {yieldEveryLevels: 2})) {
 		count++;
 		if (count >= 50) break;
 	}

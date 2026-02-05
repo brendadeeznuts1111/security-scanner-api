@@ -455,7 +455,17 @@ export const BUN_SEARCH_KEYWORDS: Readonly<Record<string, readonly string[]>> = 
 	// Utilities — module resolution
 	'Bun.resolveSync': ['resolve', 'module', 'import', 'path', 'sync', 'require', 'specifier'],
 	'Bun.resolve': ['resolve', 'module', 'import', 'path', 'async', 'specifier', 'dynamic import'],
-	'ResolveMessage': ['module', 'not found', 'resolve', 'import', 'require', 'error', 'resolvemessage', 'circular', 'missing'],
+	'ResolveMessage': [
+		'module',
+		'not found',
+		'resolve',
+		'import',
+		'require',
+		'error',
+		'resolvemessage',
+		'circular',
+		'missing',
+	],
 	'import.meta.resolve': ['resolve', 'module', 'import', 'esm', 'specifier', 'dynamic import', 'lazy loading'],
 	'import.meta': ['import', 'meta', 'url', 'dirname', 'filename', 'resolve', 'esm'],
 	'Bun.fileURLToPath': ['file', 'url', 'path', 'convert', 'file://'],
@@ -548,7 +558,12 @@ export class DocLinkGenerator {
 			}
 
 			if (score > 0) {
-				results.push({api: entry.api, score, matchedOn, docUrl: withWellDocumentedFragment(entry.docUrl, entry.api)});
+				results.push({
+					api: entry.api,
+					score,
+					matchedOn,
+					docUrl: withWellDocumentedFragment(entry.docUrl, entry.api),
+				});
 			}
 		}
 

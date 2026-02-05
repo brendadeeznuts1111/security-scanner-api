@@ -426,7 +426,12 @@ sectionHeader('6. Bun.escapeHTML', 'https://bun.sh/docs/api/utils#bun-escapehtml
 
 // Userland baseline (chained .replace — common pattern)
 function escapeHtmlReplace(s: string): string {
-	return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#x27;');
+	return s
+		.replace(/&/g, '&amp;')
+		.replace(/</g, '&lt;')
+		.replace(/>/g, '&gt;')
+		.replace(/"/g, '&quot;')
+		.replace(/'/g, '&#x27;');
 }
 
 // Correctness checks
@@ -434,7 +439,7 @@ function escapeHtmlReplace(s: string): string {
 	const basic = Bun.escapeHTML('<script>alert("xss")</script>');
 	checkPass('basic escaping', basic === '&lt;script&gt;alert(&quot;xss&quot;)&lt;/script&gt;', `→ ${basic}`);
 
-	const amp = Bun.escapeHTML("AT&T's \"deal\" <now>");
+	const amp = Bun.escapeHTML('AT&T\'s "deal" <now>');
 	checkPass('all 5 entities', amp === 'AT&amp;T&#x27;s &quot;deal&quot; &lt;now&gt;', `→ ${amp}`);
 
 	const clean = Bun.escapeHTML('hello world 123');
@@ -581,13 +586,21 @@ const DE_CASES: {label: string; a: unknown; b: unknown}[] = [
 	{label: 'array 10 items', a: makeArray(10), b: makeArray(10)},
 	{label: 'array 1000 items', a: makeArray(1000), b: makeArray(1000)},
 	{label: 'array 10000 items', a: makeArray(10000), b: makeArray(10000)},
-	{label: 'mixed (real-world)', a: {
-		name: 'scanner', version: '1.0.0', deps: {bun: '1.3.9', typescript: '5.4'},
-		config: {strict: true, targets: ['es2022'], paths: ['/a', '/b', '/c']},
-	}, b: {
-		name: 'scanner', version: '1.0.0', deps: {bun: '1.3.9', typescript: '5.4'},
-		config: {strict: true, targets: ['es2022'], paths: ['/a', '/b', '/c']},
-	}},
+	{
+		label: 'mixed (real-world)',
+		a: {
+			name: 'scanner',
+			version: '1.0.0',
+			deps: {bun: '1.3.9', typescript: '5.4'},
+			config: {strict: true, targets: ['es2022'], paths: ['/a', '/b', '/c']},
+		},
+		b: {
+			name: 'scanner',
+			version: '1.0.0',
+			deps: {bun: '1.3.9', typescript: '5.4'},
+			config: {strict: true, targets: ['es2022'], paths: ['/a', '/b', '/c']},
+		},
+	},
 ];
 
 // Head-to-head: userland vs Bun.deepEquals
@@ -608,11 +621,11 @@ const strictCases: [string, unknown, unknown][] = [
 	['array 1000', makeArray(1000), makeArray(1000)],
 ];
 
-const strictRows: {Case: string; 'Non-strict': string; Strict: string}[] = [];
+const strictRows: {'Case': string; 'Non-strict': string; 'Strict': string}[] = [];
 for (const [label, a, b] of strictCases) {
 	const r1 = bench('non-strict', () => Bun.deepEquals(a, b));
 	const r2 = bench('strict', () => Bun.deepEquals(a, b, true));
-	strictRows.push({Case: label, 'Non-strict': fmt(r1.mean_ns), Strict: fmt(r2.mean_ns)});
+	strictRows.push({'Case': label, 'Non-strict': fmt(r1.mean_ns), 'Strict': fmt(r2.mean_ns)});
 }
 // @ts-expect-error Bun.inspect.table accepts options as third arg
 console.log(Bun.inspect.table(strictRows, ['Case', 'Non-strict', 'Strict'], {colors: useColor}));
@@ -640,11 +653,19 @@ sectionHeader('8. Bun.inspect / Bun.inspect.table', 'https://bun.sh/docs/api/uti
 // ── 8a. Bun.inspect.custom ──────────────────────────────────────
 
 class PlainClass {
-	constructor(public id: number, public name: string, public data: number[]) {}
+	constructor(
+		public id: number,
+		public name: string,
+		public data: number[],
+	) {}
 }
 
 class CustomInspectClass {
-	constructor(public id: number, public name: string, public data: number[]) {}
+	constructor(
+		public id: number,
+		public name: string,
+		public data: number[],
+	) {}
 	[Bun.inspect.custom]() {
 		return `CustomInspect<${this.id}:${this.name}>`;
 	}
@@ -661,7 +682,10 @@ class HeavyCustomInspectClass {
 {
 	const plain = new PlainClass(1, 'test', [1, 2, 3]);
 	const custom = new CustomInspectClass(1, 'test', [1, 2, 3]);
-	const heavy = new HeavyCustomInspectClass([{key: 'a', val: 1}, {key: 'b', val: 2}]);
+	const heavy = new HeavyCustomInspectClass([
+		{key: 'a', val: 1},
+		{key: 'b', val: 2},
+	]);
 
 	const plainOut = Bun.inspect(plain);
 	const customOut = Bun.inspect(custom);
@@ -675,15 +699,20 @@ class HeavyCustomInspectClass {
 // Benchmark: custom vs default serialization
 console.log(`\n  ${D}[Bun.inspect.custom — custom vs default class serialization]${R}`);
 
-const plainInstances = Array.from({length: 50}, (_, i) => new PlainClass(i, `item-${i}`, [i, i+1, i+2]));
-const customInstances = Array.from({length: 50}, (_, i) => new CustomInspectClass(i, `item-${i}`, [i, i+1, i+2]));
-const heavyInstances = Array.from({length: 50}, (_, i) =>
-	new HeavyCustomInspectClass(Array.from({length: 10}, (_, j) => ({key: `k${j}`, val: i * 10 + j}))),
+const plainInstances = Array.from({length: 50}, (_, i) => new PlainClass(i, `item-${i}`, [i, i + 1, i + 2]));
+const customInstances = Array.from({length: 50}, (_, i) => new CustomInspectClass(i, `item-${i}`, [i, i + 1, i + 2]));
+const heavyInstances = Array.from(
+	{length: 50},
+	(_, i) => new HeavyCustomInspectClass(Array.from({length: 10}, (_, j) => ({key: `k${j}`, val: i * 10 + j}))),
 );
 
 {
-	const r1 = bench('plain class', () => { for (const inst of plainInstances) Bun.inspect(inst); });
-	const r2 = bench('custom inspect', () => { for (const inst of customInstances) Bun.inspect(inst); });
+	const r1 = bench('plain class', () => {
+		for (const inst of plainInstances) Bun.inspect(inst);
+	});
+	const r2 = bench('custom inspect', () => {
+		for (const inst of customInstances) Bun.inspect(inst);
+	});
 	report('50 instances', r1, r2);
 }
 {
@@ -692,7 +721,9 @@ const heavyInstances = Array.from({length: 50}, (_, i) =>
 	report('single instance', r1, r2);
 }
 {
-	const r = bench('heavy custom (50)', () => { for (const inst of heavyInstances) Bun.inspect(inst); });
+	const r = bench('heavy custom (50)', () => {
+		for (const inst of heavyInstances) Bun.inspect(inst);
+	});
 	console.log(`  ${D}[heavy custom × 50] ${fmt(r.mean_ns)} mean (${fmt(r.min_ns)} min)${R}`);
 }
 
@@ -700,13 +731,23 @@ const heavyInstances = Array.from({length: 50}, (_, i) =>
 
 const INSPECT_CASES: {label: string; value: unknown}[] = [
 	{label: 'flat object (5 keys)', value: {a: 1, b: 'hello', c: true, d: null, e: [1, 2]}},
-	{label: 'nested object', value: {
-		name: 'scanner', config: {strict: true, paths: ['/a', '/b']},
-		meta: {version: '1.0', build: {date: '2026-01-29', hash: 'abc123'}},
-	}},
+	{
+		label: 'nested object',
+		value: {
+			name: 'scanner',
+			config: {strict: true, paths: ['/a', '/b']},
+			meta: {version: '1.0', build: {date: '2026-01-29', hash: 'abc123'}},
+		},
+	},
 	{label: 'typed array', value: new Uint8Array([10, 20, 30, 40, 50, 60, 70, 80])},
-	{label: 'array of objects (10)', value: Array.from({length: 10}, (_, i) => ({id: i, name: `item-${i}`, active: i % 2 === 0}))},
-	{label: 'array of objects (100)', value: Array.from({length: 100}, (_, i) => ({id: i, name: `item-${i}`, active: i % 2 === 0}))},
+	{
+		label: 'array of objects (10)',
+		value: Array.from({length: 10}, (_, i) => ({id: i, name: `item-${i}`, active: i % 2 === 0})),
+	},
+	{
+		label: 'array of objects (100)',
+		value: Array.from({length: 100}, (_, i) => ({id: i, name: `item-${i}`, active: i % 2 === 0})),
+	},
 	{label: 'Map (20 entries)', value: new Map(Array.from({length: 20}, (_, i) => [`key${i}`, i * 10]))},
 	{label: 'Set (50 items)', value: new Set(Array.from({length: 50}, (_, i) => i))},
 	{label: 'deep nesting (10)', value: makeNested(10)},
@@ -742,10 +783,15 @@ console.log(`\n  ${D}[Bun.inspect.table — scaling by row count]${R}`);
 
 const tableCols = ['ID', 'Name', 'Value', 'Status'];
 function makeTableData(n: number) {
-	return Array.from({length: n}, (_, i) => ({ID: i, Name: `item-${i}`, Value: Math.random(), Status: i % 2 === 0 ? 'active' : 'inactive'}));
+	return Array.from({length: n}, (_, i) => ({
+		ID: i,
+		Name: `item-${i}`,
+		Value: Math.random(),
+		Status: i % 2 === 0 ? 'active' : 'inactive',
+	}));
 }
 
-const tableRows: {Rows: number; 'No color': string; Color: string; Chars: number}[] = [];
+const tableRows: {'Rows': number; 'No color': string; 'Color': string; 'Chars': number}[] = [];
 for (const rowCount of [5, 25, 100, 500]) {
 	const data = makeTableData(rowCount);
 	// @ts-expect-error Bun.inspect.table accepts options as third arg
@@ -754,7 +800,7 @@ for (const rowCount of [5, 25, 100, 500]) {
 	const r2 = bench(`${rowCount} rows (color)`, () => Bun.inspect.table(data, tableCols, {colors: true}));
 	// @ts-expect-error Bun.inspect.table accepts options as third arg
 	const outputLen = Bun.inspect.table(data, tableCols, {colors: false}).length;
-	tableRows.push({Rows: rowCount, 'No color': fmt(r1.mean_ns), Color: fmt(r2.mean_ns), Chars: outputLen});
+	tableRows.push({'Rows': rowCount, 'No color': fmt(r1.mean_ns), 'Color': fmt(r2.mean_ns), 'Chars': outputLen});
 }
 // @ts-expect-error Bun.inspect.table accepts options as third arg
 console.log(Bun.inspect.table(tableRows, ['Rows', 'No color', 'Color', 'Chars'], {colors: useColor}));
@@ -765,7 +811,8 @@ console.log(`\n  ${D}[Bun.inspect.table — scaling by column count]${R}`);
 function makeWideTableData(rows: number, cols: number) {
 	return Array.from({length: rows}, (_, i) => {
 		const obj: Record<string, unknown> = {};
-		for (let c = 0; c < cols; c++) obj[`col${c}`] = c % 3 === 0 ? i * c : c % 3 === 1 ? `val-${i}-${c}` : i % 2 === 0;
+		for (let c = 0; c < cols; c++)
+			obj[`col${c}`] = c % 3 === 0 ? i * c : c % 3 === 1 ? `val-${i}-${c}` : i % 2 === 0;
 		return obj;
 	});
 }
@@ -787,31 +834,60 @@ console.log(Bun.inspect.table(colRows, ['Cols', 'Mean', 'Min', 'Chars'], {colors
 console.log(`\n  ${D}[Bun.inspect.table — property filtering]${R}`);
 
 const filterData = Array.from({length: 50}, (_, i) => ({
-	a: i, b: `name-${i}`, c: Math.random(), d: i % 2 === 0,
-	e: `long-value-${i}`, f: i * 100, g: `extra-${i}`, h: !!(i % 3),
+	a: i,
+	b: `name-${i}`,
+	c: Math.random(),
+	d: i % 2 === 0,
+	e: `long-value-${i}`,
+	f: i * 100,
+	g: `extra-${i}`,
+	h: !!(i % 3),
 }));
 
 const filterRows: {Variant: string; Mean: string; Min: string; Chars: number}[] = [];
 {
 	// All columns (no property array)
 	const r1 = bench('all cols (no props)', () => Bun.inspect.table(filterData));
-	filterRows.push({Variant: 'all cols (no props)', Mean: fmt(r1.mean_ns), Min: fmt(r1.min_ns), Chars: (Bun.inspect.table(filterData) as string).length});
+	filterRows.push({
+		Variant: 'all cols (no props)',
+		Mean: fmt(r1.mean_ns),
+		Min: fmt(r1.min_ns),
+		Chars: (Bun.inspect.table(filterData) as string).length,
+	});
 
 	// All columns via property array
 	// @ts-expect-error Bun.inspect.table accepts options as third arg
-	const r2 = bench('all cols (props array)', () => Bun.inspect.table(filterData, ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h'], {colors: false}));
+	const r2 = bench('all cols (props array)', () =>
+		Bun.inspect.table(filterData, ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h'], {colors: false}),
+	);
 	// @ts-expect-error Bun.inspect.table accepts options as third arg
-	filterRows.push({Variant: 'all 8 cols (explicit)', Mean: fmt(r2.mean_ns), Min: fmt(r2.min_ns), Chars: (Bun.inspect.table(filterData, ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h'], {colors: false}) as string).length});
+	filterRows.push({
+		Variant: 'all 8 cols (explicit)',
+		Mean: fmt(r2.mean_ns),
+		Min: fmt(r2.min_ns),
+		Chars: (Bun.inspect.table(filterData, ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h'], {colors: false}) as string)
+			.length,
+	});
 
 	// Subset: 2 of 8 columns
 	// @ts-expect-error Bun.inspect.table accepts options as third arg
 	const r3 = bench('2 of 8 cols', () => Bun.inspect.table(filterData, ['a', 'c'], {colors: false}));
 	// @ts-expect-error Bun.inspect.table accepts options as third arg
-	filterRows.push({Variant: '2 of 8 cols', Mean: fmt(r3.mean_ns), Min: fmt(r3.min_ns), Chars: (Bun.inspect.table(filterData, ['a', 'c'], {colors: false}) as string).length});
+	filterRows.push({
+		Variant: '2 of 8 cols',
+		Mean: fmt(r3.mean_ns),
+		Min: fmt(r3.min_ns),
+		Chars: (Bun.inspect.table(filterData, ['a', 'c'], {colors: false}) as string).length,
+	});
 
 	// Options as second arg (no property array) — the overload from docs
 	const r4 = bench('opts as 2nd arg', () => Bun.inspect.table(filterData, {colors: false} as any));
-	filterRows.push({Variant: 'all cols (opts 2nd arg)', Mean: fmt(r4.mean_ns), Min: fmt(r4.min_ns), Chars: (Bun.inspect.table(filterData, {colors: false} as any) as string).length});
+	filterRows.push({
+		Variant: 'all cols (opts 2nd arg)',
+		Mean: fmt(r4.mean_ns),
+		Min: fmt(r4.min_ns),
+		Chars: (Bun.inspect.table(filterData, {colors: false} as any) as string).length,
+	});
 }
 // @ts-expect-error Bun.inspect.table accepts options as third arg
 console.log(Bun.inspect.table(filterRows, ['Variant', 'Mean', 'Min', 'Chars'], {colors: useColor}));
@@ -830,8 +906,14 @@ const COLOR_NAMES = ['red', 'green', 'yellow', 'cyan', 'blue', 'magenta', 'white
 
 // Named color → number mapping (CSS spec values)
 const EXPECTED_NUMBERS: Record<string, number> = {
-	red: 0xff0000, green: 0x008000, yellow: 0xffff00, cyan: 0x00ffff,
-	blue: 0x0000ff, magenta: 0xff00ff, white: 0xffffff, black: 0x000000,
+	red: 0xff0000,
+	green: 0x008000,
+	yellow: 0xffff00,
+	cyan: 0x00ffff,
+	blue: 0x0000ff,
+	magenta: 0xff00ff,
+	white: 0xffffff,
+	black: 0x000000,
 };
 
 for (const name of COLOR_NAMES) {
@@ -844,7 +926,10 @@ checkPass('hex→number round-trip', Bun.color('#ff6600', 'number') === 0xff6600
 checkPass('rgb→css round-trip', Bun.color('rgb(255, 102, 0)', 'css') === '#f60');
 
 // ANSI output is a non-empty string
-checkPass('ansi output is string', typeof Bun.color('red', 'ansi') === 'string' && Bun.color('red', 'ansi')!.length > 0);
+checkPass(
+	'ansi output is string',
+	typeof Bun.color('red', 'ansi') === 'string' && Bun.color('red', 'ansi')!.length > 0,
+);
 
 // {rgb} returns object with r, g, b
 const rgbObj = Bun.color('red', '{rgb}');
@@ -858,14 +943,29 @@ console.log();
 // ── 9b: Userland baseline (lookup table + regex) ────────────────────
 
 const NAMED_COLORS_HEX: Record<string, string> = {
-	red: '#ff0000', green: '#008000', yellow: '#ffff00', cyan: '#00ffff',
-	blue: '#0000ff', magenta: '#ff00ff', white: '#ffffff', black: '#000000',
-	orange: '#ffa500', purple: '#800080', pink: '#ffc0cb', gray: '#808080',
+	red: '#ff0000',
+	green: '#008000',
+	yellow: '#ffff00',
+	cyan: '#00ffff',
+	blue: '#0000ff',
+	magenta: '#ff00ff',
+	white: '#ffffff',
+	black: '#000000',
+	orange: '#ffa500',
+	purple: '#800080',
+	pink: '#ffc0cb',
+	gray: '#808080',
 };
 
 const NAMED_COLORS_ANSI: Record<string, string> = {
-	red: '\x1b[31m', green: '\x1b[32m', yellow: '\x1b[33m', cyan: '\x1b[36m',
-	blue: '\x1b[34m', magenta: '\x1b[35m', white: '\x1b[37m', black: '\x1b[30m',
+	red: '\x1b[31m',
+	green: '\x1b[32m',
+	yellow: '\x1b[33m',
+	cyan: '\x1b[36m',
+	blue: '\x1b[34m',
+	magenta: '\x1b[35m',
+	white: '\x1b[37m',
+	black: '\x1b[30m',
 };
 
 function colorToNumberUserland(input: string): number | null {
@@ -876,7 +976,7 @@ function colorToNumberUserland(input: string): number | null {
 	const m = input.match(/^#([0-9a-f]{3,8})$/i);
 	if (m) {
 		const h = m[1];
-		if (h.length === 3) return parseInt(h[0]+h[0]+h[1]+h[1]+h[2]+h[2], 16);
+		if (h.length === 3) return parseInt(h[0] + h[0] + h[1] + h[1] + h[2] + h[2], 16);
 		if (h.length === 6) return parseInt(h, 16);
 	}
 	// rgb()
@@ -903,7 +1003,12 @@ console.log(`  ${B}Named color → number${R}`);
 		const old = bench(`userland(${name})`, () => colorToNumberUserland(name));
 		const neo = bench(`Bun.color(${name})`, () => Bun.color(name, 'number'));
 		const speedup = old.mean_ns / neo.mean_ns;
-		rows.push({Color: name, Userland: fmt(old.mean_ns), Native: fmt(neo.mean_ns), Speedup: `${speedup.toFixed(1)}x`});
+		rows.push({
+			Color: name,
+			Userland: fmt(old.mean_ns),
+			Native: fmt(neo.mean_ns),
+			Speedup: `${speedup.toFixed(1)}x`,
+		});
 	}
 	// @ts-expect-error Bun.inspect.table accepts options as third arg
 	console.log(Bun.inspect.table(rows, ['Color', 'Userland', 'Native', 'Speedup'], {colors: useColor}));
@@ -919,7 +1024,12 @@ console.log(`  ${B}Hex string → number${R}`);
 		const old = bench(`userland(${hex})`, () => colorToNumberUserland(hex));
 		const neo = bench(`Bun.color(${hex})`, () => Bun.color(hex, 'number'));
 		const speedup = old.mean_ns / neo.mean_ns;
-		rows.push({Input: hex, Userland: fmt(old.mean_ns), Native: fmt(neo.mean_ns), Speedup: `${speedup.toFixed(1)}x`});
+		rows.push({
+			Input: hex,
+			Userland: fmt(old.mean_ns),
+			Native: fmt(neo.mean_ns),
+			Speedup: `${speedup.toFixed(1)}x`,
+		});
 	}
 	// @ts-expect-error Bun.inspect.table accepts options as third arg
 	console.log(Bun.inspect.table(rows, ['Input', 'Userland', 'Native', 'Speedup'], {colors: useColor}));
@@ -935,7 +1045,12 @@ console.log(`  ${B}Color → ANSI escape${R}`);
 		const old = bench(`userland(${input})`, () => colorToAnsiUserland(input));
 		const neo = bench(`Bun.color(${input})`, () => Bun.color(input, 'ansi'));
 		const speedup = old.mean_ns / neo.mean_ns;
-		rows.push({Input: input, Userland: fmt(old.mean_ns), Native: fmt(neo.mean_ns), Speedup: `${speedup.toFixed(1)}x`});
+		rows.push({
+			Input: input,
+			Userland: fmt(old.mean_ns),
+			Native: fmt(neo.mean_ns),
+			Speedup: `${speedup.toFixed(1)}x`,
+		});
 	}
 	// @ts-expect-error Bun.inspect.table accepts options as third arg
 	console.log(Bun.inspect.table(rows, ['Input', 'Userland', 'Native', 'Speedup'], {colors: useColor}));
@@ -946,12 +1061,17 @@ console.log(`  ${B}Color → ANSI escape${R}`);
 console.log(`  ${B}Format conversion speed (native only)${R}`);
 {
 	const formats = ['number', 'css', 'ansi', '{rgb}'] as const;
-	const rows: {Format: string; 'red': string; '#ff6600': string; 'rgb(100,200,50)': string}[] = [];
+	const rows: {'Format': string; 'red': string; '#ff6600': string; 'rgb(100,200,50)': string}[] = [];
 	for (const format of formats) {
 		const r1 = bench(`red→${format}`, () => Bun.color('red', format));
 		const r2 = bench(`#ff6600→${format}`, () => Bun.color('#ff6600', format));
 		const r3 = bench(`rgb→${format}`, () => Bun.color('rgb(100, 200, 50)', format));
-		rows.push({Format: format, 'red': fmt(r1.mean_ns), '#ff6600': fmt(r2.mean_ns), 'rgb(100,200,50)': fmt(r3.mean_ns)});
+		rows.push({
+			'Format': format,
+			'red': fmt(r1.mean_ns),
+			'#ff6600': fmt(r2.mean_ns),
+			'rgb(100,200,50)': fmt(r3.mean_ns),
+		});
 	}
 	// @ts-expect-error Bun.inspect.table accepts options as third arg
 	console.log(Bun.inspect.table(rows, ['Format', 'red', '#ff6600', 'rgb(100,200,50)'], {colors: useColor}));
@@ -1023,20 +1143,35 @@ const hashInputs = {
 
 console.log(`  ${B}djb2 vs fnv1a vs Bun.hash (wyhash)${R}`);
 {
-	const rows: {Size: string; Len: number; djb2: string; fnv1a: string; 'Bun.hash': string; 'vs djb2': string; 'vs fnv1a': string}[] = [];
+	const rows: {
+		'Size': string;
+		'Len': number;
+		'djb2': string;
+		'fnv1a': string;
+		'Bun.hash': string;
+		'vs djb2': string;
+		'vs fnv1a': string;
+	}[] = [];
 	for (const [label, input] of Object.entries(hashInputs)) {
 		const rDjb2 = bench(`djb2(${label})`, () => djb2(input));
 		const rFnv = bench(`fnv1a(${label})`, () => fnv1a(input));
 		const rNative = bench(`Bun.hash(${label})`, () => Bun.hash(input));
 		rows.push({
-			Size: label, Len: input.length,
-			djb2: fmt(rDjb2.mean_ns), fnv1a: fmt(rFnv.mean_ns), 'Bun.hash': fmt(rNative.mean_ns),
+			'Size': label,
+			'Len': input.length,
+			'djb2': fmt(rDjb2.mean_ns),
+			'fnv1a': fmt(rFnv.mean_ns),
+			'Bun.hash': fmt(rNative.mean_ns),
 			'vs djb2': `${(rDjb2.mean_ns / rNative.mean_ns).toFixed(1)}x`,
 			'vs fnv1a': `${(rFnv.mean_ns / rNative.mean_ns).toFixed(1)}x`,
 		});
 	}
 	// @ts-expect-error Bun.inspect.table accepts options as third arg
-	console.log(Bun.inspect.table(rows, ['Size', 'Len', 'djb2', 'fnv1a', 'Bun.hash', 'vs djb2', 'vs fnv1a'], {colors: useColor}));
+	console.log(
+		Bun.inspect.table(rows, ['Size', 'Len', 'djb2', 'fnv1a', 'Bun.hash', 'vs djb2', 'vs fnv1a'], {
+			colors: useColor,
+		}),
+	);
 }
 
 // ── 10d: Algorithm comparison (native only) ─────────────────────────
@@ -1076,7 +1211,9 @@ console.log(`  ${B}String vs Uint8Array input${R}`);
 		const rStr = bench(`string(${size})`, () => Bun.hash(str));
 		const rArr = bench(`uint8array(${size})`, () => Bun.hash(arr));
 		rows.push({
-			Size: size, String: fmt(rStr.mean_ns), Uint8Array: fmt(rArr.mean_ns),
+			Size: size,
+			String: fmt(rStr.mean_ns),
+			Uint8Array: fmt(rArr.mean_ns),
 			Ratio: `${(rStr.mean_ns / rArr.mean_ns).toFixed(2)}x`,
 		});
 	}

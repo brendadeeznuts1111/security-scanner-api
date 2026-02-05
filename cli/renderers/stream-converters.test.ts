@@ -1,9 +1,5 @@
 import {test, expect, describe} from 'bun:test';
-import {
-	BUN_CONVERTERS,
-	BUN_SPAWN_CONVERTER_MATRIX,
-	converterByOutput,
-} from './stream-converters';
+import {BUN_CONVERTERS, BUN_SPAWN_CONVERTER_MATRIX, converterByOutput} from './stream-converters';
 
 // ═══════════════════════════════════════════════════════════════
 // CATALOG TESTS

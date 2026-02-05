@@ -1,16 +1,18 @@
 // ── cookie-sessions.ts — Cookie-based session management with Bun secrets ─────────────
 // Integrates with existing profiles.ts and scan.ts token management system
 
-import { z } from 'zod';
-import { getSecret, setSecret } from './profiles';
-import type { ProjectInfo } from './scan';
+import {z} from 'zod';
+import {getSecret, setSecret} from './profiles';
+import type {ProjectInfo} from './scan';
 
 // ── Project token helpers (duplicated to avoid circular dependency) ──────
 function slugifyTokenPart(input: string): string {
-	return input
-		.toLowerCase()
-		.replace(/[^a-z0-9]+/g, '-')
-		.replace(/^-+|-+$/g, '') || 'default';
+	return (
+		input
+			.toLowerCase()
+			.replace(/[^a-z0-9]+/g, '-')
+			.replace(/^-+|-+$/g, '') || 'default'
+	);
 }
 
 function projectTokenOrg(p: ProjectInfo): string {
@@ -99,7 +101,7 @@ export const CookieSessionSchema = z.object({
 export const BUN_COOKIE_SESSION_PREFIX = 'cookie-session';
 export const BUN_DEFAULT_SESSION_TTL = 24 * 60 * 60 * 1000; // 24 hours
 export const BUN_COOKIE_SECRET_NAMES = ['session_cookies', 'auth_cookies', 'api_cookies'] as const;
-export type CookieSecretName = typeof BUN_COOKIE_SECRET_NAMES[number];
+export type CookieSecretName = (typeof BUN_COOKIE_SECRET_NAMES)[number];
 
 // ── Session ID Generation ─────────────────────────────────────────────────
 export function generateSessionId(service: string, project: string): string {
@@ -130,7 +132,7 @@ export async function createCookieSession(
 	const sessionId = generateSessionId(service, project);
 	const sessionKey = getSessionKey(service, project, sessionId);
 	const listKey = getSessionListKey(service, project);
-	
+
 	const session: CookieSession = {
 		id: sessionId,
 		service,
@@ -146,7 +148,7 @@ export async function createCookieSession(
 	};
 
 	await setSecret(service, sessionKey, JSON.stringify(session));
-	
+
 	const listValue = await getSecret(service, listKey);
 	const list: string[] = listValue ? JSON.parse(listValue) : [];
 	if (!list.includes(sessionId)) {
@@ -167,18 +169,14 @@ export async function createProjectSession(
 	return createCookieSession(service, project, domain, config);
 }
 
-export async function getSession(
-	service: string,
-	project: string,
-	sessionId: string,
-): Promise<CookieSession | null> {
+export async function getSession(service: string, project: string, sessionId: string): Promise<CookieSession | null> {
 	const sessionKey = getSessionKey(service, project, sessionId);
 	const value = await getSecret(service, sessionKey);
 	if (!value) return null;
-	
+
 	const session = CookieSessionSchema.parse(JSON.parse(value));
 	if (session.expiresAt && session.expiresAt < Date.now()) return null;
-	
+
 	session.accessedAt = Date.now();
 	await setSecret(service, sessionKey, JSON.stringify(session));
 	return session;
@@ -192,11 +190,11 @@ export async function updateSessionCookies(
 ): Promise<void> {
 	const session = await getSession(service, project, sessionId);
 	if (!session) throw new Error(`Session ${sessionId} not found`);
-	
+
 	for (const cookie of cookies) {
 		session.cookies[cookie.name] = cookie;
 	}
-	
+
 	const sessionKey = getSessionKey(service, project, sessionId);
 	await setSecret(service, sessionKey, JSON.stringify(session));
 }
@@ -209,7 +207,7 @@ export async function addCookieToSession(
 ): Promise<boolean> {
 	const session = await getSession(service, project, sessionId);
 	if (!session) return false;
-	
+
 	session.cookies[cookie.name] = cookie;
 	const sessionKey = getSessionKey(service, project, sessionId);
 	await setSecret(service, sessionKey, JSON.stringify(session));
@@ -224,28 +222,24 @@ export async function removeCookieFromSession(
 ): Promise<boolean> {
 	const session = await getSession(service, project, sessionId);
 	if (!session) return false;
-	
+
 	delete session.cookies[cookieName];
 	const sessionKey = getSessionKey(service, project, sessionId);
 	await setSecret(service, sessionKey, JSON.stringify(session));
 	return true;
 }
 
-export async function deleteSession(
-	service: string,
-	project: string,
-	sessionId: string,
-): Promise<boolean> {
+export async function deleteSession(service: string, project: string, sessionId: string): Promise<boolean> {
 	const sessionKey = getSessionKey(service, project, sessionId);
 	const listKey = getSessionListKey(service, project);
-	
+
 	const listValue = await getSecret(service, listKey);
 	if (listValue) {
 		const list: string[] = JSON.parse(listValue);
 		const filtered = list.filter(id => id !== sessionId);
 		await setSecret(service, listKey, JSON.stringify(filtered));
 	}
-	
+
 	const sessionValue = await getSecret(service, sessionKey);
 	if (sessionValue) {
 		await setSecret(service, sessionKey, '');
@@ -258,15 +252,15 @@ export async function listSessions(service: string, project: string): Promise<Co
 	const listKey = getSessionListKey(service, project);
 	const listValue = await getSecret(service, listKey);
 	if (!listValue) return [];
-	
+
 	const sessionIds: string[] = JSON.parse(listValue);
 	const sessions: CookieSession[] = [];
-	
+
 	for (const sessionId of sessionIds) {
 		const session = await getSession(service, project, sessionId);
 		if (session) sessions.push(session);
 	}
-	
+
 	return sessions;
 }
 
@@ -274,14 +268,14 @@ export async function cleanupExpiredSessions(service: string, project: string): 
 	const sessions = await listSessions(service, project);
 	const now = Date.now();
 	let cleaned = 0;
-	
+
 	for (const session of sessions) {
 		if (session.expiresAt && session.expiresAt < now) {
 			await deleteSession(service, project, session.id);
 			cleaned++;
 		}
 	}
-	
+
 	return cleaned;
 }
 
@@ -373,15 +367,15 @@ export async function getProjectSession(projectId: string): Promise<CookieSessio
 export function parseCookieString(cookieString: string): Record<string, CookieInfo> {
 	const cookies: Record<string, CookieInfo> = {};
 	const parts = cookieString.split(';').map(s => s.trim());
-	
+
 	if (parts.length === 0) return cookies;
-	
+
 	const [nameValue, ...attrs] = parts;
 	const [name, value] = nameValue.split('=').map(s => s.trim());
 	if (!name || !value) return cookies;
-	
-	const cookie: CookieInfo = { name, value };
-	
+
+	const cookie: CookieInfo = {name, value};
+
 	for (const attr of attrs) {
 		const [key, val] = attr.split('=').map(s => s.trim().toLowerCase());
 		if (key === 'domain') cookie.domain = val;
@@ -390,14 +384,14 @@ export function parseCookieString(cookieString: string): Record<string, CookieIn
 		else if (key === 'httponly') cookie.httpOnly = true;
 		else if (key === 'samesite') {
 			if (val === 'strict' || val === 'lax' || val === 'none') {
-				cookie.sameSite = val.charAt(0).toUpperCase() + val.slice(1) as 'Strict' | 'Lax' | 'None';
+				cookie.sameSite = (val.charAt(0).toUpperCase() + val.slice(1)) as 'Strict' | 'Lax' | 'None';
 			}
 		} else if (key === 'expires' && val) {
 			const expires = new Date(val).getTime();
 			if (!isNaN(expires)) cookie.expires = expires;
 		}
 	}
-	
+
 	cookies[name] = cookie;
 	return cookies;
 }
@@ -423,13 +417,13 @@ export async function listSessionsForTerminal(service: string, project: string):
 	if (sessions.length === 0) {
 		return `No sessions found for ${service}/${project}`;
 	}
-	
+
 	const lines = sessions.map(s => {
 		const expires = s.expiresAt ? new Date(s.expiresAt).toLocaleString() : 'Never';
 		const cookieCount = Object.keys(s.cookies).length;
 		return `${s.id} | ${s.domain} | ${cookieCount} cookies | expires: ${expires}`;
 	});
-	
+
 	return `Sessions for ${service}/${project}:\n${lines.join('\n')}`;
 }
 
@@ -437,7 +431,7 @@ export function formatSessionForTerminal(session: CookieSession): string {
 	const expires = session.expiresAt ? new Date(session.expiresAt).toLocaleString() : 'Never';
 	const cookieCount = Object.keys(session.cookies).length;
 	const cookieList = Object.keys(session.cookies).join(', ');
-	
+
 	return `Session: ${session.id}
 Service: ${session.service}
 Project: ${session.project}

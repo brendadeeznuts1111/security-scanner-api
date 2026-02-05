@@ -17,6 +17,7 @@ import {
 	listMarkedExports,
 	type ExportInfo,
 } from './src/code-discovery';
+import {BUN_FIX_PROJECTIONS, BUN_R_SCORE_BASELINE, type FixProjection} from './src/cli-constants';
 
 // ── Code grouping and removal-preparation ─────────────────────────────
 // Sections: EXPORTS (Schema, Utility, Keychain, RSS, Core), CONSTANTS (Paths, Config, Sets),
@@ -4288,57 +4289,97 @@ async function fixProjects(projects: ProjectInfo[], dryRun: boolean): Promise<vo
 	}
 }
 
-// ── Projected R-Score Improvements ──────────────────────────────────────
+// ── Projected R-Score Improvements (v4.2) ──────────────────────────────────────
+// Constants moved to src/cli-constants.ts
+
 /**
- * Shows projected R-Score improvements for fix commands.
- *
- * Based on Enhanced R-Score Framework analysis of optimization impact.
- *
- * @formula R_Score = (P_ratio × 0.35) + (M_impact × 0.30) + (E_elim × 0.20) + (S_harden × 0.10) + (D_ergonomics × 0.05)
+ * Print enhanced dry-run efficiency preview for multiple fix flags.
+ * Called automatically in --dry-run mode before any fix logic.
+ * Works with any combination of --fix-* and --update flags.
+ * Zero disk I/O → Bypass Ratio = 1.000
+ * Output respects --json flag (omitted in JSON mode)
+ */
+function printDryRunProjections(activeFixes: string[]): void {
+	if (activeFixes.length === 0 || flags.json) return;
+
+	console.log();
+	console.log('───────────────────────────── Dry-Run Efficiency Preview ─────────────────────────────');
+	console.log();
+
+	const baselineR = BUN_R_SCORE_BASELINE;
+	let totalImprovement = 0;
+	const projections: FixProjection[] = [];
+
+	for (const flag of activeFixes) {
+		// Normalize flag name: --fix-engine -> fixengine, --update -> update
+		const normalized = flag.replace(/^--/, '').replace(/-/g, '');
+		const proj = BUN_FIX_PROJECTIONS[normalized];
+		if (!proj) continue;
+
+		const delta = proj.projectedR - baselineR;
+		totalImprovement += delta;
+		projections.push(proj);
+	}
+
+	for (const proj of projections) {
+		const delta = proj.projectedR - baselineR;
+		console.log(`[DRY] Would ${proj.description}`);
+
+		if (proj.latencyDelta) {
+			console.log(`     → Projected Latency Δ:   ${proj.latencyDelta}`);
+		}
+		if (proj.consistencyDelta) {
+			console.log(`     → Projected Consistency Δ: ${proj.consistencyDelta}`);
+		}
+
+		console.log(`     → M_impact:              +${proj.mImpact.toFixed(2)}`);
+		console.log(`     → P_ratio Δ:             +${(proj.pRatioDelta * 100).toFixed(1)}%`);
+		console.log(
+			`     → Projected R-Score:     ${proj.projectedR.toFixed(4)}  (current baseline ~${baselineR.toFixed(2)})`,
+		);
+		console.log(`     → Tier:                  ${proj.tier}`);
+		console.log();
+	}
+
+	const finalR = Math.min(1.0, baselineR + totalImprovement);
+	const finalTier = finalR >= 0.95 ? 'Elite tier' : 'Native-Grade tier';
+	console.log(`[DRY] Total projected R-Score improvement:  +${totalImprovement.toFixed(3)}`);
+	console.log(`     Combined projected R-Score: ${finalR.toFixed(3)} (${finalTier})`);
+	console.log(`     Performance debt cleared:    ~${(totalImprovement * 100).toFixed(1)} percentage points`);
+	console.log();
+	console.log('───────────────────────────── Safe – no filesystem writes performed ─────────────────────────────');
+}
+
+/**
+ * Legacy function for single-command projections (backward compatibility).
+ * @deprecated Use printDryRunProjections() for multi-flag support
  */
 function showProjectedRScoreImprovement(command: 'fix-engine' | 'fix-dns' | 'fix-trusted' | 'update' | 'fix'): void {
-	const metrics: Record<string, {metric: string; mImpact: number; pRatio: number; rScore: number}> = {
-		'fix-engine': {metric: 'Runtime Consistency', mImpact: 0.05, pRatio: 0.1, rScore: 0.985},
-		'fix-dns': {metric: 'Network Latency', mImpact: 0, pRatio: 0.45, rScore: 0.992},
-		'fix-trusted': {metric: 'Execution Security', mImpact: 0.15, pRatio: 0.05, rScore: 0.96},
-		'update': {metric: 'Dependency Bloat', mImpact: 0.25, pRatio: 0.15, rScore: 0.975},
-		'fix': {metric: 'Metadata Completeness', mImpact: 0.05, pRatio: 0.1, rScore: 0.985},
-	};
-
-	const projection = metrics[command];
-	if (!projection) return;
+	const normalized = command.replace(/-/g, '');
+	const proj = BUN_FIX_PROJECTIONS[normalized];
+	if (!proj) return;
 
 	console.log();
 	console.log(c.bold('  📊 Projected R-Score Improvement:'));
 	console.log();
-	console.log(`    Targeted Metric: ${c.cyan(projection.metric)}`);
-	if (projection.mImpact > 0) {
-		console.log(`    Projected M_impact: ${c.green(`+${projection.mImpact.toFixed(2)}`)}`);
-	} else {
-		console.log(`    Projected M_impact: ${c.dim('N/A')}`);
+	console.log(`    Targeted Metric: ${c.cyan(proj.description)}`);
+	if (proj.mImpact > 0) {
+		console.log(`    Projected M_impact: ${c.green(`+${proj.mImpact.toFixed(2)}`)}`);
 	}
-	if (projection.pRatio > 0) {
-		console.log(`    Projected P_ratio: ${c.green(`+${projection.pRatio.toFixed(2)}`)}`);
+	if (proj.pRatioDelta > 0) {
+		console.log(`    Projected P_ratio Δ: ${c.green(`+${(proj.pRatioDelta * 100).toFixed(1)}%`)}`);
 	}
-	console.log(`    Potential R-Score: ${c.bold(c.cyan(projection.rScore.toFixed(3)))}`);
+	console.log(`    Potential R-Score: ${c.bold(c.cyan(proj.projectedR.toFixed(3)))}`);
 
-	const tier =
-		projection.rScore >= 0.95
-			? 'Elite'
-			: projection.rScore >= 0.9
-				? 'Native-Grade'
-				: projection.rScore >= 0.7
-					? 'Sub-Optimal'
-					: 'Critical';
 	const tierColor =
-		projection.rScore >= 0.95
+		proj.projectedR >= 0.95
 			? c.green
-			: projection.rScore >= 0.9
+			: proj.projectedR >= 0.9
 				? c.cyan
-				: projection.rScore >= 0.7
+				: proj.projectedR >= 0.7
 					? c.yellow
 					: c.red;
-	console.log(`    Performance Tier: ${tierColor(tier)}`);
+	console.log(`    Performance Tier: ${tierColor(proj.tier)}`);
 }
 
 // ── Fix Engine: unify engines.bun across all projects ──────────────────
@@ -6233,6 +6274,22 @@ ${c.bold("  Discovery (removal-preparation, mark don't delete):")}
 	});
 
 	const dryRun = !!flags['dry-run'];
+
+	// ── Dry-Run R-Score Projection (v4.2) ─────────────────────────────
+	// Show efficiency preview before any fix operations when in dry-run mode
+	if (dryRun) {
+		const activeFixes: string[] = [];
+		if (flags['fix-engine']) activeFixes.push('--fix-engine');
+		if (flags['fix-dns']) activeFixes.push('--fix-dns');
+		if (flags['fix-trusted']) activeFixes.push('--fix-trusted');
+		if (flags['fix-registry']) activeFixes.push('--fix-registry');
+		if (flags['fix-scopes']) activeFixes.push('--fix-scopes');
+		if (flags.update) activeFixes.push('--update');
+
+		if (activeFixes.length > 0) {
+			printDryRunProjections(activeFixes);
+		}
+	}
 
 	// ── Path mode: emit shell export for projects with bin/ ────────
 	if (flags.path) {
