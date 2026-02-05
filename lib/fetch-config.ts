@@ -35,7 +35,7 @@ export type FetchErrorType =
 	| 'UNKNOWN_ERROR';
 
 /**
- * Structured fetch error
+ * Structured fetch error with fix suggestions and documentation
  */
 export interface FetchError extends Error {
 	type: FetchErrorType;
@@ -45,6 +45,12 @@ export interface FetchError extends Error {
 	port?: number;
 	url: string;
 	retryable: boolean;
+	/** Human-readable fix suggestion */
+	fix?: string;
+	/** Link to relevant documentation */
+	docs?: string;
+	/** Environment variables that may help */
+	envVars?: string[];
 }
 
 /**
@@ -145,7 +151,14 @@ export function classifyFetchError(error: unknown, url: string): FetchError {
 
 	// Network/DNS errors
 	if (code === 'ENOTFOUND' || message.includes('dns') || message.includes('getaddrinfo')) {
-		return {...baseError, type: 'DNS_ERROR', retryable: true};
+		return {
+			...baseError,
+			type: 'DNS_ERROR',
+			retryable: true,
+			fix: 'Check hostname spelling, verify DNS configuration, or use a custom DNS resolver',
+			docs: 'https://bun.sh/docs/api/fetch#custom-hostname-resolution',
+			envVars: ['BUN_CONFIG_DNS_TIME_TO_LIVE_SECONDS'],
+		};
 	}
 
 	if (code === 'ECONNREFUSED' || message.includes('connection refused')) {
@@ -156,39 +169,89 @@ export function classifyFetchError(error: unknown, url: string): FetchError {
 			hostname: urlObj.hostname,
 			port: parseInt(urlObj.port, 10) || (urlObj.protocol === 'https:' ? 443 : 80),
 			retryable: true,
+			fix: `Verify the service is running on port ${urlObj.port || (urlObj.protocol === 'https:' ? 443 : 80)} and accepting connections`,
+			docs: 'https://bun.sh/docs/api/fetch#connection-pooling',
+			envVars: ['BUN_CONFIG_NETWORK_CONCURRENCY'],
 		};
 	}
 
 	if (code === 'ECONNRESET' || message.includes('connection reset')) {
-		return {...baseError, type: 'CONNECTION_RESET', retryable: true};
+		return {
+			...baseError,
+			type: 'CONNECTION_RESET',
+			retryable: true,
+			fix: 'Server closed connection unexpectedly; check server logs or increase keep-alive timeout',
+			docs: 'https://bun.sh/docs/api/fetch#keep-alive-configuration',
+			envVars: ['BUN_CONFIG_KEEP_ALIVE_TIMEOUT'],
+		};
 	}
 
 	if (code === 'EHOSTUNREACH' || message.includes('host unreachable')) {
-		return {...baseError, type: 'HOST_UNREACHABLE', retryable: false};
+		return {
+			...baseError,
+			type: 'HOST_UNREACHABLE',
+			retryable: false,
+			fix: 'Network routing issue; verify firewall rules and network connectivity',
+			docs: 'https://bun.sh/docs/api/fetch#proxy-configuration',
+		};
 	}
 
 	// Port unreachable (connection refused to specific port)
 	if (typeof code === 'string' && code === 'ECONNREFUSED' && message.includes('port')) {
-		return {...baseError, type: 'PORT_UNREACHABLE', retryable: false};
+		return {
+			...baseError,
+			type: 'PORT_UNREACHABLE',
+			retryable: false,
+			fix: 'Port may be blocked by firewall or service not listening; try alternate port',
+			docs: 'https://bun.sh/docs/api/fetch#custom-port-configuration',
+		};
 	}
 
 	// TLS/SSL errors
 	if ((typeof code === 'string' && code.startsWith('TLS_')) || message.includes('tls') || message.includes('ssl')) {
-		return {...baseError, type: 'TLS_ERROR', retryable: false};
+		return {
+			...baseError,
+			type: 'TLS_ERROR',
+			retryable: false,
+			fix: 'TLS handshake failed; check protocol compatibility or disable for testing',
+			docs: 'https://bun.sh/docs/api/fetch#tls-options',
+			envVars: ['NODE_TLS_REJECT_UNAUTHORIZED'],
+		};
 	}
 
 	if (message.includes('certificate') || message.includes('cert')) {
-		return {...baseError, type: 'CERT_ERROR', retryable: false};
+		return {
+			...baseError,
+			type: 'CERT_ERROR',
+			retryable: false,
+			fix: 'Certificate validation failed; check system CA store or provide custom CA',
+			docs: 'https://bun.sh/docs/api/fetch#custom-certificates',
+			envVars: ['SSL_CERT_FILE', 'SSL_CERT_DIR'],
+		};
 	}
 
 	// Timeout
 	if (error.name === 'AbortError' || message.includes('abort') || message.includes('timeout')) {
-		return {...baseError, type: 'TIMEOUT', retryable: true};
+		return {
+			...baseError,
+			type: 'TIMEOUT',
+			retryable: true,
+			fix: 'Request timed out; increase timeout or optimize server response time',
+			docs: 'https://bun.sh/docs/api/fetch#timeout-configuration',
+			envVars: ['BUN_CONFIG_FETCH_TIMEOUT'],
+		};
 	}
 
 	// Network generic
-	if (code?.startsWith('ENET') || message.includes('network')) {
-		return {...baseError, type: 'NETWORK_ERROR', retryable: true};
+	if ((typeof code === 'string' && code.startsWith('ENET')) || message.includes('network')) {
+		return {
+			...baseError,
+			type: 'NETWORK_ERROR',
+			retryable: true,
+			fix: 'General network error; check connectivity and retry',
+			docs: 'https://bun.sh/docs/api/fetch#error-handling',
+			envVars: ['BUN_CONFIG_VERBOSE_FETCH'],
+		};
 	}
 
 	return baseError;
@@ -341,7 +404,7 @@ export class FetchClient {
 
 			clearTimeout(timeoutId);
 
-			// Handle HTTP errors
+			// Handle HTTP errors with fix suggestions
 			if (!response.ok) {
 				const error = new Error(`HTTP ${response.status}: ${response.statusText}`) as FetchError;
 				error.name = 'FetchError';
@@ -349,6 +412,59 @@ export class FetchClient {
 				error.url = url;
 				error.status = response.status;
 				error.retryable = response.status >= 500 || response.status === 429;
+
+				// Add specific fix suggestions based on status code
+				switch (response.status) {
+					case 400:
+						error.fix = 'Bad Request: Check request format, headers, and payload';
+						error.docs = 'https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/400';
+						break;
+					case 401:
+						error.fix = 'Unauthorized: Check authentication credentials or token expiration';
+						error.docs = 'https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/401';
+						error.envVars = ['AUTH_TOKEN', 'API_KEY'];
+						break;
+					case 403:
+						error.fix = 'Forbidden: Insufficient permissions for this resource';
+						error.docs = 'https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/403';
+						break;
+					case 404:
+						error.fix = 'Not Found: Verify the endpoint URL exists and is spelled correctly';
+						error.docs = 'https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/404';
+						break;
+					case 408:
+						error.fix = 'Request Timeout: Server took too long; increase client timeout';
+						error.docs = 'https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/408';
+						error.envVars = ['BUN_CONFIG_FETCH_TIMEOUT'];
+						break;
+					case 429:
+						error.fix = 'Too Many Requests: Rate limit hit; implement backoff or reduce request frequency';
+						error.docs = 'https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/429';
+						break;
+					case 500:
+						error.fix = 'Internal Server Error: Server-side issue; check server logs';
+						error.docs = 'https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/500';
+						break;
+					case 502:
+						error.fix = 'Bad Gateway: Proxy/gateway error; check upstream service';
+						error.docs = 'https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/502';
+						break;
+					case 503:
+						error.fix = 'Service Unavailable: Server overloaded or down; retry after delay';
+						error.docs = 'https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/503';
+						break;
+					case 504:
+						error.fix = 'Gateway Timeout: Proxy timeout; check network or increase timeout';
+						error.docs = 'https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/504';
+						break;
+					default:
+						if (response.status >= 500) {
+							error.fix = 'Server error; check service health and retry';
+						} else if (response.status >= 400) {
+							error.fix = 'Client error; check request parameters';
+						}
+						break;
+				}
 				throw error;
 			}
 
