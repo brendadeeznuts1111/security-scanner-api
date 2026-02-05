@@ -241,7 +241,7 @@ export async function resolveSecretStatuses(
 			maskedValue = v.length > 8 ? `${v.slice(0, 4)}****${v.slice(-4)}` : '****';
 		} else if (envVar && Bun.env[envVar]) {
 			source = 'env';
-			const v = Bun.env[envVar]!;
+			const v = Bun.env[envVar];
 			maskedValue = v.length > 8 ? `${v.slice(0, 4)}****${v.slice(-4)}` : '****';
 		} else {
 			source = 'missing';
