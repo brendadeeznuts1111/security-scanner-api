@@ -125,6 +125,7 @@ const {values: flags, positionals} = parseArgs({
 		'disable-debug': {type: 'boolean', default: false},
 		'disable-keychain': {type: 'boolean', default: false},
 		'disable-profiling': {type: 'boolean', default: false},
+		'browser': {type: 'boolean', default: false},
 	},
 	strict: true,
 });
@@ -5960,6 +5961,7 @@ ${c.bold('  Other:')}
     ${c.cyan('--profile')}                          Emit timing summary (or set BUN_SCAN_PROFILE=1)
     ${c.cyan('--debug-tokens')}                     Print per-project token service/name pairs
     ${c.cyan('--write-baseline')}                   Write profile baseline (R2 if configured)
+    ${c.cyan('--browser')}                          Open dashboard in browser after scan
 
 ${c.bold("  Discovery (removal-preparation, mark don't delete):")}
     ${c.cyan('--audit-exports')}                    Audit export usage across codebase
@@ -6755,6 +6757,19 @@ ${c.bold("  Discovery (removal-preparation, mark don't delete):")}
 	}
 	if (!flags['disable-rss'] && flags['advisory-feed']) {
 		await consumeAdvisoryFeed(flags['advisory-feed'], projects);
+	}
+
+	// ── Open dashboard in browser ────────────────────────────────────
+	if (flags.browser) {
+		const dashboardPath = `${import.meta.dir}/docs/visual/dashboard.html`;
+		const file = Bun.file(dashboardPath);
+		if (await file.exists()) {
+			console.log();
+			console.log(c.cyan('  Opening dashboard in browser...'));
+			Bun.openInEditor(dashboardPath);
+		} else {
+			console.log(c.yellow('  Dashboard not found. Run: bun run visual:dashboard'));
+		}
 	}
 }
 
