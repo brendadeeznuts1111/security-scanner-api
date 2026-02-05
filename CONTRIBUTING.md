@@ -50,8 +50,9 @@ bun run lint:fix       # Auto-fix linting issues
 
 ESLint is configured with comprehensive TypeScript rules:
 
-- **Naming conventions**: Exported SCREAMING_SNAKE_CASE constants must start with `BUN_` prefix
-- **Custom Bun rules**: `bun/require-bun-prefix` warns when Bun-related constants (API, R2, S3, COOKIE, etc.) don't have `BUN_` prefix
+- **Naming conventions**: Exported SCREAMING*SNAKE_CASE constants must start with `BUN*` prefix
+- **Custom Bun rules**: `bun/require-bun-prefix` warns when Bun-related constants (API, R2, S3, COOKIE, etc.) don't have
+  `BUN_` prefix
 - **Type safety**: Warns on `any`, unsafe assignments, and missing type assertions
 - **Code quality**: Enforces nullish coalescing (`??`), optional chaining, and proper async/await usage
 - **Best practices**: Prefers interfaces over types, enforces type imports, and checks for unused variables

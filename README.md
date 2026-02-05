@@ -1,8 +1,9 @@
 # security-scanner-api
 
-Multi-project scanner for Bun monorepos. Scans `$BUN_PLATFORM_HOME` for all projects and reports on dependencies, configuration, security posture, and infrastructure consistency.
+Multi-project scanner for Bun monorepos. Scans `$BUN_PLATFORM_HOME` for all projects and reports on dependencies,
+configuration, security posture, and infrastructure consistency.
 
-Built with [Bun](https://bun.sh). Based on Bun's [Security Scanner API](https://bun.sh/docs/install/security-scanner-api).
+Built with [Bun](https://bun.sh). Based on Bun's [Documentation](https://bun.com/docs).
 
 ## Quick start
 
@@ -64,6 +65,7 @@ bun run scan.ts --session-cleanup [project-id]
 ```
 
 **Environment variables:**
+
 - `PROJECT_ID` or `FW_PROJECT_ID` — default project ID when not specified as positional
 - `R2_BUCKET` or `R2_BUCKET_NAME` — R2 bucket for cookie storage (optional)
 
@@ -113,7 +115,8 @@ scanner/
 - **Bun.secrets**: Cookie sessions stored in OS keychain (macOS Keychain, Linux libsecret, Windows Credential Manager)
 - **Runtime optimizations**: Lazy stats, batched operations, monomorphic shapes, generator backpressure
 - **R2 integration**: Optional R2 storage for cookies with zstd compression and Uint8Array views
-- **Visual analytics dashboard**: Interactive HTML dashboard with filtering, sorting, charts, and export (JSON/CSV) for BUN constants tracking
+- **Visual analytics dashboard**: Interactive HTML dashboard with filtering, sorting, charts, and export (JSON/CSV) for
+  BUN constants tracking
 - **Type safety**: Full TypeScript types, no `as any` casts
 - **lockHash**: `Bun.hash.wyhash()` of lockfile content for drift detection
 
@@ -151,6 +154,19 @@ bun run profile:example
 
 See [Profiling Quick Reference](./docs/PROFILING_QUICK_REFERENCE.md) for details.
 
+## Debugging network requests
+
+Bun supports printing `fetch()` and `node:http` network requests by setting `BUN_CONFIG_VERBOSE_FETCH`:
+
+- **`curl`** — Prints each request as a single-line curl command for copy-paste replication
+- **`true`** — Prints request/response without the curl command
+
+Lines prefixed with `[fetch] >` are the request from your code; `[fetch] <` are the response from the remote server.
+
+```bash
+BUN_CONFIG_VERBOSE_FETCH=curl bun run scan.ts --audit
+```
+
 ## Bun v1.3.7+ Features
 
 The scanner leverages new Bun features:
@@ -169,13 +185,16 @@ The scanner leverages many Bun utility functions for optimal performance:
 
 The scanner uses an **Enhanced R-Score Framework** to evaluate optimization efficiency:
 
-$$ R\_Score = (P_{ratio} \times 0.35) + (M_{impact} \times 0.30) + (E_{elimination} \times 0.20) + (S_{hardening} \times 0.10) + (D_{ergonomics} \times 0.05) $$
+$$ R_Score = (P*{ratio} \times 0.35) + (M*{impact} \times 0.30) + (E*{elimination} \times 0.20) + (S*{hardening} \times
+0.10) + (D\_{ergonomics} \times 0.05) $$
 
-This unified metric evaluates native vs. userland implementations. For high-throughput applications, maintaining an **R-Score > 0.95** is critical for sub-millisecond response times.
+This unified metric evaluates native vs. userland implementations. For high-throughput applications, maintaining an
+**R-Score > 0.95** is critical for sub-millisecond response times.
 
 See [Enhanced R-Score Framework](./docs/ENHANCED_R_SCORE_FRAMEWORK.md) for complete documentation.
 
 ### Text & Formatting
+
 - **`Bun.escapeHTML()`**: XSS protection for HTML generation (480 MB/s - 20 GB/s)
 - **`Bun.wrapAnsi()`**: ANSI-aware text wrapping (33-88x faster than wrap-ansi)
 - **`Bun.stringWidth()`**: Unicode-aware string width calculation (~6,756x faster than string-width)
@@ -183,26 +202,31 @@ See [Enhanced R-Score Framework](./docs/ENHANCED_R_SCORE_FRAMEWORK.md) for compl
 - **`Bun.inspect.table()`**: Formatted table output with ANSI color support
 
 ### Timing & Performance
+
 - **`Bun.nanoseconds()`**: High-precision timing for profiling and benchmarks
 - **`Bun.sleep()`**: Async sleep for testing and async operations
 
 ### Environment & Runtime
+
 - **`Bun.env`**: Environment variable access (alias for `process.env`)
 - **`Bun.version`**: Runtime version string
 - **`Bun.revision`**: Git commit hash of Bun build
 - **`Bun.main`**: Entrypoint path resolution
 
 ### File & Path Operations
+
 - **`Bun.fileURLToPath()`**: Convert `file://` URLs to absolute paths
 - **`Bun.file()`**: File handle creation for reading/writing
 - **`Bun.write()`**: File writing operations
 
 ### Process & System
+
 - **`Bun.which()`**: Binary resolution (alternative to `which` npm package)
 - **`Bun.openInEditor()`**: Open files in default editor
 
 ### Utilities
-- **`Bun.deepEquals()`**: Deep object comparison (used by test runner)
+
+- **`Bun.deepEquals()`**: Deep object comparison (used by test runner). See [Bun.deepEquals docs](https://bun.com/docs/runtime/utils#bun-deepequals)
 - **`Bun.peek()`**: Read promise results without await (advanced API)
 
 See the [Bun Utils documentation](https://bun.com/docs/runtime/utils) for complete API reference.
@@ -223,6 +247,7 @@ bun scripts/generate-visual-docs.ts --badges-only
 ```
 
 **Current Statistics:**
+
 - **73 BUN constants** across 2 projects
 - **7 categories**: api, cli, runtime, bundler, network, storage, config
 - **4 types**: string, url, number, boolean
@@ -230,6 +255,7 @@ bun scripts/generate-visual-docs.ts --badges-only
 - **73 MCP-exposed constants** from mcp-bun-docs project
 
 The dashboard provides:
+
 - Interactive filtering and search
 - Sortable table with pagination
 - Category, type, and security distribution charts
@@ -242,7 +268,7 @@ The dashboard is generated at `docs/visual/dashboard.html` and can be opened dir
 
 ## References
 
-- [Bun Security Scanner API](https://bun.sh/docs/install/security-scanner-api)
+- [Bun Documentation](https://bun.com/docs)
 - [Bun API Reference](https://bun.sh/docs/runtime/bun-apis)
 - [Bun.secrets](https://bun.sh/docs/runtime/bun-apis#secrets)
 
