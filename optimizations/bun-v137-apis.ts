@@ -334,7 +334,7 @@ export class PromiseOptimizer {
 				break;
 			}
 
-			results[i] = result as T;
+			results[i] = result;
 		}
 
 		// If any promise is still pending, use standard Promise.all
@@ -356,7 +356,7 @@ export class PromiseOptimizer {
 			const result = Bun.peek(promise);
 
 			if (!(result instanceof Promise)) {
-				return result as T;
+				return result;
 			}
 		}
 
@@ -376,7 +376,7 @@ export class PromiseOptimizer {
 			return {resolved: false, promise: result};
 		}
 
-		return {resolved: true, value: result as T};
+		return {resolved: true, value: result};
 	}
 
 	/**
@@ -577,8 +577,8 @@ export class EqualityChecker {
 		}
 
 		// Get all keys
-		const oldKeys = Object.keys(oldObj as object);
-		const newKeys = Object.keys(newObj as object);
+		const oldKeys = Object.keys(oldObj);
+		const newKeys = Object.keys(newObj);
 		const allKeys = new Set([...oldKeys, ...newKeys]);
 
 		for (const key of allKeys) {
@@ -586,7 +586,7 @@ export class EqualityChecker {
 			const oldVal = (oldObj as Record<string, unknown>)[key];
 			const newVal = (newObj as Record<string, unknown>)[key];
 
-			if (!(key in (oldObj as object)) || !(key in (newObj as object))) {
+			if (!(key in oldObj) || !(key in newObj)) {
 				differences.push(currentPath);
 			} else if (!Bun.deepEquals(oldVal, newVal)) {
 				// Recurse for nested objects
@@ -805,7 +805,7 @@ export function calculateCombinedRScore(): {
 
 	let combined = 0;
 	for (const [key, score] of Object.entries(components)) {
-		combined += score * weights[key as keyof typeof weights]!;
+		combined += score * weights[key as keyof typeof weights];
 	}
 
 	return {combined: Math.min(1.0, combined), components};
