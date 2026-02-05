@@ -11,7 +11,9 @@ This project includes custom ESLint rules specifically designed for Bun runtime 
 **Severity**: Warning (configurable)
 
 **When it triggers**:
-- Exported constants that contain Bun-related keywords (API, CATALOG, DOC, KEYWORD, ANNOTATION, CONFIG, FORMAT, VERSION, COOKIE, R2, S3, CLIENT, ENDPOINT, BUCKET, ACCOUNT, ACCESS, SECRET)
+
+- Exported constants that contain Bun-related keywords (API, CATALOG, DOC, KEYWORD, ANNOTATION, CONFIG, FORMAT, VERSION,
+  COOKIE, R2, S3, CLIENT, ENDPOINT, BUCKET, ACCOUNT, ACCESS, SECRET)
 - Constants that are SCREAMING_SNAKE_CASE and exported
 
 **Examples**:
@@ -86,10 +88,10 @@ const myNewRule = {
 
 ```javascript
 export default {
-  rules: {
-    'require-bun-prefix': requireBunPrefix,
-    'my-new-rule': myNewRule,  // Add here
-  },
+	rules: {
+		'require-bun-prefix': requireBunPrefix,
+		'my-new-rule': myNewRule, // Add here
+	},
 };
 ```
 
@@ -115,10 +117,10 @@ To add more Bun-related keywords, edit `eslint-plugin-bun.js`:
 
 ```javascript
 const bunKeywords = [
-  'API',
-  'CATALOG',
-  // ... existing keywords
-  'NEW_KEYWORD',  // Add here
+	'API',
+	'CATALOG',
+	// ... existing keywords
+	'NEW_KEYWORD', // Add here
 ];
 ```
 

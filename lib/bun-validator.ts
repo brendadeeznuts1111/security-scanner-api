@@ -8,5 +8,5 @@ export function validateBunRuntime(): {valid: boolean; riskScore: number; latenc
 		typeof Bun.color === 'function' &&
 		typeof Bun.inspect?.table === 'function';
 	const latencyNs = Bun.nanoseconds() - start;
-	return { valid, riskScore: valid ? 1.001005 : 5, latencyNs };
+	return {valid, riskScore: valid ? 1.001005 : 5, latencyNs};
 }

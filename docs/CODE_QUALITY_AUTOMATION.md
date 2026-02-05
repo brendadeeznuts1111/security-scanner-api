@@ -41,17 +41,17 @@ bun run quality:fix      # Check and auto-fix
 
 ## Available Scripts
 
-| Script | Description |
-|--------|-------------|
-| `bun run format` | Format all files with Prettier |
-| `bun run format:check` | Check formatting without making changes |
-| `bun run lint` | Check for linting issues |
-| `bun run lint:fix` | Auto-fix linting issues |
-| `bun run fix` | Format + auto-fix linting (convenience script) |
-| `bun run check` | Check formatting + linting (convenience script) |
-| `bun run precommit` | Run same checks as pre-commit hook |
-| `bun run quality` | Interactive quality checker (check only) |
-| `bun run quality:fix` | Interactive quality checker (auto-fix) |
+| Script                 | Description                                     |
+| ---------------------- | ----------------------------------------------- |
+| `bun run format`       | Format all files with Prettier                  |
+| `bun run format:check` | Check formatting without making changes         |
+| `bun run lint`         | Check for linting issues                        |
+| `bun run lint:fix`     | Auto-fix linting issues                         |
+| `bun run fix`          | Format + auto-fix linting (convenience script)  |
+| `bun run check`        | Check formatting + linting (convenience script) |
+| `bun run precommit`    | Run same checks as pre-commit hook              |
+| `bun run quality`      | Interactive quality checker (check only)        |
+| `bun run quality:fix`  | Interactive quality checker (auto-fix)          |
 
 ## Pre-commit Hook
 

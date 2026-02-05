@@ -10,7 +10,7 @@
 import {readdirSync, readFileSync, statSync, writeFileSync} from 'fs';
 import {join} from 'path';
 
-export const BUN_CONSTANTS_VERSION = '1.0.0';
+export const BUN_CONSTANTS_VERSION = '1.0.1';
 
 const BUN_PLATFORM_HOME = process.env.BUN_PLATFORM_HOME ?? join(import.meta.dir, '../..');
 const SCANNER_ROOT = join(BUN_PLATFORM_HOME, 'scanner');
@@ -81,11 +81,19 @@ function extractFromFile(filePath: string, project: 'scanner' | 'mcp-bun-docs', 
 					},
 				};
 
-				// Extract value (basic heuristic)
-				const valueMatch = lines[i].match(/=\s*["'`]([^"'`]+)["'`]/);
-				if (valueMatch) {
-					constant.value = valueMatch[1];
-					constant.type = constant.value.startsWith('http') ? 'url' : 'string';
+				// Extract value (enhanced heuristic)
+				// Try number first (including decimals)
+				const numberMatch = lines[i].match(/=\s*([0-9]+\.?[0-9]*)/);
+				if (numberMatch) {
+					constant.value = numberMatch[1];
+					constant.type = 'number';
+				} else {
+					// Try string/quoted values
+					const valueMatch = lines[i].match(/=\s*["'`]([^"'`]+)["'`]/);
+					if (valueMatch) {
+						constant.value = valueMatch[1];
+						constant.type = constant.value.startsWith('http') ? 'url' : 'string';
+					}
 				}
 
 				// Extract JSDoc description (look for comments above)
@@ -104,15 +112,25 @@ function extractFromFile(filePath: string, project: 'scanner' | 'mcp-bun-docs', 
 					}
 				}
 
-				// Auto-categorize based on name patterns
-				if (constant.name.includes('URL') || constant.name.includes('BASE')) {
+				// Auto-categorize based on name patterns (order matters - more specific first)
+				if (
+					constant.name.includes('FIX_PROJECTIONS') ||
+					constant.name.includes('R_SCORE') ||
+					constant.name.includes('CLI') ||
+					constant.name.includes('FLAG') ||
+					constant.name.includes('DRY_RUN')
+				) {
+					constant.category = 'cli';
+				} else if (constant.name.includes('URL') || constant.name.includes('BASE')) {
 					constant.category = 'config';
-					constant.type = 'url';
+					if (!constant.type || constant.type === 'string') {
+						constant.type = 'url';
+					}
 				} else if (constant.name.includes('VERSION')) {
 					constant.category = 'config';
-					constant.type = 'string';
-				} else if (constant.name.includes('CLI') || constant.name.includes('FLAG')) {
-					constant.category = 'cli';
+					if (!constant.type) {
+						constant.type = 'string';
+					}
 				} else if (constant.name.includes('API') || constant.name.includes('HTTP')) {
 					constant.category = 'api';
 				} else if (constant.name.includes('RUNTIME') || constant.name.includes('BUN_')) {

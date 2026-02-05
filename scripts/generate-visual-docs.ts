@@ -25,6 +25,9 @@
 import {readFileSync, writeFileSync, mkdirSync, existsSync, readdirSync} from 'fs';
 import {join} from 'path';
 
+// Import CLI constants for fix projections display
+const CLI_CONSTANTS_PATH = join(import.meta.dir, '..', 'src', 'cli-constants.ts');
+
 const REGISTRY_FILE = join(import.meta.dir, '..', '..', 'BUN_CONSTANTS_VERSION.json');
 const OUTPUT_DIR = join(import.meta.dir, '..', '..', 'docs', 'visual');
 const DASHBOARD_FILE = join(OUTPUT_DIR, 'dashboard.html');
@@ -261,7 +264,7 @@ function generateBadges(registry: VersionRegistry): void {
 	}
 }
 
-function generateDashboardHTML(registry: VersionRegistry): string {
+async function generateDashboardHTML(registry: VersionRegistry): Promise<string> {
 	// Helper function to escape HTML entities using Bun.escapeHTML()
 	const escape = (value: string | number | boolean | null | undefined): string => {
 		if (value == null) return '';
@@ -303,6 +306,107 @@ function generateDashboardHTML(registry: VersionRegistry): string {
 		count: registry.constants.filter(c => c.project === name).length,
 		...proj,
 	}));
+
+	// Extract CLI fix projections and BUN_DOC_BASE if available - dynamically import the constants
+	let fixProjectionsHTML = '';
+	let baselineR = null;
+	let bunDocBase = 'https://bun.com/docs';
+	let bunTypesRepoUrl = 'https://github.com/oven-sh/bun/tree/main/packages/bun-types';
+	try {
+		// Dynamically import the CLI constants module using file:// URL
+		const cliConstantsUrl = `file://${CLI_CONSTANTS_PATH}`;
+		const cliConstantsModule = await import(cliConstantsUrl);
+		const {BUN_R_SCORE_BASELINE, BUN_FIX_PROJECTIONS} = cliConstantsModule;
+		
+		// Also try to get BUN_DOCS_BASE and BUN_TYPES_REPO_URL from bun-api-matrix or mcp-bun-docs
+		try {
+			const bunApiMatrixPath = join(import.meta.dir, '..', 'cli', 'renderers', 'bun-api-matrix.ts');
+			const bunApiMatrixUrl = `file://${bunApiMatrixPath}`;
+			const bunApiMatrixModule = await import(bunApiMatrixUrl);
+			if (bunApiMatrixModule.BUN_DOCS_BASE) {
+				bunDocBase = bunApiMatrixModule.BUN_DOCS_BASE;
+			}
+		} catch {}
+		
+		// Try to get BUN_TYPES_REPO_URL from mcp-bun-docs if available
+		try {
+			const mcpBunDocsPath = join(import.meta.dir, '..', '..', 'matrix-analysis', 'mcp-bun-docs', 'lib.ts');
+			if (existsSync(mcpBunDocsPath)) {
+				const mcpBunDocsUrl = `file://${mcpBunDocsPath}`;
+				const mcpBunDocsModule = await import(mcpBunDocsUrl);
+				if (mcpBunDocsModule.BUN_TYPES_REPO_URL) {
+					bunTypesRepoUrl = mcpBunDocsModule.BUN_TYPES_REPO_URL;
+				}
+			}
+		} catch {}
+		
+		if (BUN_R_SCORE_BASELINE !== undefined) {
+			baselineR = typeof BUN_R_SCORE_BASELINE === 'number' ? BUN_R_SCORE_BASELINE : parseFloat(String(BUN_R_SCORE_BASELINE));
+		}
+
+		// Extract fix projections from the imported constant
+		if (BUN_FIX_PROJECTIONS && typeof BUN_FIX_PROJECTIONS === 'object') {
+			const projectionEntries = Object.entries(BUN_FIX_PROJECTIONS).map(([key, proj]: [string, any]) => ({
+				key,
+				flag: proj.flag || '',
+				description: proj.description || '',
+				mImpact: typeof proj.mImpact === 'number' ? proj.mImpact : 0,
+				pRatioDelta: typeof proj.pRatioDelta === 'number' ? proj.pRatioDelta : 0,
+				projectedR: typeof proj.projectedR === 'number' ? proj.projectedR : 0,
+				tier: proj.tier || '',
+				latencyDelta: proj.latencyDelta,
+				consistencyDelta: proj.consistencyDelta,
+			}));
+
+			if (projectionEntries.length > 0) {
+				fixProjectionsHTML = `
+        <div class="card" style="grid-column: 1 / -1;">
+            <h3>⚡ CLI Fix Projections - FactoryWager v4.2</h3>
+            ${baselineR ? `<div class="metric"><span>Baseline R-Score</span><span class="metric-value">${baselineR.toFixed(2)}</span></div>` : ''}
+            <div style="overflow-x: auto; margin-top: 16px;">
+                <table style="width: 100%; border-collapse: collapse; font-size: 0.9rem;">
+                    <thead>
+                        <tr style="background: var(--bg-tertiary);">
+                            <th style="padding: 8px; text-align: left;">Flag</th>
+                            <th style="padding: 8px; text-align: left;">Description</th>
+                            <th style="padding: 8px; text-align: center;">M_Impact</th>
+                            <th style="padding: 8px; text-align: center;">P_Ratio Δ</th>
+                            <th style="padding: 8px; text-align: center;">Projected R</th>
+                            <th style="padding: 8px; text-align: center;">Tier</th>
+                            <th style="padding: 8px; text-align: left;">Impact</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${projectionEntries
+							.map(
+								proj => `
+                        <tr style="border-bottom: 1px solid var(--border);">
+                            <td style="padding: 8px;"><code>${escape(proj.flag)}</code></td>
+                            <td style="padding: 8px;">${escape(proj.description)}</td>
+                            <td style="padding: 8px; text-align: center;">${proj.mImpact.toFixed(2)}</td>
+                            <td style="padding: 8px; text-align: center;">+${(proj.pRatioDelta * 100).toFixed(1)}%</td>
+                            <td style="padding: 8px; text-align: center; font-weight: 600; color: var(--accent);">${proj.projectedR.toFixed(3)}</td>
+                            <td style="padding: 8px; text-align: center;">
+                                <span class="type-badge" style="background: ${proj.tier === 'Elite' ? '#28a745' : '#ffc107'}; color: white;">${escape(proj.tier)}</span>
+                            </td>
+                            <td style="padding: 8px; font-size: 0.85rem; color: var(--text-secondary);">
+                                ${proj.latencyDelta ? `⚡ ${escape(proj.latencyDelta)}` : ''}
+                                ${proj.consistencyDelta ? `📊 ${escape(proj.consistencyDelta)}` : ''}
+                                ${!proj.latencyDelta && !proj.consistencyDelta ? '-' : ''}
+                            </td>
+                        </tr>
+                        `,
+							)
+							.join('')}
+                    </tbody>
+                </table>
+            </div>
+        </div>`;
+			}
+		}
+	} catch (error) {
+		// Silently fail if CLI constants file doesn't exist or can't be parsed
+	}
 
 	// Prepare constants data as JSON for JavaScript
 	const constantsJSON = JSON.stringify(
@@ -596,6 +700,27 @@ function generateDashboardHTML(registry: VersionRegistry): string {
             </button>
             <h1>🏆 BUN Constants Dashboard</h1>
             <p>Tier-1380 Certified Version Management System</p>
+            <p style="margin-top: 10px; font-size: 0.95rem;">
+                <a href="${escape(bunDocBase)}" target="_blank" rel="noopener noreferrer" style="color: var(--accent); text-decoration: none; border-bottom: 1px solid var(--accent);">
+                    📚 Bun Documentation: ${escape(bunDocBase)}
+                </a>
+                <span style="color: var(--text-muted); margin: 0 8px;">|</span>
+                <a href="${escape(bunDocBase)}/reference" target="_blank" rel="noopener noreferrer" style="color: var(--accent); text-decoration: none; border-bottom: 1px solid var(--accent);">
+                    📖 API Reference
+                </a>
+                <span style="color: var(--text-muted); margin: 0 8px;">|</span>
+                <a href="${escape(bunTypesRepoUrl)}" target="_blank" rel="noopener noreferrer" style="color: var(--accent); text-decoration: none; border-bottom: 1px solid var(--accent);">
+                    🔷 Bun Types Repository
+                </a>
+                <span style="color: var(--text-muted); margin: 0 8px;">|</span>
+                <a href="${escape(bunDocBase)}/pm/bunx" target="_blank" rel="noopener noreferrer" style="color: var(--accent); text-decoration: none; border-bottom: 1px solid var(--accent);">
+                    ⚡ bunx
+                </a>
+                <span style="color: var(--text-muted); margin: 0 8px;">|</span>
+                <a href="https://bun.com/rss.xml" target="_blank" rel="noopener noreferrer" style="color: var(--accent); text-decoration: none; border-bottom: 1px solid var(--accent);">
+                    📡 RSS
+                </a>
+            </p>
             <div class="badges" id="badgesContainer">
                 <img src="badges/version.svg" alt="Version" data-badge="version.svg">
                 <img src="badges/tier_1380.svg" alt="Tier-1380" data-badge="tier_1380.svg">
@@ -734,6 +859,7 @@ function generateDashboardHTML(registry: VersionRegistry): string {
 					)
 					.join('')}
             </div>
+            ${fixProjectionsHTML}
         </div>
 
         <div class="controls">
@@ -1051,7 +1177,7 @@ function generateDashboardHTML(registry: VersionRegistry): string {
 </html>`;
 }
 
-function main(): void {
+async function main(): Promise<void> {
 	const args = process.argv.slice(2);
 	const badgesOnly = args.includes('--badges-only');
 	const serveMode = args.includes('--serve');
@@ -1071,7 +1197,7 @@ function main(): void {
 			}
 
 			// Generate dashboard HTML
-			const html = generateDashboardHTML(registry);
+			const html = await generateDashboardHTML(registry);
 			writeFileSync(DASHBOARD_FILE, html);
 			console.log(`🎨 Generated dashboard: ${DASHBOARD_FILE}`);
 
@@ -1170,5 +1296,8 @@ function main(): void {
 }
 
 if (import.meta.main) {
-	main();
+	main().catch(error => {
+		console.error(`❌ Fatal error: ${error instanceof Error ? error.message : String(error)}`);
+		process.exit(1);
+	});
 }

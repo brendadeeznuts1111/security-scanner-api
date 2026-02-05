@@ -4,7 +4,8 @@ This document covers the latest Bun features relevant to the scanner project.
 
 ## Bun.wrapAnsi() - ANSI-Aware Text Wrapping
 
-Bun now includes `Bun.wrapAnsi()`, a native implementation that wraps text to a specified column width while preserving ANSI escape codes. Perfect for CLI tools that need to handle colored or styled output.
+Bun now includes `Bun.wrapAnsi()`, a native implementation that wraps text to a specified column width while preserving
+ANSI escape codes. Perfect for CLI tools that need to handle colored or styled output.
 
 ### API
 
@@ -31,7 +32,7 @@ Bun.wrapAnsi(
 ### Example Usage
 
 ```typescript
-const text = "\x1b[31mThis is a long red text that needs wrapping\x1b[0m";
+const text = '\x1b[31mThis is a long red text that needs wrapping\x1b[0m';
 const wrapped = Bun.wrapAnsi(text, 20);
 // Wraps at 20 columns, preserving the red color across line breaks
 ```
@@ -40,13 +41,13 @@ const wrapped = Bun.wrapAnsi(text, 20);
 
 `Bun.wrapAnsi` is **33–88x faster** than the `wrap-ansi` npm package:
 
-| Benchmark | npm | Bun | Speedup |
-|-----------|-----|-----|---------|
-| Short text (45 chars) | 25.81 µs | 685 ns | **37x** |
-| Medium text (810 chars) | 568 µs | 11.22 µs | **50x** |
-| Long text (8100 chars) | 7.66 ms | 112 µs | **68x** |
-| Hard wrap colored | 8.82 ms | 174 µs | **50x** |
-| No trim long | 8.32 ms | 93.92 µs | **88x** |
+| Benchmark               | npm      | Bun      | Speedup |
+| ----------------------- | -------- | -------- | ------- |
+| Short text (45 chars)   | 25.81 µs | 685 ns   | **37x** |
+| Medium text (810 chars) | 568 µs   | 11.22 µs | **50x** |
+| Long text (8100 chars)  | 7.66 ms  | 112 µs   | **68x** |
+| Hard wrap colored       | 8.82 ms  | 174 µs   | **50x** |
+| No trim long            | 8.32 ms  | 93.92 µs | **88x** |
 
 ### Demo
 
@@ -58,7 +59,8 @@ bun scripts/demo-wrap-ansi.ts [columns]
 
 ## CPU Profiling - Markdown Output
 
-Bun's built-in CPU profiler now supports a `--cpu-prof-md` flag that generates profiling data in Markdown format, making it easy to share profiles on GitHub or analyze them with LLMs.
+Bun's built-in CPU profiler now supports a `--cpu-prof-md` flag that generates profiling data in Markdown format, making
+it easy to share profiles on GitHub or analyze them with LLMs.
 
 ### Usage
 
@@ -171,27 +173,27 @@ grep 'gcroot=1' profile.md
 The scanner project already uses these features:
 
 1. **Profiling Scripts** (`package.json`):
-   - `profile:cpu` - CPU profiling with Chrome DevTools format
-   - `profile:cpu:md` - CPU profiling with Markdown format
-   - `profile:heap` - Heap profiling with Chrome DevTools format
-   - `profile:heap:md` - Heap profiling with Markdown format
+    - `profile:cpu` - CPU profiling with Chrome DevTools format
+    - `profile:cpu:md` - CPU profiling with Markdown format
+    - `profile:heap` - Heap profiling with Chrome DevTools format
+    - `profile:heap:md` - Heap profiling with Markdown format
 
 2. **CLI Renderers**:
-   - Uses `Bun.color()` for ANSI colors
-   - Uses `Bun.stripANSI()` for width calculations
-   - Could benefit from `Bun.wrapAnsi()` for long colored text
+    - Uses `Bun.color()` for ANSI colors
+    - Uses `Bun.stripANSI()` for width calculations
+    - Could benefit from `Bun.wrapAnsi()` for long colored text
 
 ### Potential Improvements
 
 1. **Add `Bun.wrapAnsi()` to CLI renderers**:
-   - Wrap long error messages
-   - Format help text with colors preserved
-   - Display wrapped table cells with ANSI codes
+    - Wrap long error messages
+    - Format help text with colors preserved
+    - Display wrapped table cells with ANSI codes
 
 2. **Enhanced profiling workflows**:
-   - Automatically generate both formats
-   - Add profiling analysis scripts
-   - Integrate with CI/CD for performance regression detection
+    - Automatically generate both formats
+    - Add profiling analysis scripts
+    - Integrate with CI/CD for performance regression detection
 
 ## See Also
 
