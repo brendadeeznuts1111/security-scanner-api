@@ -18,16 +18,16 @@
  * Run: bun run benchmarks/bench-native.ts
  *
  * References:
- *   - Bun.stripANSI: https://bun.sh/docs/api/utils#bun-stripansi
- *   - proc.stdout.text(): https://bun.sh/docs/api/spawn#reading-stdout
- *   - Bun.fileURLToPath: https://bun.sh/docs/api/utils#bun-fileurltopath
- *   - Bun.wrapAnsi: https://bun.sh/docs/api/utils#bun-wrapansi
- *   - Bun.stringWidth: https://bun.sh/docs/api/utils#bun-stringwidth
- *   - Bun.escapeHTML: https://bun.sh/docs/api/utils#bun-escapehtml
- *   - Bun.deepEquals: https://bun.sh/docs/api/utils#bun-deepequals
- *   - Bun.inspect: https://bun.sh/docs/api/utils#bun-inspect
- *   - Bun.color: https://bun.sh/docs/api/utils#bun-color
- *   - Bun.hash: https://bun.sh/docs/api/utils#bun-hash
+ *   - Bun.stripANSI: https://bun.com/docs/api/utils#bun-stripansi
+ *   - proc.stdout.text(): https://bun.com/docs/api/spawn#reading-stdout
+ *   - Bun.fileURLToPath: https://bun.com/docs/api/utils#bun-fileurltopath
+ *   - Bun.wrapAnsi: https://bun.com/docs/api/utils#bun-wrapansi
+ *   - Bun.stringWidth: https://bun.com/docs/api/utils#bun-stringwidth
+ *   - Bun.escapeHTML: https://bun.com/docs/api/utils#bun-escapehtml
+ *   - Bun.deepEquals: https://bun.com/docs/api/utils#bun-deepequals
+ *   - Bun.inspect: https://bun.com/docs/api/utils#bun-inspect
+ *   - Bun.color: https://bun.com/docs/api/utils#bun-color
+ *   - Bun.hash: https://bun.com/docs/api/utils#bun-hash
  */
 
 import {
@@ -53,11 +53,11 @@ import {
 const t0 = Bun.nanoseconds();
 
 // ── Bench 1: stripAnsi ──────────────────────────────────────────────
-// Ref: https://bun.sh/docs/api/utils#bun-stripansi
+// Ref: https://bun.com/docs/api/utils#bun-stripansi
 // Bun docs: ~6-57x faster strip-ansi alternative (vs npm package).
 // We compare against a simple inline regex (not the npm package).
 
-sectionHeader('1. stripAnsi: regex vs Bun.stripANSI', 'https://bun.sh/docs/api/utils#bun-stripansi');
+sectionHeader('1. stripAnsi: regex vs Bun.stripANSI', 'https://bun.com/docs/api/utils#bun-stripansi');
 
 const ANSI_INPUTS = {
 	short: '\x1b[1m\x1b[32mok\x1b[0m',
@@ -87,7 +87,7 @@ for (const [name, input] of Object.entries(ANSI_INPUTS)) {
 }
 
 // ── Bench 2: ReadableStream.text() vs new Response(stream).text() ──
-// Ref: https://bun.sh/docs/api/spawn#reading-stdout
+// Ref: https://bun.com/docs/api/spawn#reading-stdout
 // proc.stdout is a ReadableStream when stdout: "pipe".
 // Bun.spawn ReadableStream includes .text(), .json(), .bytes() methods.
 // Old pattern: new Response(proc.stderr).text()
@@ -95,7 +95,7 @@ for (const [name, input] of Object.entries(ANSI_INPUTS)) {
 
 sectionHeader(
 	'2. ReadableStream: new Response(stream).text() vs stream.text()',
-	'https://bun.sh/docs/api/spawn#reading-stdout',
+	'https://bun.com/docs/api/spawn#reading-stdout',
 );
 
 const STREAM_CONTENT =
@@ -168,11 +168,11 @@ const r2subNew = await benchAsync(
 report('subprocess', r2subOld, r2subNew);
 
 // ── Bench 3: URL.pathname vs Bun.fileURLToPath ──────────────────────
-// Ref: https://bun.sh/docs/api/utils#bun-fileurltopath
+// Ref: https://bun.com/docs/api/utils#bun-fileurltopath
 // Bun.fileURLToPath converts file:// URLs to absolute filesystem paths.
 // Observed: correctly decodes percent-encoded characters (confirmed by test).
 
-sectionHeader('3. URL.pathname vs Bun.fileURLToPath', 'https://bun.sh/docs/api/utils#bun-fileurltopath');
+sectionHeader('3. URL.pathname vs Bun.fileURLToPath', 'https://bun.com/docs/api/utils#bun-fileurltopath');
 
 const URL_CASES = {
 	simple: {base: 'file:///Users/test/project/', relative: './scan-worker.ts'},
@@ -252,11 +252,11 @@ const URL_CASES = {
 }
 
 // ── Bench 4: Bun.wrapAnsi ────────────────────────────────────────────
-// Ref: https://bun.sh/docs/api/utils#bun-wrapansi
+// Ref: https://bun.com/docs/api/utils#bun-wrapansi
 // Bun docs: 33-88x faster than wrap-ansi npm package.
 // Native ANSI-aware word wrapping with color preservation across line breaks.
 
-sectionHeader('4. Bun.wrapAnsi', 'https://bun.sh/docs/api/utils#bun-wrapansi');
+sectionHeader('4. Bun.wrapAnsi', 'https://bun.com/docs/api/utils#bun-wrapansi');
 
 const WRAP_COLS = 20;
 
@@ -322,11 +322,11 @@ for (const [name, opts] of optCases) {
 console.log(Bun.inspect.table(optRows, ['Option', 'Mean', 'Min'], {colors: useColor}));
 
 // ── Bench 5: Bun.stringWidth ──────────────────────────────────────────
-// Ref: https://bun.sh/docs/api/utils#bun-stringwidth
+// Ref: https://bun.com/docs/api/utils#bun-stringwidth
 // Bun docs: ~6,756x faster string-width alternative (vs npm package).
 // SIMD-optimized, supports ANSI codes, emoji, wide CJK characters.
 
-sectionHeader('5. Bun.stringWidth', 'https://bun.sh/docs/api/utils#bun-stringwidth');
+sectionHeader('5. Bun.stringWidth', 'https://bun.com/docs/api/utils#bun-stringwidth');
 
 // Generate test inputs matching Bun benchmark categories
 function repeat(s: string, n: number): string {
@@ -418,11 +418,11 @@ for (const [name, opts] of swOptCases) {
 console.log(Bun.inspect.table(swOptRows, ['Option', 'Mean', 'Min'], {colors: useColor}));
 
 // ── Bench 6: Bun.escapeHTML ────────────────────────────────────────
-// Ref: https://bun.sh/docs/api/utils#bun-escapehtml
+// Ref: https://bun.com/docs/api/utils#bun-escapehtml
 // Bun docs: SIMD-optimized, 480 MB/s – 20 GB/s depending on input.
 // Escapes: & → &amp;  < → &lt;  > → &gt;  " → &quot;  ' → &#x27;
 
-sectionHeader('6. Bun.escapeHTML', 'https://bun.sh/docs/api/utils#bun-escapehtml');
+sectionHeader('6. Bun.escapeHTML', 'https://bun.com/docs/api/utils#bun-escapehtml');
 
 // Userland baseline (chained .replace — common pattern)
 function escapeHtmlReplace(s: string): string {
@@ -526,11 +526,11 @@ for (const [, {label, value}] of Object.entries(EH_INPUTS)) {
 console.log(Bun.inspect.table(ehRows, ['Input', 'Chars', 'Escaped', 'Mean', 'Min', 'Max'], {colors: useColor}));
 
 // ── Bench 7: Bun.deepEquals ────────────────────────────────────────
-// Ref: https://bun.sh/docs/api/utils#bun-deepequals
+// Ref: https://bun.com/docs/api/utils#bun-deepequals
 // Used internally by expect().toEqual() / toStrictEqual() in bun:test.
 // Recursively compares objects; optional strict mode for undefined/sparse handling.
 
-sectionHeader('7. Bun.deepEquals', 'https://bun.sh/docs/api/utils#bun-deepequals');
+sectionHeader('7. Bun.deepEquals', 'https://bun.com/docs/api/utils#bun-deepequals');
 
 // Userland baseline — recursive deep equals (common hand-rolled pattern)
 function deepEqualsUserland(a: unknown, b: unknown): boolean {
@@ -642,13 +642,13 @@ const unequalB = {...makeFlat(500), k0: -1};
 }
 
 // ── Bench 8: Bun.inspect / Bun.inspect.table ─────────────────────
-// Ref: https://bun.sh/docs/api/utils#bun-inspect
+// Ref: https://bun.com/docs/api/utils#bun-inspect
 // Serializes values to string exactly as console.log would.
 // Bun.inspect.custom: symbol for custom class serialization.
 // Bun.inspect.table: formatted ASCII table output (like console.table).
 //   Overloads: table(data), table(data, props), table(data, opts), table(data, props, opts)
 
-sectionHeader('8. Bun.inspect / Bun.inspect.table', 'https://bun.sh/docs/api/utils#bun-inspect');
+sectionHeader('8. Bun.inspect / Bun.inspect.table', 'https://bun.com/docs/api/utils#bun-inspect');
 
 // ── 8a. Bun.inspect.custom ──────────────────────────────────────
 
@@ -893,12 +893,12 @@ const filterRows: {Variant: string; Mean: string; Min: string; Chars: number}[] 
 console.log(Bun.inspect.table(filterRows, ['Variant', 'Mean', 'Min', 'Chars'], {colors: useColor}));
 
 // ── Bench 9: Bun.color ──────────────────────────────────────────────
-// Ref: https://bun.sh/docs/api/utils#bun-color
+// Ref: https://bun.com/docs/api/utils#bun-color
 // Bun.color parses any CSS color string and converts between formats:
 //   ansi (256-color escape), css (string), hex (string), number, {rgb} (object)
 // Userland baseline: manual lookup table for named colors + regex for hex.
 
-sectionHeader('9. Bun.color: format conversion', 'https://bun.sh/docs/api/utils#bun-color');
+sectionHeader('9. Bun.color: format conversion', 'https://bun.com/docs/api/utils#bun-color');
 
 // ── 9a: Correctness checks ──────────────────────────────────────────
 
@@ -1078,13 +1078,13 @@ console.log(`  ${B}Format conversion speed (native only)${R}`);
 }
 
 // ── Bench 10: Bun.hash ─────────────────────────────────────────────
-// Ref: https://bun.sh/docs/api/utils#bun-hash
+// Ref: https://bun.com/docs/api/utils#bun-hash
 // Bun.hash: fast non-crypto hashing. Default is wyhash.
 // Also: Bun.hash.wyhash, Bun.hash.adler32, Bun.hash.crc32, Bun.hash.cityHash32,
 //        Bun.hash.cityHash64, Bun.hash.murmur32v3, Bun.hash.murmur32v2, Bun.hash.murmur64v2
 // Userland baseline: simple djb2 hash and FNV-1a.
 
-sectionHeader('10. Bun.hash: non-crypto hashing', 'https://bun.sh/docs/api/utils#bun-hash');
+sectionHeader('10. Bun.hash: non-crypto hashing', 'https://bun.com/docs/api/utils#bun-hash');
 
 // ── 10a: Correctness checks ─────────────────────────────────────────
 

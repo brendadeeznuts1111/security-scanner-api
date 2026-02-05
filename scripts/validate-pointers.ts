@@ -35,9 +35,7 @@ const POINTERS = [
 	join(import.meta.dir, '..', '..', 'docs', 'visual', 'dashboard.html'),
 ];
 
-async function validatePointer(
-	pointer: string,
-): Promise<{status: string; details: string}> {
+async function validatePointer(pointer: string): Promise<{status: string; details: string}> {
 	try {
 		if (pointer.startsWith('http')) {
 			const res = await fetch(pointer, {method: 'HEAD'});
@@ -56,7 +54,11 @@ async function validatePointer(
 	}
 }
 
-type ValidationResult = {pointer: string; status: string; details: string};
+interface ValidationResult {
+	pointer: string;
+	status: string;
+	details: string;
+}
 
 function sortResults(results: ValidationResult[]): ValidationResult[] {
 	return [...results].sort((a, b) => a.pointer.localeCompare(b.pointer));
@@ -69,16 +71,11 @@ async function main() {
 
 	// Curated pointers + URLs extracted from README.md
 	const docFile = Bun.file(README_PATH);
-	const docRefs =
-		(await docFile.exists())
-			? extractUrlsFromDoc(await docFile.text())
-			: [];
+	const docRefs = (await docFile.exists()) ? extractUrlsFromDoc(await docFile.text()) : [];
 	const allPointers = [...new Set([...POINTERS, ...docRefs])];
 
 	const results = sortResults(
-		await Promise.all(
-			allPointers.map(async p => ({pointer: p, ...(await validatePointer(p))})),
-		),
+		await Promise.all(allPointers.map(async p => ({pointer: p, ...(await validatePointer(p))}))),
 	);
 	console.log(Bun.inspect.table(results, ['pointer', 'status', 'details'], {colors: true}));
 
@@ -89,9 +86,7 @@ async function main() {
 			console.log('\n⚠️  No baseline found. Run with --save to create one.');
 			return;
 		}
-		const baseline = sortResults(
-			(await baselineFile.json()) as ValidationResult[],
-		);
+		const baseline = sortResults((await baselineFile.json()) as ValidationResult[]);
 		if (Bun.deepEquals(results, baseline)) {
 			console.log('\n✅ Results match baseline (Bun.deepEquals)');
 		} else {
@@ -99,7 +94,7 @@ async function main() {
 			const byPtr = new Map(baseline.map(r => [r.pointer, r]));
 			for (const r of results) {
 				const b = byPtr.get(r.pointer);
-				if (!b || b.status !== r.status || b.details !== r.details) {
+				if (b?.status !== r.status || b.details !== r.details) {
 					console.log(`   ${r.pointer}: ${b ? `${b.status} → ${r.status}` : 'NEW'}`);
 				}
 			}

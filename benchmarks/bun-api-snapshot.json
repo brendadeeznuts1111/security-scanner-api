@@ -671,7 +671,7 @@
 	"apis": [
 		{
 			"api": "Bun.file",
-			"doc": "https://bun.sh/docs/api/file-io#reading-files-bun-file",
+			"doc": "https://bun.com/docs/api/file-io#reading-files-bun-file",
 			"since": "≤1.0.0",
 			"lines": [
 				871, 929, 1036, 1136, 1142, 1152, 1153, 1158, 1168, 1174, 1316, 1844, 2054, 2257, 2463, 2559, 2600,
@@ -683,7 +683,7 @@
 		},
 		{
 			"api": "Bun.spawn",
-			"doc": "https://bun.sh/docs/api/spawn",
+			"doc": "https://bun.com/docs/api/spawn",
 			"since": "≤1.0.0",
 			"lines": [
 				657, 685, 689, 705, 724, 1363, 1389, 1398, 1427, 2514, 3123, 3237, 3364, 3509, 3537, 3590, 3635, 3647
@@ -694,7 +694,7 @@
 		},
 		{
 			"api": "Bun.write",
-			"doc": "https://bun.sh/docs/api/file-io#writing-files-bun-write",
+			"doc": "https://bun.com/docs/api/file-io#writing-files-bun-write",
 			"since": "≤1.0.0",
 			"lines": [
 				867, 2475, 2510, 2572, 2614, 2710, 2780, 2790, 2855, 2858, 2910, 2966, 2986, 2996, 3081, 4198, 4235
@@ -705,7 +705,7 @@
 		},
 		{
 			"api": "Bun.env",
-			"doc": "https://bun.sh/docs/runtime/env",
+			"doc": "https://bun.com/docs/runtime/env",
 			"since": "≤1.0.0",
 			"lines": [76, 77, 579, 795, 818, 1325, 1503, 1798, 2001, 2254, 2255, 3766, 3891, 4401],
 			"calls": 14,
@@ -714,7 +714,7 @@
 		},
 		{
 			"api": "proc.stderr.text()",
-			"doc": "https://bun.sh/docs/api/spawn#reading-stdout",
+			"doc": "https://bun.com/docs/api/spawn#reading-stdout",
 			"since": "≤1.0.0",
 			"lines": [662, 694, 710, 2519, 3512, 3551, 3592, 3638, 3650],
 			"calls": 9,
@@ -723,7 +723,7 @@
 		},
 		{
 			"api": "Bun.nanoseconds",
-			"doc": "https://bun.sh/docs/api/utils#bun-nanoseconds",
+			"doc": "https://bun.com/docs/api/utils#bun-nanoseconds",
 			"since": "≤1.0.0",
 			"lines": [3882, 3890, 3894, 3905, 3965, 3978, 4339],
 			"calls": 7,
@@ -732,7 +732,7 @@
 		},
 		{
 			"api": "proc.stdout.text()",
-			"doc": "https://bun.sh/docs/api/spawn#reading-stdout",
+			"doc": "https://bun.com/docs/api/spawn#reading-stdout",
 			"since": "≤1.0.0",
 			"lines": [667, 728, 3125, 3239, 3637, 3649],
 			"calls": 6,
@@ -741,7 +741,7 @@
 		},
 		{
 			"api": "Bun.inspect.table",
-			"doc": "https://bun.sh/docs/api/utils#bun-inspect-table",
+			"doc": "https://bun.com/docs/api/utils#bun-inspect-table",
 			"since": "1.1.31",
 			"lines": [1673, 1829, 3964, 4381],
 			"calls": 4,
@@ -750,7 +750,7 @@
 		},
 		{
 			"api": "Bun.version",
-			"doc": "https://bun.sh/docs/runtime/configuration#version",
+			"doc": "https://bun.com/docs/runtime/configuration#version",
 			"since": "≤1.0.0",
 			"lines": [636, 2539, 4344],
 			"calls": 3,
@@ -759,7 +759,7 @@
 		},
 		{
 			"api": "Bun.stringWidth",
-			"doc": "https://bun.sh/docs/api/utils#bun-stringwidth",
+			"doc": "https://bun.com/docs/api/utils#bun-stringwidth",
 			"since": "1.0.29",
 			"lines": [95, 96],
 			"calls": 2,
@@ -768,7 +768,7 @@
 		},
 		{
 			"api": "Bun.semver.order",
-			"doc": "https://bun.sh/docs/api/utils#bun-semver",
+			"doc": "https://bun.com/docs/api/utils#bun-semver",
 			"since": "1.0.11",
 			"lines": [320, 338],
 			"calls": 2,
@@ -777,7 +777,7 @@
 		},
 		{
 			"api": "Bun.hash.*",
-			"doc": "https://bun.sh/docs/api/hashing#bun-hash",
+			"doc": "https://bun.com/docs/api/hashing#bun-hash",
 			"since": "≤1.0.0",
 			"lines": [1159, 1169],
 			"calls": 2,
@@ -786,7 +786,7 @@
 		},
 		{
 			"api": "import.meta.dir",
-			"doc": "https://bun.sh/docs/api/import-meta",
+			"doc": "https://bun.com/docs/api/import-meta",
 			"since": "≤1.0.0",
 			"lines": [850, 4402],
 			"calls": 2,
@@ -795,7 +795,7 @@
 		},
 		{
 			"api": "Bun.argv",
-			"doc": "https://bun.sh/docs/runtime/configuration#argv",
+			"doc": "https://bun.com/docs/runtime/configuration#argv",
 			"since": "≤1.0.0",
 			"lines": [13],
 			"calls": 1,
@@ -804,7 +804,7 @@
 		},
 		{
 			"api": "Bun.semver.satisfies",
-			"doc": "https://bun.sh/docs/api/utils#bun-semver",
+			"doc": "https://bun.com/docs/api/utils#bun-semver",
 			"since": "1.0.11",
 			"lines": [333],
 			"calls": 1,
@@ -813,7 +813,7 @@
 		},
 		{
 			"api": "Bun.stripANSI",
-			"doc": "https://bun.sh/docs/api/utils#bun-stripansi",
+			"doc": "https://bun.com/docs/api/utils#bun-stripansi",
 			"since": "1.2.21",
 			"lines": [342],
 			"calls": 1,
@@ -822,7 +822,7 @@
 		},
 		{
 			"api": "Bun.revision",
-			"doc": "https://bun.sh/docs/runtime/configuration#revision",
+			"doc": "https://bun.com/docs/runtime/configuration#revision",
 			"since": "≤1.0.0",
 			"lines": [4344],
 			"calls": 1,
@@ -831,7 +831,7 @@
 		},
 		{
 			"api": "Bun.spawnSync",
-			"doc": "https://bun.sh/docs/api/spawn#blocking-api-bun-spawnsync",
+			"doc": "https://bun.com/docs/api/spawn#blocking-api-bun-spawnsync",
 			"since": "≤1.0.0",
 			"lines": [1120],
 			"calls": 1,
@@ -840,7 +840,7 @@
 		},
 		{
 			"api": "Bun.fileURLToPath",
-			"doc": "https://bun.sh/docs/api/utils#bun-fileurltopath",
+			"doc": "https://bun.com/docs/api/utils#bun-fileurltopath",
 			"since": "≤1.0.0",
 			"lines": [1358],
 			"calls": 1,
@@ -849,7 +849,7 @@
 		},
 		{
 			"api": "Bun.Glob",
-			"doc": "https://bun.sh/docs/api/glob",
+			"doc": "https://bun.com/docs/api/glob",
 			"since": "1.0.14",
 			"lines": [1475],
 			"calls": 1,
@@ -858,7 +858,7 @@
 		},
 		{
 			"api": "Bun.openInEditor",
-			"doc": "https://bun.sh/docs/api/utils#bun-openineditor",
+			"doc": "https://bun.com/docs/api/utils#bun-openineditor",
 			"since": "≤1.0.0",
 			"lines": [2355],
 			"calls": 1,
@@ -867,7 +867,7 @@
 		},
 		{
 			"api": "import.meta.url",
-			"doc": "https://bun.sh/docs/api/import-meta",
+			"doc": "https://bun.com/docs/api/import-meta",
 			"since": "≤1.0.0",
 			"lines": [1358],
 			"calls": 1,
@@ -876,7 +876,7 @@
 		},
 		{
 			"api": "import.meta.main",
-			"doc": "https://bun.sh/docs/api/import-meta",
+			"doc": "https://bun.com/docs/api/import-meta",
 			"since": "≤1.0.0",
 			"lines": [4410],
 			"calls": 1,
@@ -885,8 +885,8 @@
 		}
 	],
 	"spawn": {
-		"doc": "https://bun.sh/docs/api/spawn",
-		"type_ref": "https://bun.sh/docs/runtime/child-process#reference",
+		"doc": "https://bun.com/docs/api/spawn",
+		"type_ref": "https://bun.com/docs/runtime/child-process#reference",
 		"totals": {
 			"spawn_sites": 15,
 			"spawnSync_sites": 1,
@@ -1251,7 +1251,7 @@
 		]
 	},
 	"signals": {
-		"doc": "https://bun.sh/docs/runtime/child-process#reference",
+		"doc": "https://bun.com/docs/runtime/child-process#reference",
 		"total_available": 37,
 		"total_used": 2,
 		"contexts": {
@@ -1443,7 +1443,7 @@
 		]
 	},
 	"terminal": {
-		"doc": "https://bun.sh/docs/api/spawn#terminal",
+		"doc": "https://bun.com/docs/api/spawn#terminal",
 		"type_ref": "TerminalOptions, Terminal",
 		"options_available": 6,
 		"options_used": 0,
@@ -1505,7 +1505,7 @@
 		"member_sites": []
 	},
 	"resource_usage": {
-		"doc": "https://bun.sh/docs/api/spawn#resourceusage",
+		"doc": "https://bun.com/docs/api/spawn#resourceusage",
 		"type_ref": "ResourceUsage",
 		"call_sites": 0,
 		"fields_available": 8,

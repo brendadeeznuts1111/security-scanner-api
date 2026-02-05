@@ -4,7 +4,7 @@
  * This file provides convenient access to all BUN_* constants across the scanner project.
  * Re-exports constants from domain-specific modules for convenient one-stop imports.
  *
- * @see BUN_CONSTANTS_TABLE.md for complete reference
+ * @see docs/BUN_CONSTANTS_TABLE.md for complete reference
  */
 
 // CLI constants

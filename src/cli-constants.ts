@@ -9,7 +9,7 @@
  * Target R-Score: ≥ 0.98 (dry-run mode)
  * Bypass ratio: 1.000 (no I/O writes)
  *
- * @see BUN_CONSTANTS_TABLE.md for complete reference
+ * @see docs/BUN_CONSTANTS_TABLE.md for complete reference
  */
 
 /**
@@ -55,7 +55,7 @@ export const BUN_R_SCORE_BASELINE = 0.82;
  * Each entry maps a normalized fix command name (e.g., `fixengine` for `--fix-engine`)
  * to its projected performance metrics.
  *
- * @see BUN_CONSTANTS_TABLE.md for complete reference
+ * @see docs/BUN_CONSTANTS_TABLE.md for complete reference
  */
 export const BUN_FIX_PROJECTIONS: Record<string, FixProjection> = {
 	fixengine: {

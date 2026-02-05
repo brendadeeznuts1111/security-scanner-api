@@ -197,6 +197,6 @@ The scanner project already uses these features:
 
 ## See Also
 
-- [Bun Profiling Documentation](https://bun.sh/docs/runtime/profiling)
+- [Bun Profiling Documentation](https://bun.com/docs/runtime/profiling)
 - [Code Quality Automation](./CODE_QUALITY_AUTOMATION.md)
 - [Custom ESLint Rules](./CUSTOM_ESLINT_RULES.md)

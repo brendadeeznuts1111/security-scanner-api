@@ -16,12 +16,7 @@
  * ```
  */
 
-import {
-	calculateDeepRScore,
-	calculateBypassRatioNew,
-	calculateGCPressure,
-	PerformanceMetrics,
-} from '../optimizations/bun-optimizations.ts';
+import {calculateDeepRScore, calculateBypassRatioNew, calculateGCPressure} from '../optimizations/bun-optimizations.ts';
 
 const RSS_URL = 'https://bun.com/rss.xml';
 
@@ -51,7 +46,6 @@ async function auditRSSPerformance() {
 
 	// Simple XML parsing (for demo - in production use proper XML parser)
 	const items = xmlText.match(/<item>/g)?.length || 0;
-	const titleMatch = xmlText.match(/<title><!\[CDATA\[(.*?)\]\]><\/title>/g);
 
 	const endParse = Bun.nanoseconds();
 	const memAfter = process.memoryUsage().heapUsed;
@@ -253,12 +247,6 @@ async function auditRSSPerformance() {
  * @param mDelta - Memory delta in bytes
  * @returns R-Score (0.0-1.0+)
  */
-function calculateRSSRScore(pNat: number, pUser: number, mDelta: number): number {
-	const pRatio = Math.min(1.0, pNat / pUser);
-	const mImpact = Math.max(0, 1 - mDelta / 1_000_000); // Normalized against 1MB
-	return pRatio * 0.35 + mImpact * 0.3 + 0.35; // E, S, D constants
-}
-
 // Export for CLI integration
 export {auditRSSPerformance};
 

@@ -327,14 +327,14 @@ describe('formatDocUrl', () => {
 	});
 
 	test('long URL truncated with ellipsis', () => {
-		const url = 'https://bun.sh/docs/api/some-very-long-path-that-exceeds-default-max-length';
+		const url = 'https://bun.com/docs/api/some-very-long-path-that-exceeds-default-max-length';
 		const result = formatDocUrl(url);
 		expect(result.length).toBe(48);
 		expect(result.endsWith('\u2026')).toBe(true);
 	});
 
 	test('explicit large maxLen preserves full URL', () => {
-		const url = 'https://bun.sh/docs/api/some-very-long-path-that-exceeds-default-max-length';
+		const url = 'https://bun.com/docs/api/some-very-long-path-that-exceeds-default-max-length';
 		expect(formatDocUrl(url, 200)).toBe(url);
 	});
 });

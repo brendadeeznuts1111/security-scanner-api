@@ -66,7 +66,7 @@ if (await snapshotFile.exists()) {
 }
 
 // ── API registry: pattern → metadata ────────────────────────────────
-// Doc URLs verified against https://bun.sh/docs/api/utils and https://bun.sh/docs/api/spawn
+// Doc URLs verified against https://bun.com/docs/api/utils and https://bun.com/docs/api/spawn
 // since: cross-referenced from https://bun.com/rss.xml release blog posts
 //   "≤1.0.0" = existed before versioned release notes (pre Sep 2023)
 // Notes contain only claims grounded in official Bun docs/blog or confirmed by test
@@ -86,7 +86,7 @@ const API_DEFS: ApiDef[] = [
 	{
 		pattern: /Bun\.argv/g,
 		api: 'Bun.argv',
-		doc: 'https://bun.sh/docs/runtime/configuration#argv',
+		doc: 'https://bun.com/docs/runtime/configuration#argv',
 		since: '≤1.0.0',
 		unicode: 'passthrough',
 		note: 'CLI arg parsing; passes raw strings',
@@ -94,7 +94,7 @@ const API_DEFS: ApiDef[] = [
 	{
 		pattern: /Bun\.env\b/g,
 		api: 'Bun.env',
-		doc: 'https://bun.sh/docs/runtime/env',
+		doc: 'https://bun.com/docs/runtime/env',
 		since: '≤1.0.0',
 		unicode: 'passthrough',
 		note: 'Environment variable access; returns string|undefined',
@@ -102,7 +102,7 @@ const API_DEFS: ApiDef[] = [
 	{
 		pattern: /Bun\.stringWidth/g,
 		api: 'Bun.stringWidth',
-		doc: 'https://bun.sh/docs/api/utils#bun-stringwidth',
+		doc: 'https://bun.com/docs/api/utils#bun-stringwidth',
 		since: '1.0.29',
 		unicode: 'full',
 		note: '~6,756x faster string-width alternative; implemented in Zig with optimized SIMD instructions [docs]',
@@ -110,7 +110,7 @@ const API_DEFS: ApiDef[] = [
 	{
 		pattern: /Bun\.semver\.satisfies/g,
 		api: 'Bun.semver.satisfies',
-		doc: 'https://bun.sh/docs/api/utils#bun-semver',
+		doc: 'https://bun.com/docs/api/utils#bun-semver',
 		since: '1.0.11',
 		unicode: 'n/a',
 		note: 'Semver range matching; ASCII-only input',
@@ -118,7 +118,7 @@ const API_DEFS: ApiDef[] = [
 	{
 		pattern: /Bun\.semver\.order/g,
 		api: 'Bun.semver.order',
-		doc: 'https://bun.sh/docs/api/utils#bun-semver',
+		doc: 'https://bun.com/docs/api/utils#bun-semver',
 		since: '1.0.11',
 		unicode: 'n/a',
 		note: 'Semver comparison; returns -1|0|1',
@@ -126,7 +126,7 @@ const API_DEFS: ApiDef[] = [
 	{
 		pattern: /Bun\.stripANSI/g,
 		api: 'Bun.stripANSI',
-		doc: 'https://bun.sh/docs/api/utils#bun-stripansi',
+		doc: 'https://bun.com/docs/api/utils#bun-stripansi',
 		since: '1.2.21',
 		unicode: 'full',
 		note: 'SIMD-accelerated [blog]; ~6-57x faster strip-ansi alternative (vs npm package) [docs]',
@@ -134,7 +134,7 @@ const API_DEFS: ApiDef[] = [
 	{
 		pattern: /Bun\.version\b/g,
 		api: 'Bun.version',
-		doc: 'https://bun.sh/docs/runtime/configuration#version',
+		doc: 'https://bun.com/docs/runtime/configuration#version',
 		since: '≤1.0.0',
 		unicode: 'n/a',
 		note: 'Semver string of running Bun',
@@ -142,7 +142,7 @@ const API_DEFS: ApiDef[] = [
 	{
 		pattern: /Bun\.revision/g,
 		api: 'Bun.revision',
-		doc: 'https://bun.sh/docs/runtime/configuration#revision',
+		doc: 'https://bun.com/docs/runtime/configuration#revision',
 		since: '≤1.0.0',
 		unicode: 'n/a',
 		note: 'Git SHA of running Bun build',
@@ -150,7 +150,7 @@ const API_DEFS: ApiDef[] = [
 	{
 		pattern: /Bun\.spawn\b(?!Sync)/g,
 		api: 'Bun.spawn',
-		doc: 'https://bun.sh/docs/api/spawn',
+		doc: 'https://bun.com/docs/api/spawn',
 		since: '≤1.0.0',
 		unicode: 'passthrough',
 		note: 'Async subprocess; stdout→pipe (ReadableStream), stderr→inherit (undefined) [docs]',
@@ -158,7 +158,7 @@ const API_DEFS: ApiDef[] = [
 	{
 		pattern: /Bun\.spawnSync/g,
 		api: 'Bun.spawnSync',
-		doc: 'https://bun.sh/docs/api/spawn#blocking-api-bun-spawnsync',
+		doc: 'https://bun.com/docs/api/spawn#blocking-api-bun-spawnsync',
 		since: '≤1.0.0',
 		unicode: 'passthrough',
 		note: 'Sync subprocess; returns Buffer for stdout/stderr [docs]',
@@ -166,7 +166,7 @@ const API_DEFS: ApiDef[] = [
 	{
 		pattern: /Bun\.file\b/g,
 		api: 'Bun.file',
-		doc: 'https://bun.sh/docs/api/file-io#reading-files-bun-file',
+		doc: 'https://bun.com/docs/api/file-io#reading-files-bun-file',
 		since: '≤1.0.0',
 		unicode: 'full',
 		note: 'Lazy file reference; .text() returns UTF-8; .json() parses; .exists() checks',
@@ -174,7 +174,7 @@ const API_DEFS: ApiDef[] = [
 	{
 		pattern: /Bun\.write\b/g,
 		api: 'Bun.write',
-		doc: 'https://bun.sh/docs/api/file-io#writing-files-bun-write',
+		doc: 'https://bun.com/docs/api/file-io#writing-files-bun-write',
 		since: '≤1.0.0',
 		unicode: 'full',
 		note: 'Atomic file write; accepts string (UTF-8) or Uint8Array',
@@ -182,7 +182,7 @@ const API_DEFS: ApiDef[] = [
 	{
 		pattern: /Bun\.hash\.\w+/g,
 		api: 'Bun.hash.*',
-		doc: 'https://bun.sh/docs/api/hashing#bun-hash',
+		doc: 'https://bun.com/docs/api/hashing#bun-hash',
 		since: '≤1.0.0',
 		unicode: 'binary',
 		note: 'Fast non-crypto hash; input treated as raw bytes (rapidhash added 1.2.16) [blog]',
@@ -190,7 +190,7 @@ const API_DEFS: ApiDef[] = [
 	{
 		pattern: /Bun\.fileURLToPath/g,
 		api: 'Bun.fileURLToPath',
-		doc: 'https://bun.sh/docs/api/utils#bun-fileurltopath',
+		doc: 'https://bun.com/docs/api/utils#bun-fileurltopath',
 		since: '≤1.0.0',
 		unicode: 'full',
 		note: 'Converts file:// URL to absolute path; accepts string or URL object [docs]',
@@ -198,7 +198,7 @@ const API_DEFS: ApiDef[] = [
 	{
 		pattern: /new Bun\.Glob\b/g,
 		api: 'Bun.Glob',
-		doc: 'https://bun.sh/docs/api/glob',
+		doc: 'https://bun.com/docs/api/glob',
 		since: '1.0.14',
 		unicode: 'full',
 		note: 'Native glob matching; handles unicode filenames',
@@ -206,7 +206,7 @@ const API_DEFS: ApiDef[] = [
 	{
 		pattern: /Bun\.inspect\.table/g,
 		api: 'Bun.inspect.table',
-		doc: 'https://bun.sh/docs/api/utils#bun-inspect-table',
+		doc: 'https://bun.com/docs/api/utils#bun-inspect-table',
 		since: '1.1.31',
 		unicode: 'full',
 		note: 'Formatted table output with ANSI colors; uses Bun.stringWidth for alignment',
@@ -214,7 +214,7 @@ const API_DEFS: ApiDef[] = [
 	{
 		pattern: /Bun\.nanoseconds/g,
 		api: 'Bun.nanoseconds',
-		doc: 'https://bun.sh/docs/api/utils#bun-nanoseconds',
+		doc: 'https://bun.com/docs/api/utils#bun-nanoseconds',
 		since: '≤1.0.0',
 		unicode: 'n/a',
 		note: 'High-precision timer; nanoseconds since process start [docs]',
@@ -222,7 +222,7 @@ const API_DEFS: ApiDef[] = [
 	{
 		pattern: /Bun\.gc\b/g,
 		api: 'Bun.gc',
-		doc: 'https://bun.sh/docs/api/utils#bun-gc',
+		doc: 'https://bun.com/docs/api/utils#bun-gc',
 		since: '≤1.0.0',
 		unicode: 'n/a',
 		note: 'Manual garbage collection trigger',
@@ -230,7 +230,7 @@ const API_DEFS: ApiDef[] = [
 	{
 		pattern: /Bun\.openInEditor/g,
 		api: 'Bun.openInEditor',
-		doc: 'https://bun.sh/docs/api/utils#bun-openineditor',
+		doc: 'https://bun.com/docs/api/utils#bun-openineditor',
 		since: '≤1.0.0',
 		unicode: 'full',
 		note: 'Opens file in configured editor',
@@ -238,7 +238,7 @@ const API_DEFS: ApiDef[] = [
 	{
 		pattern: /Bun\.color\b/g,
 		api: 'Bun.color',
-		doc: 'https://bun.sh/docs/api/utils#bun-color',
+		doc: 'https://bun.com/docs/api/utils#bun-color',
 		since: '1.1.30',
 		unicode: 'n/a',
 		note: 'Color parsing and conversion [blog]',
@@ -246,7 +246,7 @@ const API_DEFS: ApiDef[] = [
 	{
 		pattern: /Bun\.wrapAnsi/g,
 		api: 'Bun.wrapAnsi',
-		doc: 'https://bun.sh/docs/api/utils#bun-wrapansi',
+		doc: 'https://bun.com/docs/api/utils#bun-wrapansi',
 		since: '1.3.7',
 		unicode: 'full',
 		note: '33-88x faster than wrap-ansi npm [blog]; ANSI-aware word wrapping',
@@ -254,7 +254,7 @@ const API_DEFS: ApiDef[] = [
 	{
 		pattern: /Bun\.pathToFileURL/g,
 		api: 'Bun.pathToFileURL',
-		doc: 'https://bun.sh/docs/api/utils#bun-pathtofileurl',
+		doc: 'https://bun.com/docs/api/utils#bun-pathtofileurl',
 		since: '≤1.0.0',
 		unicode: 'full',
 		note: 'Converts absolute path to file:// URL',
@@ -262,7 +262,7 @@ const API_DEFS: ApiDef[] = [
 	{
 		pattern: /proc\.stdout\.text\(\)/g,
 		api: 'proc.stdout.text()',
-		doc: 'https://bun.sh/docs/api/spawn#reading-stdout',
+		doc: 'https://bun.com/docs/api/spawn#reading-stdout',
 		since: '≤1.0.0',
 		unicode: 'full',
 		note: 'ReadableStream from Bun.spawn stdout; .text() reads full stream as UTF-8 string [docs]',
@@ -270,7 +270,7 @@ const API_DEFS: ApiDef[] = [
 	{
 		pattern: /proc\.stderr\.text\(\)/g,
 		api: 'proc.stderr.text()',
-		doc: 'https://bun.sh/docs/api/spawn#reading-stdout',
+		doc: 'https://bun.com/docs/api/spawn#reading-stdout',
 		since: '≤1.0.0',
 		unicode: 'full',
 		note: "Requires stderr:'pipe'; defaults to inherit (undefined) if not set [docs]",
@@ -278,7 +278,7 @@ const API_DEFS: ApiDef[] = [
 	{
 		pattern: /import\.meta\.dir/g,
 		api: 'import.meta.dir',
-		doc: 'https://bun.sh/docs/api/import-meta',
+		doc: 'https://bun.com/docs/api/import-meta',
 		since: '≤1.0.0',
 		unicode: 'full',
 		note: 'Directory of current file; handles unicode paths',
@@ -286,7 +286,7 @@ const API_DEFS: ApiDef[] = [
 	{
 		pattern: /import\.meta\.url/g,
 		api: 'import.meta.url',
-		doc: 'https://bun.sh/docs/api/import-meta',
+		doc: 'https://bun.com/docs/api/import-meta',
 		since: '≤1.0.0',
 		unicode: 'full',
 		note: 'file:// URL of current file',
@@ -294,7 +294,7 @@ const API_DEFS: ApiDef[] = [
 	{
 		pattern: /import\.meta\.main/g,
 		api: 'import.meta.main',
-		doc: 'https://bun.sh/docs/api/import-meta',
+		doc: 'https://bun.com/docs/api/import-meta',
 		since: '≤1.0.0',
 		unicode: 'n/a',
 		note: 'true if file is direct entry point',
@@ -343,7 +343,7 @@ for (const def of API_DEFS) {
 results.sort((a, b) => b.calls - a.calls);
 
 // ── Bun.spawn full surface analysis ─────────────────────────────────
-// Ref: https://bun.sh/docs/api/spawn
+// Ref: https://bun.com/docs/api/spawn
 // Type ref: SpawnOptions.OptionsObject, Subprocess, SyncSubprocess
 
 // All SpawnOptions.OptionsObject keys from Bun type definitions
@@ -505,7 +505,7 @@ function analyzeSpawnSites() {
 const spawnAnalysis = analyzeSpawnSites();
 
 // ── Signal analysis ─────────────────────────────────────────────────
-// Ref: https://bun.sh/docs/runtime/child-process#reference (Signal type)
+// Ref: https://bun.com/docs/runtime/child-process#reference (Signal type)
 // Tracks all POSIX/platform signals and where they appear in the codebase.
 
 const SIGNALS = [
@@ -608,7 +608,7 @@ function analyzeSignals() {
 const signalAnalysis = analyzeSignals();
 
 // ── Terminal (PTY) analysis ──────────────────────────────────────────
-// Ref: https://bun.sh/docs/api/spawn#terminal
+// Ref: https://bun.com/docs/api/spawn#terminal
 // Type ref: TerminalOptions, Terminal
 // Bun.spawn({ terminal: true }) gives a PTY-backed subprocess.
 // Terminal is accessed via proc.terminal.
@@ -689,7 +689,7 @@ function analyzeTerminal() {
 const terminalAnalysis = analyzeTerminal();
 
 // ── ResourceUsage analysis ───────────────────────────────────────────
-// Ref: https://bun.sh/docs/api/spawn#resourceusage
+// Ref: https://bun.com/docs/api/spawn#resourceusage
 // Accessed via proc.resourceUsage() (Subprocess) or result.resourceUsage (SyncSubprocess)
 // Returns detailed OS-level resource consumption metrics.
 
@@ -1206,15 +1206,15 @@ const snapshot = {
 	spawn_option_matrix: spawnOptionMatrix,
 	apis: results,
 	spawn: {
-		doc: 'https://bun.sh/docs/api/spawn',
-		type_ref: 'https://bun.sh/docs/runtime/child-process#reference',
+		doc: 'https://bun.com/docs/api/spawn',
+		type_ref: 'https://bun.com/docs/runtime/child-process#reference',
 		totals: spawnAnalysis.totals,
 		option_coverage: spawnAnalysis.optionCoverage,
 		member_coverage: spawnAnalysis.memberCoverage,
 		sites: spawnAnalysis.sites,
 	},
 	signals: {
-		doc: 'https://bun.sh/docs/runtime/child-process#reference',
+		doc: 'https://bun.com/docs/runtime/child-process#reference',
 		total_available: signalAnalysis.total_signals_available,
 		total_used: signalAnalysis.total_signals_used,
 		contexts: signalAnalysis.contexts,
@@ -1222,7 +1222,7 @@ const snapshot = {
 		sites: signalAnalysis.sites,
 	},
 	terminal: {
-		doc: 'https://bun.sh/docs/api/spawn#terminal',
+		doc: 'https://bun.com/docs/api/spawn#terminal',
 		type_ref: 'TerminalOptions, Terminal',
 		options_available: terminalAnalysis.options_available,
 		options_used: terminalAnalysis.options_used,
@@ -1234,7 +1234,7 @@ const snapshot = {
 		member_sites: terminalAnalysis.member_sites,
 	},
 	resource_usage: {
-		doc: 'https://bun.sh/docs/api/spawn#resourceusage',
+		doc: 'https://bun.com/docs/api/spawn#resourceusage',
 		type_ref: 'ResourceUsage',
 		call_sites: resourceUsageAnalysis.call_sites,
 		fields_available: resourceUsageAnalysis.fields_available,

@@ -831,7 +831,7 @@ export function displayTable<T extends Record<string, any>>(
 /**
  * Get the current git commit hash via Bun.spawnSync.
  * Returns the full SHA, or "" if not in a git repo.
- * @see https://bun.sh/docs/bundler/macros#embed-latest-git-commit-hash
+ * @see https://bun.com/docs/bundler/macros#embed-latest-git-commit-hash
  */
 export function getGitCommitHash(cwd?: string): string {
 	try {

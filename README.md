@@ -185,8 +185,10 @@ The scanner leverages many Bun utility functions for optimal performance:
 
 The scanner uses an **Enhanced R-Score Framework** to evaluate optimization efficiency:
 
-$$ R_Score = (P*{ratio} \times 0.35) + (M*{impact} \times 0.30) + (E*{elimination} \times 0.20) + (S*{hardening} \times
-0.10) + (D\_{ergonomics} \times 0.05) $$
+$$
+R_Score = (P*{ratio} \times 0.35) + (M*{impact} \times 0.30) + (E*{elimination} \times 0.20) + (S*{hardening} \times
+0.10) + (D\_{ergonomics} \times 0.05)
+$$
 
 This unified metric evaluates native vs. userland implementations. For high-throughput applications, maintaining an
 **R-Score > 0.95** is critical for sub-millisecond response times.
@@ -226,7 +228,8 @@ See [Enhanced R-Score Framework](./docs/ENHANCED_R_SCORE_FRAMEWORK.md) for compl
 
 ### Utilities
 
-- **`Bun.deepEquals()`**: Deep object comparison (used by test runner). See [Bun.deepEquals docs](https://bun.com/docs/runtime/utils#bun-deepequals)
+- **`Bun.deepEquals()`**: Deep object comparison (used by test runner). See
+  [Bun.deepEquals docs](https://bun.com/docs/runtime/utils#bun-deepequals)
 - **`Bun.peek()`**: Read promise results without await (advanced API)
 
 See the [Bun Utils documentation](https://bun.com/docs/runtime/utils) for complete API reference.
@@ -269,8 +272,8 @@ The dashboard is generated at `docs/visual/dashboard.html` and can be opened dir
 ## References
 
 - [Bun Documentation](https://bun.com/docs)
-- [Bun API Reference](https://bun.sh/docs/runtime/bun-apis)
-- [Bun.secrets](https://bun.sh/docs/runtime/bun-apis#secrets)
+- [Bun API Reference](https://bun.com/docs/runtime/bun-apis)
+- [Bun.secrets](https://bun.com/docs/runtime/bun-apis#secrets)
 
 ## License
 

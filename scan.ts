@@ -809,7 +809,7 @@ export function semverCompare(a: string, b: string): 0 | 1 | -1 {
 /**
  * Get the current git commit hash via Bun.spawnSync.
  * Returns the full SHA, or "" if not in a git repo.
- * @see https://bun.sh/docs/bundler/macros#embed-latest-git-commit-hash
+ * @see https://bun.com/docs/bundler/macros#embed-latest-git-commit-hash
  */
 export function getGitCommitHash(cwd?: string): string {
 	try {
@@ -4322,7 +4322,6 @@ function printDryRunProjections(activeFixes: string[]): void {
 	}
 
 	for (const proj of projections) {
-		const delta = proj.projectedR - baselineR;
 		console.log(`[DRY] Would ${proj.description}`);
 
 		if (proj.latencyDelta) {
@@ -4372,13 +4371,7 @@ function showProjectedRScoreImprovement(command: 'fix-engine' | 'fix-dns' | 'fix
 	console.log(`    Potential R-Score: ${c.bold(c.cyan(proj.projectedR.toFixed(3)))}`);
 
 	const tierColor =
-		proj.projectedR >= 0.95
-			? c.green
-			: proj.projectedR >= 0.9
-				? c.cyan
-				: proj.projectedR >= 0.7
-					? c.yellow
-					: c.red;
+		proj.projectedR >= 0.95 ? c.green : proj.projectedR >= 0.9 ? c.cyan : proj.projectedR >= 0.7 ? c.yellow : c.red;
 	console.log(`    Performance Tier: ${tierColor(proj.tier)}`);
 }
 

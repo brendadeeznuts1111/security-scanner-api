@@ -21,16 +21,15 @@ Complete reference of all `BUN_` prefixed constants across the scanner and mcp-b
 - **Node.js Compatible**: Drop-in replacement for Node.js with minimal changes required
 - **Built-in APIs**: Database drivers (SQL, SQLite, Redis, S3), HTTP server, file I/O, and more
 - **Single Binary**: All tools included in one executable
-- **Debug fetch**: Set `BUN_CONFIG_VERBOSE_FETCH=curl` for copy-paste curl commands, or `true` for request/response only. `[fetch] >` = request, `[fetch] <` = response. Works with both `fetch()` and `node:http`.
+- **Debug fetch**: Set `BUN_CONFIG_VERBOSE_FETCH=curl` for copy-paste curl commands, or `true` for request/response
+  only. `[fetch] >` = request, `[fetch] <` = response. Works with both `fetch()` and `node:http`.
 
 ### Official Resources
 
 - **Documentation**: https://bun.com/docs
-- **API Reference**: https://bun.com/reference - Complete API reference generated from
-  TypeScript definitions
-- **TypeScript Definitions**:
-  https://github.com/oven-sh/bun/tree/main/packages/bun-types -
-  Source TypeScript definitions
+- **API Reference**: https://bun.com/reference - Complete API reference generated from TypeScript definitions
+- **TypeScript Definitions**: https://github.com/oven-sh/bun/tree/main/packages/bun-types - Source TypeScript
+  definitions
 - **GitHub**: https://github.com/oven-sh/bun
 - **Installation**: https://bun.sh/install
 - **Feedback**: https://bun.com/docs/feedback
@@ -71,31 +70,31 @@ bun build ./index.tsx
 
 ### Scanner Project — Additional Constants
 
-| Constant                           | Type                | Location                                 | Value/Count              | Description                     |
-| ---------------------------------- | ------------------- | ---------------------------------------- | ------------------------ | ------------------------------- |
-| `BUN_KEYCHAIN_SERVICE`             | `string`            | `src/scan.ts`                            | `'dev.bun.scanner'`      | Keychain service name           |
-| `BUN_KEYCHAIN_SERVICE_LEGACY`      | `string`            | `src/scan.ts`                            | `'bun-scanner'`          | Legacy keychain service         |
-| `BUN_KEYCHAIN_TOKEN_NAMES`         | `readonly string[]` | `src/scan.ts`                            | 2 items                  | Token names for keychain lookup |
-| `BUN_TOKEN_AUDIT_RSS_PATH`         | `string`            | `src/scan.ts`                            | Path                     | Token audit RSS output path     |
-| `BUN_SCAN_RESULTS_RSS_PATH`        | `string`            | `src/scan.ts`                            | Path                     | Scan results RSS output path    |
-| `BUN_ADVISORY_MATCHES_PATH`        | `string`            | `src/scan.ts`                            | Path                     | Advisory matches JSONL path     |
-| `BUN_R2_COOKIE_FORMAT_VERSION`     | `number`            | `lib/r2-cookie-stream.ts`                | 1                        | R2 cookie format version        |
-| `BUN_R2_COOKIE_COMPRESS_THRESHOLD` | `number`            | `lib/r2-cookie-stream.ts`                | 1024                     | Compress threshold (bytes)      |
-| `BUN_MAX_SAFE_SIZE`                | `number`            | `optimizations/runtime-optimizations.ts` | MAX_SAFE_INTEGER         | Max safe buffer size            |
-| `BUN_RISK_CONSTANTS`               | `object`            | `optimizations/bun-optimizations.ts`     | NANO/MICRO/MILLI_RISK    | Risk thresholds                 |
-| `BUN_STATUS_GLYPHS`                | `Record`            | `cli/renderers/status-glyphs.ts`         | Status → glyph           | Status display glyphs           |
-| `BUN_PROJECT_PRESETS`              | `Record`            | `cli/renderers/status-glyphs.ts`         | Preset configs           | Project presets                 |
-| `BUN_PROFILES_KEYCHAIN_PREFIX`     | `string`            | `src/profiles.ts`                        | `'bun-tier1380'`         | Profiles keychain prefix        |
-| `BUN_PROFILES_DEFAULT_NAMESPACE`   | `string`            | `src/profiles.ts`                        | `'com.tier1380.scanner'` | Default namespace               |
-| `BUN_PROFILES_SECRET_NAMES`        | `readonly string[]` | `src/profiles.ts`                        | 4 items                  | Secret names                    |
-| `BUN_PROFILES_ENV_MAP`             | `object`            | `src/profiles.ts`                        | Env var mapping          | Profile env map                 |
-| `BUN_KEYCHAIN_ERROR_CODES`         | `readonly string[]` | `src/profiles.ts`                        | 4 items                  | Error codes                     |
-| `BUN_COOKIE_SESSION_PREFIX`        | `string`            | `src/cookie-sessions.ts`                 | `'cookie-session'`       | Session prefix                  |
-| `BUN_DEFAULT_SESSION_TTL`          | `number`            | `src/cookie-sessions.ts`                 | 24h (ms)                 | Default TTL                     |
-| `BUN_COOKIE_SECRET_NAMES`          | `readonly string[]` | `src/cookie-sessions.ts`                 | 3 items                  | Secret names                    |
-| `BUN_SECRET_STATUS_COLUMNS`        | `readonly string[]` | `src/service-color-secrets.ts`           | 4 items                  | Status columns                  |
-| `BUN_FIX_PROJECTIONS`              | `Record<string, FixProjection>` | `src/cli-constants.ts`                    | 6 entries                | FactoryWager v4.2 dry-run R-score projections for fix commands |
-| `BUN_R_SCORE_BASELINE`             | `number`            | `src/cli-constants.ts`                    | `0.82`                   | Baseline R-Score for dry-run projections |
+| Constant                           | Type                            | Location                                 | Value/Count              | Description                                                    |
+| ---------------------------------- | ------------------------------- | ---------------------------------------- | ------------------------ | -------------------------------------------------------------- |
+| `BUN_KEYCHAIN_SERVICE`             | `string`                        | `src/scan.ts`                            | `'dev.bun.scanner'`      | Keychain service name                                          |
+| `BUN_KEYCHAIN_SERVICE_LEGACY`      | `string`                        | `src/scan.ts`                            | `'bun-scanner'`          | Legacy keychain service                                        |
+| `BUN_KEYCHAIN_TOKEN_NAMES`         | `readonly string[]`             | `src/scan.ts`                            | 2 items                  | Token names for keychain lookup                                |
+| `BUN_TOKEN_AUDIT_RSS_PATH`         | `string`                        | `src/scan.ts`                            | Path                     | Token audit RSS output path                                    |
+| `BUN_SCAN_RESULTS_RSS_PATH`        | `string`                        | `src/scan.ts`                            | Path                     | Scan results RSS output path                                   |
+| `BUN_ADVISORY_MATCHES_PATH`        | `string`                        | `src/scan.ts`                            | Path                     | Advisory matches JSONL path                                    |
+| `BUN_R2_COOKIE_FORMAT_VERSION`     | `number`                        | `lib/r2-cookie-stream.ts`                | 1                        | R2 cookie format version                                       |
+| `BUN_R2_COOKIE_COMPRESS_THRESHOLD` | `number`                        | `lib/r2-cookie-stream.ts`                | 1024                     | Compress threshold (bytes)                                     |
+| `BUN_MAX_SAFE_SIZE`                | `number`                        | `optimizations/runtime-optimizations.ts` | MAX_SAFE_INTEGER         | Max safe buffer size                                           |
+| `BUN_RISK_CONSTANTS`               | `object`                        | `optimizations/bun-optimizations.ts`     | NANO/MICRO/MILLI_RISK    | Risk thresholds                                                |
+| `BUN_STATUS_GLYPHS`                | `Record`                        | `cli/renderers/status-glyphs.ts`         | Status → glyph           | Status display glyphs                                          |
+| `BUN_PROJECT_PRESETS`              | `Record`                        | `cli/renderers/status-glyphs.ts`         | Preset configs           | Project presets                                                |
+| `BUN_PROFILES_KEYCHAIN_PREFIX`     | `string`                        | `src/profiles.ts`                        | `'bun-tier1380'`         | Profiles keychain prefix                                       |
+| `BUN_PROFILES_DEFAULT_NAMESPACE`   | `string`                        | `src/profiles.ts`                        | `'com.tier1380.scanner'` | Default namespace                                              |
+| `BUN_PROFILES_SECRET_NAMES`        | `readonly string[]`             | `src/profiles.ts`                        | 4 items                  | Secret names                                                   |
+| `BUN_PROFILES_ENV_MAP`             | `object`                        | `src/profiles.ts`                        | Env var mapping          | Profile env map                                                |
+| `BUN_KEYCHAIN_ERROR_CODES`         | `readonly string[]`             | `src/profiles.ts`                        | 4 items                  | Error codes                                                    |
+| `BUN_COOKIE_SESSION_PREFIX`        | `string`                        | `src/cookie-sessions.ts`                 | `'cookie-session'`       | Session prefix                                                 |
+| `BUN_DEFAULT_SESSION_TTL`          | `number`                        | `src/cookie-sessions.ts`                 | 24h (ms)                 | Default TTL                                                    |
+| `BUN_COOKIE_SECRET_NAMES`          | `readonly string[]`             | `src/cookie-sessions.ts`                 | 3 items                  | Secret names                                                   |
+| `BUN_SECRET_STATUS_COLUMNS`        | `readonly string[]`             | `src/service-color-secrets.ts`           | 4 items                  | Status columns                                                 |
+| `BUN_FIX_PROJECTIONS`              | `Record<string, FixProjection>` | `src/cli-constants.ts`                   | 6 entries                | FactoryWager v4.2 dry-run R-score projections for fix commands |
+| `BUN_R_SCORE_BASELINE`             | `number`                        | `src/cli-constants.ts`                   | `0.82`                   | Baseline R-Score for dry-run projections                       |
 
 ## MCP Bun Docs Project Constants
 
@@ -833,7 +832,7 @@ the codebase. This suggests terminal support was planned but not implemented.
 - **ResourceUsage Fields Used**: 0 (0.0% coverage)
 - **ResourceUsage Call Sites**: 0
 - **API**: `proc.resourceUsage()` - Returns OS-level resource consumption metrics
-- **Documentation**: https://bun.sh/docs/api/spawn#resourceusage
+- **Documentation**: https://bun.com/docs/api/spawn#resourceusage
 
 #### Resource Usage Fields Coverage
 

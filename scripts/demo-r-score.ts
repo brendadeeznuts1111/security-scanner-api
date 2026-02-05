@@ -13,7 +13,6 @@ import {
 	calculateRScore,
 	calculatePRatio,
 	calculateMImpact,
-	calculateSpeedup,
 	formatRScore,
 	formatRScoreTable,
 	formatSpeedup,
@@ -25,7 +24,7 @@ function example1(): void {
 	console.log('Example 1: High-Performance Optimization (ID 8)');
 	console.log('═══════════════════════════════════════════════════════════\n');
 
-	// ID 8 from BUN_CONSTANTS_TABLE.md: 90ns native vs 1850ns userland
+	// ID 8 from docs/BUN_CONSTANTS_TABLE.md: 90ns native vs 1850ns userland
 	const pRatio = calculatePRatio(90, 1850);
 	const mImpact = calculateMImpact(320, 1024);
 
@@ -56,7 +55,6 @@ function example2(): void {
 
 	console.log('Payload Size → Speedup:');
 	for (const sizeKB of sizes) {
-		const speedup = calculateSpeedup(sizeKB);
 		console.log(`  ${formatSpeedup(sizeKB)}`);
 	}
 	console.log('');

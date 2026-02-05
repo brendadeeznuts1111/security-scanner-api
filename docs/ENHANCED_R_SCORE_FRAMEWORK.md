@@ -10,8 +10,10 @@ The R-Score serves as a unified metric to evaluate the efficiency of native impl
 
 ### The Core Formula
 
-$$ R_Score = (P*{ratio} \times 0.35) + (M*{impact} \times 0.30) + (E*{elimination} \times 0.20) + (S*{hardening} \times
-0.10) + (D\_{ergonomics} \times 0.05) $$
+$$
+R_Score = (P*{ratio} \times 0.35) + (M*{impact} \times 0.30) + (E*{elimination} \times 0.20) + (S*{hardening} \times
+0.10) + (D\_{ergonomics} \times 0.05)
+$$
 
 ### Key Component Breakdown
 
@@ -98,7 +100,7 @@ meet the "Performance Floor." For high-throughput applications (WebSockets, CLI 
 
 - [Bun Stream Converters](./stream-converters-enhanced.ts)
 - [Bun Optimizations](./bun-optimizations.ts)
-- [BUN Constants Table](../BUN_CONSTANTS_TABLE.md)
+- [BUN Constants Table](./BUN_CONSTANTS_TABLE.md)
 
 ## 6. Formatting & Display Utilities
 

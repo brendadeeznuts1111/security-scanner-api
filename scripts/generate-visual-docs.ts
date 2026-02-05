@@ -50,7 +50,7 @@ interface ChartData {
 	color: string;
 }
 
-function generateEnhancedBadgeSVG(config: BadgeConfig): string {
+function _generateEnhancedBadgeSVG(config: BadgeConfig): string {
 	const {name, value, color, style = 'flat', scale = 1, logo, logoWidth = 14} = config;
 	const nameWidth = Math.max(60, name.length * 7 + 20);
 	const valueWidth = Math.max(40, value.length * 7 + 20);
@@ -126,7 +126,7 @@ function generateEnhancedBadgeSVG(config: BadgeConfig): string {
   </svg>`;
 }
 
-function generateChartSVG(data: ChartData[], width = 300, height = 150): string {
+function _generateChartSVG(data: ChartData[], width = 300, height = 150): string {
 	const barWidth = (width - 40) / data.length;
 	const maxValue = Math.max(...data.map(d => d.value));
 
@@ -259,7 +259,7 @@ function generateBadges(registry: VersionRegistry): void {
 
 		writeFileSync(join(BADGES_DIR, 'README.md'), `# Tier-1380 Badges\n\n${badgesMarkdown}\n`);
 		console.log(`🏷️  Generated ${badges.length} badges in ${BADGES_DIR}`);
-	} catch (error) {
+	} catch {
 		console.warn(`⚠️  Failed to generate badges: ${error instanceof Error ? error.message : String(error)}`);
 	}
 }
@@ -317,7 +317,7 @@ async function generateDashboardHTML(registry: VersionRegistry): Promise<string>
 		const cliConstantsUrl = `file://${CLI_CONSTANTS_PATH}`;
 		const cliConstantsModule = await import(cliConstantsUrl);
 		const {BUN_R_SCORE_BASELINE, BUN_FIX_PROJECTIONS} = cliConstantsModule;
-		
+
 		// Also try to get BUN_DOCS_BASE and BUN_TYPES_REPO_URL from bun-api-matrix or mcp-bun-docs
 		try {
 			const bunApiMatrixPath = join(import.meta.dir, '..', 'cli', 'renderers', 'bun-api-matrix.ts');
@@ -327,7 +327,7 @@ async function generateDashboardHTML(registry: VersionRegistry): Promise<string>
 				bunDocBase = bunApiMatrixModule.BUN_DOCS_BASE;
 			}
 		} catch {}
-		
+
 		// Try to get BUN_TYPES_REPO_URL from mcp-bun-docs if available
 		try {
 			const mcpBunDocsPath = join(import.meta.dir, '..', '..', 'matrix-analysis', 'mcp-bun-docs', 'lib.ts');
@@ -339,9 +339,12 @@ async function generateDashboardHTML(registry: VersionRegistry): Promise<string>
 				}
 			}
 		} catch {}
-		
+
 		if (BUN_R_SCORE_BASELINE !== undefined) {
-			baselineR = typeof BUN_R_SCORE_BASELINE === 'number' ? BUN_R_SCORE_BASELINE : parseFloat(String(BUN_R_SCORE_BASELINE));
+			baselineR =
+				typeof BUN_R_SCORE_BASELINE === 'number'
+					? BUN_R_SCORE_BASELINE
+					: parseFloat(String(BUN_R_SCORE_BASELINE));
 		}
 
 		// Extract fix projections from the imported constant
@@ -404,7 +407,7 @@ async function generateDashboardHTML(registry: VersionRegistry): Promise<string>
         </div>`;
 			}
 		}
-	} catch (error) {
+	} catch {
 		// Silently fail if CLI constants file doesn't exist or can't be parsed
 	}
 
@@ -1281,7 +1284,7 @@ async function main(): Promise<void> {
 				// Keep server running
 				process.on('SIGINT', () => {
 					console.log('\n🛑 Shutting down dashboard server...');
-					server.stop();
+					void server.stop();
 					process.exit(0);
 				});
 			}

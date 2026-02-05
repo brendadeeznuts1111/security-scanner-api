@@ -5,7 +5,7 @@
  * Shows BUN_FIX_PROJECTIONS and BUN_R_SCORE_BASELINE in formatted tables
  */
 
-import {BUN_FIX_PROJECTIONS, BUN_R_SCORE_BASELINE, type FixProjection} from '../src/cli-constants';
+import {BUN_FIX_PROJECTIONS, BUN_R_SCORE_BASELINE} from '../src/cli-constants';
 
 console.log('═══════════════════════════════════════════════════════════════');
 console.log('  CLI Constants - Fix Projections Table');
@@ -25,9 +25,7 @@ console.log(
 
 // Display table with performance metrics only
 console.log('\n📈 Performance Metrics:\n');
-console.log(
-	Bun.inspect.table(projectionsArray, ['flag', 'mImpact', 'pRatioDelta', 'projectedR', 'tier']),
-);
+console.log(Bun.inspect.table(projectionsArray, ['flag', 'mImpact', 'pRatioDelta', 'projectedR', 'tier']));
 
 // Display table with deltas
 console.log('\n⚡ Impact Deltas:\n');
@@ -47,7 +45,13 @@ if (deltaData.length > 0) {
 // Display baseline constant
 console.log('\n🎯 Baseline R-Score:\n');
 console.log(
-	Bun.inspect.table([{constant: 'BUN_R_SCORE_BASELINE', value: BUN_R_SCORE_BASELINE, description: 'Baseline R-Score for dry-run projections'}]),
+	Bun.inspect.table([
+		{
+			constant: 'BUN_R_SCORE_BASELINE',
+			value: BUN_R_SCORE_BASELINE,
+			description: 'Baseline R-Score for dry-run projections',
+		},
+	]),
 );
 
 // Summary statistics

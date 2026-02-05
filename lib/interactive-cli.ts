@@ -3,8 +3,8 @@
 import {LoopGuard} from './loop-guard';
 
 export class InteractiveTier1380 {
-	private guard = new LoopGuard();
-	private isCI = process.env.CI === 'true';
+	private readonly guard = new LoopGuard();
+	private readonly isCI = process.env.CI === 'true';
 
 	async execute<T>(command: string, executor: () => Promise<T>): Promise<T> {
 		const startTime = performance.now();

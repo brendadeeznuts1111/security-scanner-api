@@ -2,9 +2,9 @@
  * Tests: Bun native API replacements used in scan.ts
  *
  * Validates correctness of:
- *   1. Bun.stripANSI — https://bun.sh/docs/api/utils#bun-stripansi
- *   2. proc.stdout.text() / proc.stderr.text() — https://bun.sh/docs/api/spawn#reading-stdout
- *   3. Bun.fileURLToPath — https://bun.sh/docs/api/utils#bun-fileurltopath
+ *   1. Bun.stripANSI — https://bun.com/docs/api/utils#bun-stripansi
+ *   2. proc.stdout.text() / proc.stderr.text() — https://bun.com/docs/api/spawn#reading-stdout
+ *   3. Bun.fileURLToPath — https://bun.com/docs/api/utils#bun-fileurltopath
  *
  * Run: bun test benchmarks/bun-native-api.test.ts
  */
@@ -12,7 +12,7 @@
 import {describe, test, expect} from 'bun:test';
 
 // ── 1. Bun.stripANSI ───────────────────────────────────────────────
-// Ref: https://bun.sh/docs/api/utils#bun-stripansi
+// Ref: https://bun.com/docs/api/utils#bun-stripansi
 // ~6-57x faster strip-ansi alternative (vs npm package). Strips all ANSI escape codes.
 
 describe('Bun.stripANSI', () => {
@@ -66,7 +66,7 @@ describe('Bun.stripANSI', () => {
 });
 
 // ── 2. proc.stdout.text() / proc.stderr.text() ─────────────────────
-// Ref: https://bun.sh/docs/api/spawn#reading-stdout
+// Ref: https://bun.com/docs/api/spawn#reading-stdout
 // Bun.spawn stdout is a ReadableStream with .text(), .json(), .bytes() methods.
 // proc.stdout defaults to "pipe" (ReadableStream), proc.stderr defaults to "inherit" (null).
 // Must set stderr: "pipe" to read it.
@@ -170,7 +170,7 @@ describe('proc.stdout.text() / proc.stderr.text()', () => {
 });
 
 // ── 3. Bun.fileURLToPath ────────────────────────────────────────────
-// Ref: https://bun.sh/docs/api/utils#bun-fileurltopath
+// Ref: https://bun.com/docs/api/utils#bun-fileurltopath
 // Converts file:// URLs to absolute filesystem paths.
 // Observed: correctly decodes percent-encoded characters (confirmed by tests below).
 

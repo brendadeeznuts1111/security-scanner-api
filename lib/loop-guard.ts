@@ -8,7 +8,7 @@ interface LoopContext {
 }
 
 export class LoopGuard {
-	private history: LoopContext[] = [];
+	private readonly history: LoopContext[] = [];
 	private readonly maxRepetitions = 2;
 	private readonly similarityThreshold = 0.85;
 
@@ -51,7 +51,6 @@ export class LoopGuard {
 	private similarity(a: string, b: string): number {
 		if (a === b) return 1.0;
 		const longer = a.length > b.length ? a : b;
-		const shorter = a.length > b.length ? b : a;
 		if (longer.length === 0) return 1.0;
 		const distance = this.levenshtein(a, b);
 		return (longer.length - distance) / longer.length;

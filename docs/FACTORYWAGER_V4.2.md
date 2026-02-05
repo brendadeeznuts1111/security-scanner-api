@@ -9,7 +9,9 @@
 
 ## Overview
 
-FactoryWager v4.2 enhances the CLI scanner with **mathematical justification** for all `--fix-*` and `--update` operations when used with `--dry-run`. This provides users with projected R-Score improvements before committing to changes, maximizing the **Ergonomics Factor** and ensuring safe previews in staging environments.
+FactoryWager v4.2 enhances the CLI scanner with **mathematical justification** for all `--fix-*` and `--update`
+operations when used with `--dry-run`. This provides users with projected R-Score improvements before committing to
+changes, maximizing the **Ergonomics Factor** and ensuring safe previews in staging environments.
 
 ### Key Guarantees
 
@@ -20,18 +22,19 @@ FactoryWager v4.2 enhances the CLI scanner with **mathematical justification** f
 
 ## Dry-Run Potential Impact Matrix (v4.2 – measured values)
 
-| Flag              | Targeted Metric              | Measured M_impact | Measured P_ratio Δ | Projected R-Score | Tier      |
-|-------------------|------------------------------|-------------------|---------------------|-------------------|-----------|
-| `--fix-engine`    | engines.bun unification      | +0.06             | +0.11               | **0.987**         | Elite     |
-| `--fix-dns`       | DNS prefetch injection       | +0.02             | +0.48               | **0.994**         | Elite     |
-| `--fix-trusted`   | trustedDependencies coverage | +0.18             | +0.07               | **0.965**         | Native    |
-| `--fix-registry`  | Registry unification         | +0.09             | +0.22               | **0.978**         | Elite     |
-| `--update`        | Dependency version freshness | +0.28             | +0.17               | **0.980**         | Elite     |
-| `--fix-scopes`    | Scoped registry config       | +0.11             | +0.19               | **0.976**         | Elite     |
+| Flag             | Targeted Metric              | Measured M_impact | Measured P_ratio Δ | Projected R-Score | Tier   |
+| ---------------- | ---------------------------- | ----------------- | ------------------ | ----------------- | ------ |
+| `--fix-engine`   | engines.bun unification      | +0.06             | +0.11              | **0.987**         | Elite  |
+| `--fix-dns`      | DNS prefetch injection       | +0.02             | +0.48              | **0.994**         | Elite  |
+| `--fix-trusted`  | trustedDependencies coverage | +0.18             | +0.07              | **0.965**         | Native |
+| `--fix-registry` | Registry unification         | +0.09             | +0.22              | **0.978**         | Elite  |
+| `--update`       | Dependency version freshness | +0.28             | +0.17              | **0.980**         | Elite  |
+| `--fix-scopes`   | Scoped registry config       | +0.11             | +0.19              | **0.976**         | Elite  |
 
 ## Enhanced Dry-Run Output Format
 
-When running with `--dry-run` and any combination of `--fix-*` flags, the CLI now displays a comprehensive efficiency preview:
+When running with `--dry-run` and any combination of `--fix-*` flags, the CLI now displays a comprehensive efficiency
+preview:
 
 ### Example Usage
 
@@ -80,27 +83,27 @@ The v4.2 implementation consists of:
 
 ```typescript
 interface FixProjection {
-  flag: string;
-  description: string;
-  mImpact: number;
-  pRatioDelta: number;
-  projectedR: number;
-  tier: string;
-  latencyDelta?: string;
-  consistencyDelta?: string;
+	flag: string;
+	description: string;
+	mImpact: number;
+	pRatioDelta: number;
+	projectedR: number;
+	tier: string;
+	latencyDelta?: string;
+	consistencyDelta?: string;
 }
 
 const FIX_PROJECTIONS: Record<string, FixProjection> = {
-  fixengine: {
-    flag: '--fix-engine',
-    description: 'unify engines.bun to ">=1.1.29" across 47 projects',
-    mImpact: 0.06,
-    pRatioDelta: 0.11,
-    projectedR: 0.987,
-    tier: 'Elite',
-    consistencyDelta: '+11.4%',
-  },
-  // ... other fix types
+	fixengine: {
+		flag: '--fix-engine',
+		description: 'unify engines.bun to ">=1.1.29" across 47 projects',
+		mImpact: 0.06,
+		pRatioDelta: 0.11,
+		projectedR: 0.987,
+		tier: 'Elite',
+		consistencyDelta: '+11.4%',
+	},
+	// ... other fix types
 };
 ```
 
@@ -115,7 +118,10 @@ const FIX_PROJECTIONS: Record<string, FixProjection> = {
 
 The projected R-Score uses the Enhanced R-Score Framework formula:
 
-$$ R_Score = (P_{ratio} \times 0.35) + (M_{impact} \times 0.30) + (E_{elimination} \times 0.20) + (S_{hardening} \times 0.10) + (D_{ergonomics} \times 0.05) $$
+$$
+R*Score = (P*{ratio} \times 0.35) + (M*{impact} \times 0.30) + (E*{elimination} \times 0.20) + (S*{hardening} \times
+0.10) + (D*{ergonomics} \times 0.05)
+$$
 
 ### Baseline
 
@@ -148,16 +154,19 @@ $$ R_Score = (P_{ratio} \times 0.35) + (M_{impact} \times 0.30) + (E_{eliminatio
 ### Example Workflows
 
 **Single flag preview:**
+
 ```bash
 bun scan.ts --fix-dns --dry-run
 ```
 
 **Multiple flags preview:**
+
 ```bash
 bun scan.ts --fix-dns --fix-engine --fix-trusted --dry-run
 ```
 
 **With update:**
+
 ```bash
 bun scan.ts --update --fix-engine --dry-run
 ```
@@ -188,7 +197,7 @@ The v4.2 implementation maintains full backward compatibility:
 
 - [FactoryWager v4.1](./FACTORYWAGER_V4.1.md) - Runtime bridge optimization
 - [Enhanced R-Score Framework](./ENHANCED_R_SCORE_FRAMEWORK.md) - Complete R-Score documentation
-- [BUN Constants Table](../BUN_CONSTANTS_TABLE.md) - Bun API constants reference
+- [BUN Constants Table](./BUN_CONSTANTS_TABLE.md) - Bun API constants reference
 
 ## Changelog
 

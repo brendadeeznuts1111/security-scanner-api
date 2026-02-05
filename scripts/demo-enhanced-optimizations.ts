@@ -1,10 +1,10 @@
 #!/usr/bin/env bun
 /**
  * Enhanced Native Performance Demo - Tier-1380 Certified
- * 
+ *
  * Demonstrates the Fast-Path Completion Formula, Native Buffer Allocation,
  * and Enhanced R-Score calculations with real-world scenarios.
- * 
+ *
  * Usage: bun scripts/demo-enhanced-optimizations.ts
  */
 
@@ -23,7 +23,6 @@ import {
 	NativeBufferManager,
 	type RScoreParams,
 	type FastPathParams,
-	type PerformanceTier
 } from '../optimizations/bun-optimizations.ts';
 
 console.log('🚀 Enhanced Bun Native Performance Demo - Tier-1380 Certified\n');
@@ -37,26 +36,26 @@ const fastPathScenarios = [
 		name: 'High-Frequency API Calls',
 		totalTime: 1000000, // 1ms total
 		marshalTime: 5000, // 5μs per call
-		numCalls: 10
+		numCalls: 10,
 	},
 	{
 		name: 'Bulk File Processing',
 		totalTime: 5000000, // 5ms total
 		marshalTime: 5000, // 5μs per call
-		numCalls: 2
+		numCalls: 2,
 	},
 	{
 		name: 'Microservice Request Pipeline',
 		totalTime: 2000000, // 2ms total
 		marshalTime: 5000, // 5μs per call
-		numCalls: 50
-	}
+		numCalls: 50,
+	},
 ];
 
 for (const scenario of fastPathScenarios) {
 	const bypassRatio = calculateBypassRatio(scenario.totalTime, scenario.marshalTime, scenario.numCalls);
 	const useFastPath = shouldUseFastPath(scenario.totalTime, scenario.marshalTime, scenario.numCalls);
-	
+
 	console.log(`\n📋 ${scenario.name}:`);
 	console.log(`   Total Time: ${(scenario.totalTime / 1000000).toFixed(2)}ms`);
 	console.log(`   Marshal Time: ${(scenario.marshalTime / 1000).toFixed(1)}μs`);
@@ -81,9 +80,11 @@ const bufferSizes = [
 console.log('\n📈 Growth-Cap Formula Application:');
 for (const size of bufferSizes) {
 	const nextSize = calculateNextBufferSize(size);
-	const growth = ((nextSize - size) / size * 100);
-	
-	console.log(`   ${(size / 1024 / 1024).toFixed(1)}MB → ${(nextSize / 1024 / 1024).toFixed(1)}MB (${growth > 100 ? '+16MB cap' : `+${growth.toFixed(0)}%`})`);
+	const growth = ((nextSize - size) / size) * 100;
+
+	console.log(
+		`   ${(size / 1024 / 1024).toFixed(1)}MB → ${(nextSize / 1024 / 1024).toFixed(1)}MB (${growth > 100 ? '+16MB cap' : `+${growth.toFixed(0)}%`})`,
+	);
 }
 
 // Create a native buffer demo
@@ -101,26 +102,30 @@ console.log(`   Initial: capacity=${bufferManager.capacity}B, size=${bufferManag
 
 // Simulate chunk appends
 const chunks = [
-	new Uint8Array([1, 2, 3, 4, 5]),           // 5B
-	new Uint8Array(new Array(100).fill(42)),    // 100B  
-	new Uint8Array(new Array(1000).fill(99)),   // 1KB
-	new Uint8Array(new Array(5000).fill(128)),  // 5KB
+	new Uint8Array([1, 2, 3, 4, 5]), // 5B
+	new Uint8Array(new Array(100).fill(42)), // 100B
+	new Uint8Array(new Array(1000).fill(99)), // 1KB
+	new Uint8Array(new Array(5000).fill(128)), // 5KB
 ];
 
 for (let i = 0; i < chunks.length; i++) {
 	const chunk = chunks[i];
 	bufferManager.append(chunk);
-	
-	const growthPercent = ((bufferManager.capacity - 1024) / 1024 * 100).toFixed(0);
-	console.log(`   Chunk ${i + 1}: +${chunk.length}B → capacity=${bufferManager.capacity}B, size=${bufferManager.size}B (${growthPercent}% growth)`);
+
+	const growthPercent = (((bufferManager.capacity - 1024) / 1024) * 100).toFixed(0);
+	console.log(
+		`   Chunk ${i + 1}: +${chunk.length}B → capacity=${bufferManager.capacity}B, size=${bufferManager.size}B (${growthPercent}% growth)`,
+	);
 }
 
 console.log(`\n✅ Final buffer: ${bufferManager.size}B data in ${bufferManager.capacity}B capacity`);
-console.log(`   Growth efficiency: ${(bufferManager.size / bufferManager.capacity * 100).toFixed(1)}% utilization`);
+console.log(`   Growth efficiency: ${((bufferManager.size / bufferManager.capacity) * 100).toFixed(1)}% utilization`);
 
 // Test toArrayBuffer conversion
 const finalBuffer = bufferManager.toArrayBuffer();
-console.log(`   ArrayBuffer result: ${finalBuffer.byteLength}B (matches size: ${finalBuffer.byteLength === bufferManager.size ? '✅' : '❌'})`);
+console.log(
+	`   ArrayBuffer result: ${finalBuffer.byteLength}B (matches size: ${finalBuffer.byteLength === bufferManager.size ? '✅' : '❌'})`,
+);
 
 // ── 11c. Enhanced Stream Processing Demo ────────────────────────────────────────
 console.log('\n🔄 Enhanced Stream Processing Demo - Zero-Copy with Growth-Cap');
@@ -128,7 +133,7 @@ console.log('=================================================================='
 
 // Create a mock stream to demonstrate the enhanced streamToNativeBuffer
 class MockReadableStream {
-	private chunks: Uint8Array[];
+	private readonly chunks: Uint8Array[];
 	private index = 0;
 
 	constructor(chunks: Uint8Array[]) {
@@ -139,11 +144,11 @@ class MockReadableStream {
 		return {
 			read: async () => {
 				if (this.index < this.chunks.length) {
-					return { done: false, value: this.chunks[this.index++] };
+					return {done: false, value: this.chunks[this.index++]};
 				}
-				return { done: true, value: undefined };
+				return {done: true, value: undefined};
 			},
-			releaseLock: () => {}
+			releaseLock: () => {},
 		};
 	}
 }
@@ -168,11 +173,17 @@ console.log(`   Total chunks: ${mockChunks.length}`);
 console.log(`   Total input size: ${mockChunks.reduce((sum, chunk) => sum + chunk.length, 0)}B`);
 console.log(`   Output buffer size: ${streamBuffer.byteLength}B`);
 console.log(`   Processing time: ${(endTime - startTime).toFixed(2)}ms`);
-console.log(`   Data integrity: ${streamBuffer.byteLength === mockChunks.reduce((sum, chunk) => sum + chunk.length, 0) ? '✅' : '❌'}`);
+console.log(
+	`   Data integrity: ${streamBuffer.byteLength === mockChunks.reduce((sum, chunk) => sum + chunk.length, 0) ? '✅' : '❌'}`,
+);
 
 // Verify content
 const outputArray = new Uint8Array(streamBuffer);
-console.log(`   Content preview: ${Array.from(outputArray.slice(0, 11)).map(b => String.fromCharCode(b)).join('')}...`);
+console.log(
+	`   Content preview: ${Array.from(outputArray.slice(0, 11))
+		.map(b => String.fromCharCode(b))
+		.join('')}...`,
+);
 
 console.log(`\n🎯 Growth-Cap Formula Benefits:`);
 console.log(`   ✅ Pre-allocated SharedArrayBuffer reduces heap fragmentation`);
@@ -194,30 +205,30 @@ const rScoreScenarios: Array<{
 		baseParams: {
 			P_ratio: 0.45,
 			M_impact: 0.85,
-			E_elimination: 0.90,
+			E_elimination: 0.9,
 			S_hardening: 0.95,
-			D_ergonomics: 0.80
+			D_ergonomics: 0.8,
 		},
 		fastPathParams: {
 			bypassRatio: 0.75,
 			usesNativeBuffer: false,
-			zeroCopy: false
-		}
+			zeroCopy: false,
+		},
 	},
 	{
 		name: 'Optimized Stream Processing',
 		baseParams: {
 			P_ratio: 0.35,
 			M_impact: 0.93,
-			E_elimination: 1.00,
-			S_hardening: 1.00,
-			D_ergonomics: 0.95
+			E_elimination: 1.0,
+			S_hardening: 1.0,
+			D_ergonomics: 0.95,
 		},
 		fastPathParams: {
 			bypassRatio: 0.95,
 			usesNativeBuffer: true,
-			zeroCopy: true
-		}
+			zeroCopy: true,
+		},
 	},
 	{
 		name: 'High-Frequency WebSocket Handler',
@@ -225,22 +236,22 @@ const rScoreScenarios: Array<{
 			P_ratio: 0.25,
 			M_impact: 0.88,
 			E_elimination: 0.95,
-			S_hardening: 1.00,
-			D_ergonomics: 0.90
+			S_hardening: 1.0,
+			D_ergonomics: 0.9,
 		},
 		fastPathParams: {
 			bypassRatio: 0.98,
 			usesNativeBuffer: true,
-			zeroCopy: true
-		}
-	}
+			zeroCopy: true,
+		},
+	},
 ];
 
 for (const scenario of rScoreScenarios) {
 	const baseScore = calculateRScore(scenario.baseParams);
 	const enhancedScore = calculateEnhancedRScore(scenario.baseParams, scenario.fastPathParams);
 	const tier = getPerformanceTier(enhancedScore);
-	
+
 	console.log(`\n🎯 ${scenario.name}:`);
 	console.log(`   Base R-Score: ${baseScore.toFixed(3)}`);
 	console.log(`   Enhanced R-Score: ${enhancedScore.toFixed(3)} (+${(enhancedScore - baseScore).toFixed(3)})`);
@@ -293,7 +304,7 @@ const decisionScenarios = [
 		pUserland: 15000000, // 15ms
 		memDelta: 512 * 1024, // 512KB saved
 		memUserland: 12 * 1024 * 1024, // 12MB total
-	}
+	},
 ];
 
 for (const scenario of decisionScenarios) {
@@ -301,13 +312,13 @@ for (const scenario of decisionScenarios) {
 		scenario.pNative,
 		scenario.pUserland,
 		scenario.memDelta,
-		scenario.memUserland
+		scenario.memUserland,
 	);
-	
+
 	const pRatio = scenario.pNative / scenario.pUserland;
 	const mImpact = 1 - scenario.memDelta / scenario.memUserland;
 	const speedup = scenario.pUserland / scenario.pNative;
-	
+
 	console.log(`\n📦 ${scenario.name}:`);
 	console.log(`   Performance Ratio: ${pRatio.toFixed(3)} (${speedup.toFixed(1)}x faster)`);
 	console.log(`   Memory Impact: ${(mImpact * 100).toFixed(1)}%`);
@@ -327,32 +338,32 @@ const summaryData = [
 		technique: 'Fast-Path Completion',
 		rScore: '0.95+',
 		speedup: '10-30x',
-		status: '✅ Native-Grade'
+		status: '✅ Native-Grade',
 	},
 	{
 		technique: 'Zero-Copy Transfer',
 		rScore: '0.93+',
 		speedup: '8-25x',
-		status: '✅ Native-Grade'
+		status: '✅ Native-Grade',
 	},
 	{
 		technique: 'Growth-Cap Buffer',
 		rScore: '0.90+',
 		speedup: '5-20x',
-		status: '✅ Native-Grade'
+		status: '✅ Native-Grade',
 	},
 	{
 		technique: 'NativeBufferManager',
 		rScore: '0.92+',
 		speedup: '7-22x',
-		status: '✅ Native-Grade'
+		status: '✅ Native-Grade',
 	},
 	{
 		technique: 'SharedArrayBuffer',
 		rScore: '0.88+',
 		speedup: '3-15x',
-		status: '⚠️  Sub-Optimal'
-	}
+		status: '⚠️  Sub-Optimal',
+	},
 ];
 
 for (const item of summaryData) {

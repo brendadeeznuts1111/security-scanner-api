@@ -4,11 +4,11 @@
  * Imported by bench-native.ts and bench-rss.ts to eliminate duplication.
  *
  * References:
- *   - Bun.nanoseconds: https://bun.sh/docs/api/utils#bun-nanoseconds
- *   - Bun.color: https://bun.sh/docs/api/utils#bun-color
- *   - Bun.enableANSIColors: https://bun.sh/docs/api/utils#bun-enableansicolors
- *   - Bun.stringWidth: https://bun.sh/docs/api/utils#bun-stringwidth
- *   - Bun.inspect.table: https://bun.sh/docs/api/utils#bun-inspect-table
+ *   - Bun.nanoseconds: https://bun.com/docs/api/utils#bun-nanoseconds
+ *   - Bun.color: https://bun.com/docs/api/utils#bun-color
+ *   - Bun.enableANSIColors: https://bun.com/docs/api/utils#bun-enableansicolors
+ *   - Bun.stringWidth: https://bun.com/docs/api/utils#bun-stringwidth
+ *   - Bun.inspect.table: https://bun.com/docs/api/utils#bun-inspect-table
  */
 
 // ── Constants ───────────────────────────────────────────────────────
